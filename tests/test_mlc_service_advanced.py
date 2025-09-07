@@ -73,3 +73,35 @@ def test_session_messages_and_delete(client: TestClient):
     resp = client.delete(f"/sessions/{session_id}")
     assert resp.status_code == 200
     assert resp.json()["detail"] == "Session deleted"
+
+def test_unload_model(client: TestClient):
+    """
+    Tests that a model can be successfully unloaded.
+    """
+    # First, ensure a model is loaded by creating a session and generating a message
+    # This will place the model in the cache.
+    model_name = "DeepSeek-R1-Distill-Qwen-1.5B-q4f16_0-MLC" # Use a model you have locally
+    session_res = client.post("/sessions", json={"model_name": model_name, "device": "auto"})
+    assert session_res.status_code == 200
+    session_id = session_res.json()["session_id"]
+
+    gen_res = client.post(
+        "/generate",
+        json={
+            "session_id": session_id,
+            "prompt": "hello",
+            "model_name": model_name,
+        },
+    )
+    # This might fail if the model isn't fully set up, but it will still trigger the cache load.
+    # We don't need to assert 200 here, just that the attempt was made.
+
+    # Now, unload the model
+    unload_res = client.post("/models/unload", json={"model_name": model_name, "device": "opencl"})
+    assert unload_res.status_code == 200
+    assert "unloaded successfully" in unload_res.json()["detail"]
+
+    # Try to unload it again, which should fail
+    unload_again_res = client.post("/models/unload", json={"model_name": model_name, "device": "opencl"})
+    assert unload_again_res.status_code == 404
+    assert "not found in cache" in unload_again_res.json()["detail"]

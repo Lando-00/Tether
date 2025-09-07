@@ -183,6 +183,10 @@ class GenerateResponse(BaseModel):
     reply: str
     messages: List[Message]
 
+class UnloadModelRequest(BaseModel):
+    model_name: str
+    device: Optional[str] = "auto"
+
 @app.post("/sessions", response_model=CreateSessionResponse)
 def create_session(db: OrmSession = Depends(get_db)):
     session_id = str(uuid.uuid4())
@@ -267,6 +271,31 @@ def generate(req: GenerateRequest, db: OrmSession = Depends(get_db)):
             ) for m in messages
         ]
     )
+
+@app.post("/models/unload")
+def unload_model(req: UnloadModelRequest):
+    """
+    Unloads a specific model from the cache to free up memory.
+    """
+    key_to_delete = None
+    with _engine_lock:
+        # Find the key that contains the model_name and device
+        for key, engine in _engine_cache.items():
+            model_dir, device, _ = key
+            if req.model_name in model_dir and device == req.device:
+                key_to_delete = key
+                try:
+                    engine.terminate()
+                except Exception as e:
+                    # Log the error but proceed with removal
+                    print(f"Error terminating engine for {key}: {e}")
+                break
+
+        if key_to_delete:
+            del _engine_cache[key_to_delete]
+            return {"detail": f"Model '{req.model_name}' on device '{req.device}' unloaded successfully."}
+        else:
+            raise HTTPException(status_code=404, detail=f"Model '{req.model_name}' on device '{req.device}' not found in cache.")
 
 # Streaming endpoint for token-by-token output
 @app.post("/generate_stream")
