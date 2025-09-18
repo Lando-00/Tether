@@ -24,6 +24,9 @@ from typing import List, Dict, Any, Optional, Union
 from sqlalchemy import create_engine, Column, Integer, String, DateTime, ForeignKey, Text
 from sqlalchemy import text, Index
 from sqlalchemy.orm import sessionmaker, declarative_base, relationship, Session as OrmSession
+from sqlalchemy.pool import StaticPool
+from sqlalchemy.engine.url import make_url
+from typing import Any
 
 # --- Database models ---
 
@@ -67,20 +70,42 @@ class ContextComponent:
         """Initialize the context component with a database connection."""
         if database_url is None:
             database_url = os.environ.get("MLC_SQLITE_URL", "sqlite:///mlc_sessions.db")
-        
-        self.engine = create_engine(database_url, connect_args={"check_same_thread": False})
-        
-        # Enable WAL mode for better concurrency
-        with self.engine.connect() as conn:
-            conn.execute(text("PRAGMA journal_mode=WAL"))
-        
-        self.SessionLocal = sessionmaker(autocommit=False, autoflush=False, bind=self.engine)
-        
+
+        # Determine SQLite in-memory vs file-backed
+        url = make_url(database_url)
+        is_sqlite = url.get_backend_name() == "sqlite"
+        is_memory = is_sqlite and (url.database in (None, "", ":memory:"))
+
+        # Configure engine kwargs: future flag, thread safety, and static pool for memory
+        engine_kwargs: dict[str, Any] = {"future": True}
+        if is_sqlite:
+            engine_kwargs["connect_args"] = {"check_same_thread": False}
+            if is_memory:
+                engine_kwargs["poolclass"] = StaticPool
+        self.engine = create_engine(database_url, **engine_kwargs)
+
+        # 1) Create tables before any PRAGMAs
+        Base.metadata.create_all(self.engine)
+
+        # 2) Enable WAL only for file-backed SQLite
+        if is_sqlite and not is_memory:
+            try:
+                with self.engine.connect() as conn:
+                    conn.exec_driver_sql("PRAGMA journal_mode=WAL")
+            except Exception:
+                pass
+
+        # Configure sessionmaker: no autoflush/autocommit, no expire on commit, future
+        self.SessionLocal = sessionmaker(
+            bind=self.engine,
+            autoflush=False,
+            autocommit=False,
+            expire_on_commit=False,
+            future=True,
+        )
+
         # Create index for (session_id, id) for faster lookups
         Index("ix_messages_session_id_id", MessageDB.session_id, MessageDB.id)
-        
-        # Create tables if they don't exist
-        Base.metadata.create_all(bind=self.engine)
     
     def get_db_session(self) -> OrmSession:
         """Get a database session. Remember to close it when done."""

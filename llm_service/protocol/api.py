@@ -90,7 +90,7 @@ def _format_model_output(out: Any) -> str:
         parts.append(usage_info)
     return " | ".join(parts)
 
-def _format_tool_call_log(tool_name: str, tool_args: dict, result_preview: str = None) -> str:
+def _format_tool_call_log(tool_name: str, tool_args: dict, result_preview: Optional[str] = None) -> str:
     """Format tool call information for clean logging."""
     if len(tool_args) <= 2:
         args_str = ", ".join(f"{k}={v!r}" for k, v in tool_args.items())
@@ -102,7 +102,7 @@ def _format_tool_call_log(tool_name: str, tool_args: dict, result_preview: str =
         log_msg += f" → {preview}"
     return log_msg
 
-def _format_session_log(session_id: str, action: str, details: str = None) -> str:
+def _format_session_log(session_id: str, action: str, details: Optional[str] = None) -> str:
     """Format session management logs consistently."""
     short_session = session_id[:8] + '...' if isinstance(session_id, str) and len(session_id) > 8 else session_id
     log_msg = f"📋 Session {short_session}: {action}"
