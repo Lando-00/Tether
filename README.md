@@ -10,9 +10,12 @@ Adreano is a FastAPI-based service that provides a session-based API for interac
 -   **Session Management**: Create, list, and delete conversation sessions.
 -   **Persistent History**: Chat history is saved and reloaded for each session.
 -   **Dynamic Model Loading**: Discovers and loads available MLC-LLM models.
--   **Streaming API**: Provides a token-by-token streaming endpoint.
+-   **Streaming API**: Provides a token-by-token streaming endpoint with NDJSON format.
 -   **Model Caching**: Caches recently used models in memory for faster responses.
 -   **Function Calling**: Support for tool use via function calling mechanism.
+-   **SOLID Design**: Protocol component follows SOLID principles with modular architecture.
+-   **Tool Orchestration**: Sophisticated tool detection, execution, and integration.
+-   **Hidden Thoughts**: Support for reflective thinking and hidden blocks in responses.
 
 ## Setup
 
@@ -70,8 +73,30 @@ llm_service/
 │   ├── __init__.py       # Exports ContextComponent
 │   └── session_store.py  # Database operations for sessions and messages
 ├── protocol/              # Protocol component - handles API endpoints
-│   ├── __init__.py       # Exports ProtocolComponent and API models
-│   └── api.py            # FastAPI definitions and request handling
+│   ├── __init__.py       # Exports for backward compatibility
+│   ├── compatibility.py  # Compatibility layer for legacy code
+│   ├── core/             # Core interfaces and implementations
+│   │   ├── interfaces.py # Protocol interfaces and types
+│   │   ├── types.py      # Data classes and type definitions
+│   │   ├── config.py     # Configuration providers
+│   │   ├── loggers.py    # Logging implementations
+│   │   └── execution.py  # Execution strategy implementations
+│   ├── orchestration/    # Tool orchestration components
+│   │   ├── detector.py   # Tool call detection
+│   │   ├── parsers.py    # Argument parsing
+│   │   ├── executor.py   # Tool execution
+│   │   ├── emitter.py    # Event emission
+│   │   ├── controller.py # Tool boundary control
+│   │   ├── orchestrator.py # Main orchestration logic
+│   │   ├── filters.py    # Token filtering
+│   │   └── adapters/     # Adapters for external components
+│   ├── service/          # Service implementations
+│   │   ├── protocol_service.py # Main protocol service
+│   │   └── generation_service.py # Streaming generation service
+│   └── api/              # API layer
+│       ├── schemas.py    # API request/response models
+│       ├── app_factory.py # FastAPI application factory
+│       └── routers/      # API endpoint routers
 ├── tools/                 # Tools for function calling (re-exports from root)
 │   ├── __init__.py       # Tool registration system
 │   └── time_tools.py     # Example tool implementations
@@ -108,16 +133,37 @@ Main Classes:
 
 ### Protocol Component (`protocol/`)
 
-The Protocol component provides the API interface:
+The Protocol component provides the API interface, following SOLID principles with a modular architecture:
 
-- **API Endpoints**: Defines REST endpoints using FastAPI
-- **Request/Response Models**: Validates incoming requests and formats responses
-- **Orchestration**: Coordinates Model and Context components
-- **Tool Execution**: Manages function calling interactions
+#### Core (`protocol/core/`)
+- **Interfaces**: Defines protocols for all components
+- **Types**: Common data structures and type definitions
+- **Configuration**: Environment-based configuration providers
+- **Logging**: Standardized logging implementations
+- **Execution**: Thread pool and execution strategies
+
+#### Orchestration (`protocol/orchestration/`)
+- **Tool Call Detection**: Identifies and extracts tool calls from text
+- **Argument Parsing**: Parses arguments from raw tool call text
+- **Tool Execution**: Executes tools with proper error handling
+- **Event Emission**: Formats and emits events for streaming
+- **Filtering**: Processes hidden blocks and reflective thinking
+- **Controllers**: Manages tool call boundaries and history
+- **Adapters**: Bridges between components and external systems
+
+#### Services (`protocol/service/`)
+- **Protocol Service**: Coordinates all protocol operations
+- **Generation Service**: Handles streaming text generation with tools
+
+#### API (`protocol/api/`)
+- **Schemas**: Request and response Pydantic models
+- **Routers**: FastAPI route handlers organized by domain
+- **App Factory**: Creates and configures the FastAPI application
 
 Main Classes:
-- `ProtocolComponent`: Orchestrates interaction between Model and Context
-- API models like `GenerateRequest`, `GenerateResponse`, etc.
+- `ProtocolService`: Main service coordinating model and context operations
+- `GenerationService`: Handles streaming generation with tool execution
+- `ToolOrchestrator`: Orchestrates token streaming, tool detection, and execution
 
 ## Running the Service
 
@@ -146,3 +192,4 @@ The service can be configured through environment variables:
 4. **Security**: Add authentication and authorization mechanisms 
 5. **Extended Documentation**: Add detailed API documentation
 6. **Monitoring**: Add system monitoring and alerting
+7. **Remove Legacy Code**: Remove the original monolithic api.py after confirming all functionality works with the new architecture
