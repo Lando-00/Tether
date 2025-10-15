@@ -7,7 +7,7 @@ import typer
 # --- Configuration ---
 API_BASE_URL = "http://127.0.0.1:8090"
 # The endpoint for streaming chat interaction (NDJSON events)
-GENERATE_ENDPOINT = "/generate_stream"
+GENERATE_ENDPOINT = "/generations"
 
 from typing import Optional
 from prompt_toolkit import prompt as ptk_prompt
@@ -26,7 +26,7 @@ def get_available_models(api_base_url: str) -> list:
         return response.json().get("models", [])
     except requests.RequestException as e:
         console.print(f"[bold red]Error:[/bold red] Could not connect to the service at {api_base_url}.")
-        console.print(f"Please ensure the MLC service is running: [bold]python llm_service/mlc_service_advanced.py[/bold]")
+        console.print(f"Please ensure the MLC service is running: [bold]python -m llm_service.app[/bold]")
         console.print(f"Details: {e}")
         raise typer.Exit(1)
 
@@ -124,13 +124,19 @@ def select_model(model_name: Optional[str]) -> str:
     for i, name in enumerate(model_name_choices):
         console.print(f"  [bold cyan][{i+1}][/bold cyan] {name}")
 
-    choice = IntPrompt.ask(
-        "\nPlease enter the number of the model you want to use",
-        choices=[str(i + 1) for i in range(len(model_name_choices))],
-        show_choices=False,
-        default=1,
-    )
-    return model_name_choices[choice - 1]
+    while True:
+        try:
+            prompt_text = "\nPlease enter the number of the model you want to use [default=1]: "
+            choice_str = console.input(prompt_text)
+            if not choice_str.strip():
+                choice_str = "1"
+            choice = int(choice_str)
+            if 1 <= choice <= len(model_name_choices):
+                return model_name_choices[choice - 1]
+            else:
+                console.print(f"[red]Invalid choice. Please enter a number between 1 and {len(model_name_choices)}.[/red]")
+        except ValueError:
+            console.print("[red]Invalid input. Please enter a number.[/red]")
 
 def manage_sessions() -> tuple[Optional[str], str]:
     """Display and manage chat sessions. Returns (session_id, action)."""
@@ -205,6 +211,16 @@ def main(
         "-d",
         help="The device to run the model on (e.g., 'auto', 'vulkan', 'opencl').",
     ),
+    debug: bool = typer.Option(
+        False,
+        "--debug",
+        help="Enable debug mode to show detailed event information.",
+    ),
+    show_thinking: bool = typer.Option(
+        True,
+        "--show-thinking",
+        help="Enable to show the model's thinking process.",
+    ),
 ):
     """
     A CLI for chatting with the MLC-LLM Session Service.
@@ -243,7 +259,11 @@ def main(
             raise typer.Exit()
 
     console.print(f"🤖 Starting chat with [bold green]{model_name}[/bold green] on device [bold]{device}[/bold]...")
-    console.print("Type 'exit' or 'quit' to end the session. Type 'menu' to return to session management.")
+    debug_status = "[bold green]enabled[/bold green]" if debug else "[dim]disabled[/dim]"
+    console.print(f"Debug mode: {debug_status}")
+    thinking_status = "[bold green]enabled[/bold green]" if show_thinking else "[dim]disabled[/dim]"
+    console.print(f"Show thinking: {thinking_status}")
+    console.print("Type '\\exit' or '\\quit' to end. Type '\\menu' for session management. Type '\\thinking' to toggle thinking output.")
     console.rule()
 
     # --- 2. Main chat loop ---
@@ -255,12 +275,20 @@ def main(
         ]
         user_prompt = ptk_prompt(FormattedText(prompt_message), multiline=True)
 
-        if user_prompt.strip().lower() in ["exit", "quit"]:
+        stripped_prompt = user_prompt.strip().lower()
+
+        if stripped_prompt in ["\\exit", "\\quit"]:
             console.print("👋 Goodbye!")
             break
-        if user_prompt.strip().lower() == "menu":
-            main(model_name_arg=model_name, device=device) # Restart the main function to show the menu
+        if stripped_prompt == "\\menu":
+            main(model_name_arg=model_name, device=device, debug=debug, show_thinking=show_thinking) # Restart the main function to show the menu
             break
+        if stripped_prompt == "\\thinking":
+            show_thinking = not show_thinking
+            thinking_status = "[bold green]enabled[/bold green]" if show_thinking else "[dim]disabled[/dim]"
+            console.print(f"Show thinking is now {thinking_status}.")
+            console.rule()
+            continue # Go to next prompt
 
         # --- 3. Call the streaming generate endpoint and process events ---
         try:
@@ -271,11 +299,16 @@ def main(
                     "prompt": user_prompt,
                     "model_name": model_name,
                     "device": device,
+                    "stream": True,
+                    "max_tokens": 1024,
+                    "temperature": 0.7,
+                    "top_p": 0.95
                 },
                 stream=True,
             )
             response.raise_for_status()
             console.print()  # space before streaming output
+            thinking_started = False  # reset flag for single ‘Thought:’ prefix
             # Process NDJSON event stream
             for line in response.iter_lines():
                 if not line:
@@ -283,19 +316,63 @@ def main(
                 try:
                     event = json.loads(line)
                 except json.JSONDecodeError:
+                    console.print(f"[red]Error parsing JSON: {line.decode('utf-8', errors='replace')}[/red]")
                     continue
-                evt = event.get("event")
-                if evt == "tool_start":
-                    console.print(f"[bold yellow]Running tool {event.get('tool')}...[/bold yellow]")
-                elif evt == "tool_end":
-                    console.print(f"[bold yellow]Tool {event.get('tool')} output:[/bold yellow] {event.get('result')}")
-                elif evt == "token":
-                    console.print(event.get("data"), end="")
+                
+                evt_type = event.get("type")
+                if evt_type == "tool_start":
+                    console.print(f"[bold yellow]Running tool {event.get('name')[7:]}...[/bold yellow]")
+                    # Debug output if debug mode is enabled
+                    if debug:
+                        console.print(f"[dim]Tool start event: {event}[/dim]")
+                elif evt_type == "tool_end":
+
+                    result = event.get('result')
+                    name = event.get('name')
+                    # Check if the result is an error message
+                    if isinstance(result, dict) and 'error' in result:
+                        console.print(f"[bold red]Tool {name} error:[/bold red] {result['error']}")
+                    else:
+                        # Ensure we have a string to slice
+                        output_str = result if isinstance(result, str) else json.dumps(result)
+                        console.print(f"[dim yellow]Tool {name[7:]} output:[/dim yellow] {output_str[:50]}")
+                    
+                    # Debug output if debug mode is enabled
+                    if debug:
+                        console.print(f"[dim]Tool end event: {event}[/dim]")
+                elif evt_type == "token" or evt_type == "text":
+                    console.print(event.get("content"), end="")
+                elif evt_type == "hidden_thought" or evt_type == "think_stream":
+                    # Only show hidden thoughts if enabled
+                    if debug or show_thinking:
+                        content = event.get("content")
+                        # print prefix only once, then inline tokens
+                        if not thinking_started:
+                            console.print(f"[dim]Thought: {content}[/dim]", end="")
+                            thinking_started = True
+                        else:
+                            console.print(f"[dim]{content}[/dim]", end="")
+                elif evt_type == "error":
+                    console.print(f"[bold red]Error:[/bold red] {event.get('error')}")
+                elif evt_type == "done":
+                    if debug:
+                        console.print("[dim][Generation complete][/dim]", end="")
+                elif evt_type == "cancelled":
+                    console.print("[bold red]Generation cancelled.[/bold red]")
+                else:
+                    # Handle unknown event types - useful for debugging
+                    if debug:
+                        console.print(f"[dim][Unknown event: {evt_type}] {event}[/dim]")
             console.print()  # newline after complete stream
         except requests.RequestException as e:
             console.print(f"\n[bold red]Error:[/bold red] Could not get response from server. {e}")
             continue
+        except Exception as e:
+            console.print(f"\n[bold red]Unexpected error:[/bold red] {str(e)}")
+            continue
         finally:
+            if debug:
+                console.print("[dim]Debug: API stream completed[/dim]")
             console.rule()
 
 

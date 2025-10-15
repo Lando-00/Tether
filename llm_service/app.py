@@ -30,7 +30,7 @@ sys.path.insert(0, os.path.abspath(os.path.dirname(__file__)))
 
 from llm_service.model import ModelComponent
 from llm_service.context import ContextComponent
-from llm_service.protocol import ProtocolComponent, create_api_app
+from llm_service.protocol.api.app_factory import create_app as create_api_app
 from mlc_llm.protocol import openai_api_protocol
 from mlc_llm.protocol.error_protocol import BadRequestError
 
@@ -93,13 +93,8 @@ def create_mcp_app(dist_path: str = "dist", database_url: Optional[str] = None):
     # Initialize Context component
     context_component = ContextComponent(database_url=database_url)
 
-    # Initialize Protocol component
-    protocol_component = ProtocolComponent(
-        model_component=model_component, context_component=context_component
-    )
-
-    # Create FastAPI app
-    app = create_api_app(protocol_component)
+    # Create FastAPI app via the new modular factory
+    app = create_api_app(model_component, context_component)
 
     return app
 
@@ -145,7 +140,23 @@ def supervise():
 
 def main():
     """Application entry point."""
-    logging.basicConfig(level=logging.INFO)
+    # Get debug level from environment variable
+    debug_mode = os.environ.get("MLC_DEBUG", "0") == "1"
+    log_level = logging.DEBUG if debug_mode else logging.INFO
+    
+    # Configure logging
+    logging.basicConfig(
+        level=log_level,
+        format='%(asctime)s - %(name)s - %(levelname)s - %(message)s',
+        datefmt='%Y-%m-%d %H:%M:%S'
+    )
+    
+    # Set up logger
+    logger = logging.getLogger(__name__)
+    logger.info(f"Starting MLC Service with log level: {log_level}")
+    if debug_mode:
+        logger.debug("Debug mode enabled")
+    
     # If supervision requested and not already child, run watchdog
     if os.environ.get("MLC_SUPERVISE") == "1" and os.environ.get("MLC_SUPERVISED_CHILD") != "1":
         supervise()
@@ -156,12 +167,15 @@ def main():
     database_url = os.environ.get("MLC_SQLITE_URL", "sqlite:///mlc_sessions.db")
     host = os.environ.get("MLC_HOST", "127.0.0.1")
     port = int(os.environ.get("MLC_PORT", "8090"))
+    
+    logger.info(f"Configuration: dist_path={dist_path}, host={host}, port={port}")
 
     # Create the application
     app = create_mcp_app(dist_path, database_url)
 
     # Run with uvicorn
-    uvicorn.run(app, host=host, port=port, workers=1)
+    logger.info(f"Starting uvicorn server at {host}:{port}")
+    uvicorn.run(app, host=host, port=port, workers=1, log_level="debug" if debug_mode else "info")
 
 
 if __name__ == "__main__":
