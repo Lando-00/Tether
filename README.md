@@ -1,6 +1,6 @@
-# Adreano - MLC-LLM Session Service with MCP Architecture
+# Tether - MLC-LLM Session Service with MCP Architecture
 
-Adreano is a FastAPI-based service that provides a session-based API for interacting with machine learning models compiled with [MLC-LLM](https://github.com/mlc-ai/mlc-llm). It persists conversation history in a local SQLite database and is designed to run on devices with specific hardware requirements. The service has been refactored to follow the Model-Context-Protocol (MCP) architecture.
+Tether is a FastAPI-based service that provides a session-based API for interacting with machine learning models compiled with [MLC-LLM](https://github.com/mlc-ai/mlc-llm). It persists conversation history in a local SQLite database and is designed to run on devices with specific hardware requirements. The service has been refactored to follow the Model-Context-Protocol (MCP) architecture.
 
 **TODO: Update hardware requirements and target platforms**
 
@@ -23,7 +23,7 @@ Adreano is a FastAPI-based service that provides a session-based API for interac
 
 ```sh
 git clone <your-repository-url>
-cd Adreano
+cd Tether
 ```
 
 ### 2. Install Dependencies
