@@ -15,6 +15,8 @@ It exports the following components:
 
 from llm_service.protocol.orchestration.detector import PrefixedToolCallDetector
 from llm_service.protocol.orchestration.parsers import JsonArgsParser
+from llm_service.protocol.orchestration.parsers import SimpleSlidingToolStreamParser
+from llm_service.protocol.orchestration.parsers import StreamEvent
 from llm_service.protocol.orchestration.executor import DefaultToolExecutor
 from llm_service.protocol.orchestration.emitter import NdjsonEventEmitter
 from llm_service.protocol.orchestration.filters import HiddenBlockFilter
@@ -26,6 +28,8 @@ from llm_service.protocol.orchestration.orchestrator import ToolOrchestrator
 __all__ = [
     "PrefixedToolCallDetector",
     "JsonArgsParser",
+    "SimpleSlidingToolStreamParser",
+    "StreamEvent",
     "DefaultToolExecutor",
     "NdjsonEventEmitter",
     "HiddenBlockFilter",

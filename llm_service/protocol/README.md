@@ -55,9 +55,15 @@ Core component for managing the generation flow:
 - Event emission
 - State management
 
+  
+### System Prompt
+  
+- The system prompt is now neutral and format-agnostic. Tools are provided separately via the `tools` parameter with `tool_choice="auto"`. The streaming parser detects tool calls in the output, so Python-style function call formatting is not required.
+
 ## API Endpoints
 
 The API is organized into domain-specific routers:
+
 - `/models`: Model management
 - `/sessions`: Session management
 - `/generations`: Text generation with streaming support

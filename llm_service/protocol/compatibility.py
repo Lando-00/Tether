@@ -11,8 +11,7 @@ from fastapi import FastAPI
 
 from llm_service.context import ContextComponent
 from llm_service.model.mlc_engine import ModelComponent
-from llm_service.protocol.service.protocol_service import ProtocolService
-from llm_service.protocol.api.app_factory import create_app as create_new_app
+# Import service inside the class to avoid circular imports
 
 
 logger = logging.getLogger(__name__)
@@ -44,6 +43,9 @@ class ProtocolComponent:
             
         self.model = model_component
         self.context = context_component
+        
+        # Import here to avoid circular imports
+        from llm_service.protocol.service.protocol_service import ProtocolService
         self.service = ProtocolService(model_component, context_component)
     
     def __getattr__(self, name):
@@ -81,7 +83,8 @@ def create_api_app(protocol_component: ProtocolComponent) -> FastAPI:
     # Extract the service from the protocol component
     service = protocol_component.service
     
-    # Use the new app factory
+    # Use the new app factory (import here to avoid circular imports)
+    from llm_service.protocol.api.app_factory import create_app as create_new_app
     return create_new_app(
         model_component=protocol_component.model,
         context_component=protocol_component.context,

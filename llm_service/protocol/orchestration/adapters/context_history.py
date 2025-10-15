@@ -50,27 +50,68 @@ class ContextHistoryWriter(HistoryWriter):
                 "content": f"[Tool call: {pub_name}]",
             })
 
-    def add_tool_result(self, tool_id: str, result: Any, history: list) -> None:
+    def add_tool_result(self, session_id: str, history: list, tool_id: str, pub_name: str, result: Any) -> None:
         try:
-            # Convert result to string and truncate if too long
-            result_str = str(result)
-            if len(result_str) > 10000:  # Prevent excessively large results
-                result_str = result_str[:9997] + "..."
-                self._logger.warning("Tool result truncated from %d to 10000 chars", len(str(result)))
-                
+            # Prepare a JSON-safe result payload
+            # 1) Convert non-serializable types safely
+            # 2) Truncate ONLY the textual leaf, not the whole JSON (to keep JSON valid)
+            def _to_text(v: Any) -> str:
+                s = str(v)
+                return s if len(s) <= 10000 else (s[:9997] + "...")
+            
+            result_obj = {
+                "name": pub_name,
+                "tool_call_id": tool_id,          # helps when multiple calls are in-flight
+                "result": _to_text(result),
+                "status": "success"
+            }
+            result_json = json.dumps(result_obj, ensure_ascii=False)
+            # in-memory history (STRUCTURED tool turn)
             history.append({
-                "role": "tool", 
+                "role": "tool",
                 "tool_call_id": tool_id,
-                "content": result_str
+                "content": result_json
             })
-            self._logger.debug("Added tool result to history: result length: %d", len(result_str))
+            self._logger.debug("Added tool result to history: %d chars", len(result_json))
+            self.ctx.add_message(session_id, "tool", result_json)
+            
+            # # Convert result to string and truncate if too long
+            # result_str = str(result)
+            # if len(result_str) > 10000:  # Prevent excessively large results
+            #     result_str = result_str[:9997] + "..."
+            #     self._logger.warning("Tool result truncated from %d to 10000 chars", len(str(result)))
+                
+            # # in-memory history
+            # history.append({
+            #     "role": "tool", 
+            #     "tool_call_id": tool_id,
+            #     "content": result_str
+            # })
+            # self._logger.debug("Added tool result to history: result length: %d", len(result_str))
+
+            # # persist into SQLite
+            # self.ctx.add_message(session_id, "tool", result_str)
         except Exception as e:
+            # self._logger.exception("Error adding tool result: %s", str(e))
+            # # Fallback to simpler format
+            # history.append({
+            #     "role": "system",
+            #     "content": f"[Tool result error: {str(e)}]",
+            # })
             self._logger.exception("Error adding tool result: %s", str(e))
-            # Fallback to simpler format
+            # Fallback to structured error so model can react
+            fallback_json = json.dumps({
+                "name": pub_name,
+                "tool_call_id": tool_id,
+                "error": str(e),
+                "status": "error"
+            }, ensure_ascii=False)
             history.append({
-                "role": "system",
-                "content": f"[Tool result error: {str(e)}]",
+                "role": "tool",
+                "tool_call_id": tool_id,
+                "content": fallback_json
             })
+            self.ctx.add_message(session_id, "tool", fallback_json)
 
     def get_history(self, session_id: str) -> list:
         try:

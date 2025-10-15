@@ -26,12 +26,12 @@ def get_generations_router(protocol_service_provider):
     """
     router = APIRouter(prefix="/generations", tags=["generations"])
     
-    @router.post("")
+    @router.post("", response_model=None)
     def generate(
         request: GenerateRequest,
         background_tasks: BackgroundTasks,
         protocol: ProtocolService = Depends(protocol_service_provider)
-    ) -> Union[StreamingResponse, GenerateResponse]:
+    ):
         """
         Generate text from a prompt using a model.
         

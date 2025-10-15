@@ -1,9 +1,10 @@
 import inspect
 import json
-from typing import Any, Callable, Dict, List, Optional, Tuple, Union
+from typing import Any, Callable, Dict, List, Optional, Union
 
 from llm_service.protocol.core.interfaces import ToolExecutor, Logger
 from llm_service.protocol.core.loggers import NoOpLogger
+from llm_service.tools import execute_tool
 
 
 class DefaultToolExecutor(ToolExecutor):
@@ -12,74 +13,37 @@ class DefaultToolExecutor(ToolExecutor):
     """
     def __init__(self, logger: Optional[Logger] = None):
         self._logger = logger or NoOpLogger()
-
-    def execute(self, tool_name: str, args: Dict[str, Any], tool_registry: Dict[str, Callable]) -> Tuple[bool, Any]:
-        """
-        Execute a tool given its name, arguments, and a registry of available tools.
         
+    def execute(self, published_name: str, args: Dict[str, Any]) -> Any:
+        """
+        Execute a tool given its published name and arguments.
+        
+        Args:
+            published_name: The published name of the tool (e.g., "__tool_get_current_time")
+            args: Dictionary of arguments to pass to the tool
+            
         Returns:
-            Tuple[bool, Any]: First element indicates success (True) or failure (False).
-                              Second element is either the result or error information.
+            The result of the tool execution or an error message
         """
-        if not tool_name or not isinstance(tool_name, str):
-            self._logger.warning("Invalid tool name provided: %s", tool_name)
-            return False, {"error": "Invalid tool name"}
-        
-        tool_fn = tool_registry.get(tool_name)
-        if not tool_fn:
-            self._logger.warning("Tool not found: %s", tool_name)
-            return False, {"error": f"Tool not found: {tool_name}", "available_tools": list(tool_registry.keys())}
+        if not published_name or not isinstance(published_name, str):
+            self._logger.warning("Invalid tool name provided: %s", published_name)
+            return {"error": "Invalid tool name"}
         
         try:
-            # Validate arguments against function signature
-            validated_args = self._validate_args(tool_fn, args)
-            if isinstance(validated_args, dict) and "_error" in validated_args:
-                self._logger.warning("Invalid arguments for tool %s: %s", tool_name, validated_args["_error"])
-                return False, {"error": f"Invalid arguments: {validated_args['_error']}"}
-            
-            # Execute the tool
-            self._logger.debug("Executing tool %s with args: %s", tool_name, json.dumps(args))
-            result = tool_fn(**validated_args)
-            return True, result
+            # Execute the tool using the central registry
+            self._logger.info("Executing tool %s with args: %s", published_name, json.dumps(args))
+            result = execute_tool(published_name, args)
+            self._logger.info("Tool %s execution result: %s", published_name, result)
+            return result
+        except ValueError as e:
+            # Tool not found
+            self._logger.warning("Tool not found: %s (%s)", published_name, str(e))
+            return {"error": f"Tool not found: {published_name}"}
+        except TypeError as e:
+            # Argument validation error
+            self._logger.warning("Invalid arguments for tool %s: %s", published_name, str(e))
+            return {"error": f"Invalid arguments: {str(e)}"}
         except Exception as e:
-            self._logger.exception("Error executing tool %s: %s", tool_name, str(e))
-            return False, {"error": f"Execution error: {str(e)}"}
-    
-    def _validate_args(self, tool_fn: Callable, args: Dict[str, Any]) -> Union[Dict[str, Any], Dict[str, str]]:
-        """
-        Validate and potentially transform arguments based on the function signature.
-        
-        Returns:
-            Union[Dict[str, Any], Dict[str, str]]: Either validated arguments or error information
-        """
-        if not args:
-            args = {}
-            
-        try:
-            sig = inspect.signature(tool_fn)
-            validated_args = {}
-            
-            # Check for missing required parameters
-            missing_required = []
-            for param_name, param in sig.parameters.items():
-                # Skip self parameter for methods
-                if param_name == "self":
-                    continue
-                    
-                if param_name not in args and param.default is inspect.Parameter.empty:
-                    missing_required.append(param_name)
-            
-            if missing_required:
-                return {"_error": f"Missing required arguments: {', '.join(missing_required)}"}
-            
-            # Filter out unknown parameters
-            param_names = set(p for p in sig.parameters.keys() if p != "self")
-            for arg_name in args:
-                if arg_name in param_names:
-                    validated_args[arg_name] = args[arg_name]
-                # Ignore extra arguments
-            
-            return validated_args
-        except Exception as e:
-            self._logger.exception("Error validating arguments: %s", str(e))
-            return {"_error": f"Argument validation error: {str(e)}"}
+            # General execution error
+            self._logger.exception("Error executing tool %s: %s", published_name, str(e))
+            return {"error": f"Execution error: {str(e)}"}

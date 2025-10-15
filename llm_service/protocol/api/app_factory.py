@@ -9,7 +9,7 @@ from fastapi import FastAPI
 
 from llm_service.context import ContextComponent
 from llm_service.model.mlc_engine import ModelComponent
-from llm_service.protocol.service.protocol_service import ProtocolService
+# Import protocol service inside function to avoid circular imports
 from llm_service.protocol.api.routers.health import get_health_router
 from llm_service.protocol.api.routers.models import get_models_router
 from llm_service.protocol.api.routers.sessions import get_sessions_router
@@ -43,7 +43,8 @@ def create_app(
     def get_protocol_service():
         return protocol_service
     
-    # Create the protocol service
+    # Create the protocol service (import here to avoid circular import)
+    from llm_service.protocol.service.protocol_service import ProtocolService
     protocol_service = ProtocolService(
         model_component=model_component,
         context_component=context_component,

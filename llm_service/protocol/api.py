@@ -22,6 +22,11 @@ from llm_service import tools
 from llm_service.context import ContextComponent
 from llm_service.model.mlc_engine import ModelComponent
 from llm_service.tools import execute_tool, get_all_tool_definitions
+import warnings
+warnings.warn(
+    "protocol/api.py is deprecated; use protocol/api/app_factory.create_app instead",
+    DeprecationWarning,
+)
 
 # -----------------------------
 # ====== Core Components ======
@@ -51,10 +56,7 @@ from llm_service.protocol.orchestration import (
     JsonArgsParser,
     DefaultToolExecutor,
     NdjsonEventEmitter,
-    HiddenBlockFilter,
     ToolBoundaryController,
-    ModelTokenSource,
-    ContextHistoryWriter,
     ToolOrchestrator,
 )
 
@@ -394,7 +396,31 @@ class ProtocolComponent:
     
     def get_available_tools(self) -> List[Dict[str, Any]]:
         """Get available tools from the tools registry."""
-        return get_all_tool_definitions()
+        # Retrieve raw tool definitions
+        tools = get_all_tool_definitions()
+        for tool in tools:
+            fn = tool.get("function", {})
+            # 1) strip '__tool_' prefix from name
+            name = fn.get("name", "")
+            if name.startswith("__tool_"):
+                fn["name"] = name[len("__tool_"):]
+            # 2) collapse function description to first line
+            desc = fn.get("description", "")
+            fn["description"] = desc.split("\n")[0]
+            # 3) prune parameter schema
+            params = fn.get("parameters", {})
+            props = params.get("properties", {})
+            for p_schema in props.values():
+                # remove default:null entries
+                if p_schema.get("default") is None:
+                    p_schema.pop("default", None)
+                # collapse descriptions
+                if "description" in p_schema:
+                    p_schema["description"] = p_schema["description"].split("\n")[0]
+            # 4) remove empty 'required' lists
+            if params.get("required") == []:
+                params.pop("required", None)
+        return tools
     
     def generate_dynamic_system_prompt(self, tools: List[Dict[str, Any]]) -> Dict[str, str]:
         """
@@ -407,59 +433,13 @@ class ProtocolComponent:
         if cache_key in self._system_prompt_cache:
             return self._system_prompt_cache[cache_key]
         
-        tool_descriptions = []
-        
-        for tool in tools:
-            if "function" not in tool:
-                continue
-                
-            func = tool["function"]
-            name = func.get("name", "")
-            description = func.get("description", "No description available")
-            params = func.get("parameters", {})
-            
-            param_list = []
-            if "properties" in params:
-                for param_name, param_info in params["properties"].items():
-                    param_type = param_info.get("type", "string")
-                    param_desc = param_info.get("description", "")
-                    required = param_name in params.get("required", [])
-                    
-                    req_text = "required" if required else "optional"
-                    param_list.append(f"  - {param_name} ({param_type}, {req_text}): {param_desc}")
-            
-            tool_desc = f"• {name}: {description}"
-            if param_list:
-                tool_desc += "\n" + "\n".join(param_list)
-            tool_descriptions.append(tool_desc)
-        
+        # Build a simple list of tool names
+        tools_list = "\n".join(f"- {n}" for n in tool_names)
         system_content = f"""You are a helpful assistant with access to these tools:
+{tools_list}
 
-        ### AVAILABLE TOOLS:
-        {chr(10).join(tool_descriptions)}
-        Tool names always start with `__tool_`. When invoking a tool, output exactly one line like `__tool_get_current_time(timezone=\"Europe/Dublin\")`. Use keyword arguments only.
-
-        ### TOOL CALL FORMAT (CRITICAL)
-        - When you need a tool, output **exactly one line** containing **only** the function call (no prose, no code fences).
-        - Use **keyword arguments only**. Do **NOT** pass a single dict as a positional arg.
-        - Quote strings. Keep values as simple Python/JSON literals.
-
-        ✅ Correct:
-        __tool_get_current_time(timezone="Europe/Vienna")
-        __tool_web_search(query="Bitcoin latest news", count=5)
-        __tool_get_top_headlines(q="latest news", country="ie", page_size=5)
-        __tool_list_sources(country="ie")
-
-    ❌ Wrong:
-    __tool_get_current_time({{"timezone":"Europe/Vienna"}})       # dict as positional arg
-    ```python
-    __tool_get_current_time(timezone="Europe/Vienna")
-    ```                                             # code fence / extra text
-    __tool_get_current_time(timezone="Europe/Vienna") Also... # any extra prose
-
-        ### WHEN NO TOOL IS NEEDED
-        - Respond with a single, concise answer (no alternative phrasings).
-        """
+Call them when appropriate.
+"""
 
         system_message = {
             "role": "system", 
@@ -511,13 +491,14 @@ class ProtocolComponent:
             missing = [n for n in requested if n not in reg_names]
             if missing:
                 logger.debug("Ignoring unregistered tools requested by client: %s", missing)
-            tools_to_use = [t for t in request.tools if t.get("function", {}).get("name") in reg_names]
+            # Use registered definitions for requested tools to ensure full schema
+            tools_to_use = [d for d in available_tools if d.get("function", {}).get("name") in requested]
         else:
             tools_to_use = available_tools
             
-        if tools_to_use and not any(msg.get("role") == "system" for msg in history):
-            system_message = self.generate_dynamic_system_prompt(tools_to_use)
-            history.insert(0, system_message)
+        # if tools_to_use and not any(msg.get("role") == "system" for msg in history):
+        #     system_message = self.generate_dynamic_system_prompt(tools_to_use)
+        #     history.insert(0, system_message)
 
         reply = ""
         tool_loop_count = 0
@@ -646,8 +627,9 @@ class ProtocolComponent:
         # Tools filter
         available_tools = self.get_available_tools()
         if request.tools:
-            reg = {t["function"]["name"] for t in available_tools}
-            tools_to_use = [t for t in request.tools if t.get("function", {}).get("name") in reg]
+            # Map requested tool names to full definitions
+            requested_names = {t.get('function', {}).get('name') for t in request.tools}
+            tools_to_use = [defn for defn in available_tools if defn.get('function', {}).get('name') in requested_names]
         else:
             tools_to_use = available_tools
             
@@ -659,12 +641,7 @@ class ProtocolComponent:
         # Orchestrator deps (via DI)
         orchestrator = ToolOrchestrator(
             args_parser=JsonArgsParser(logger=logger),
-            tool_executor=DefaultToolExecutor(
-                executor_fn=execute_tool,
-                execution_strategy=execution_strategy,
-                logger=logger,
-                config=config
-            ),
+            tool_executor=DefaultToolExecutor(logger=logger),
             history=ContextHistoryWriter(
                 self.context,
                 self.generate_dynamic_system_prompt,

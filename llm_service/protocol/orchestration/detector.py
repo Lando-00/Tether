@@ -57,7 +57,8 @@ class PrefixedToolCallDetector(ToolCallStrategy):
                 if m_full:
                     self._started = True
                     self._name = self._extract_name(m_full.group(0))
-                    self._logger.debug("Detected complete tool call anywhere: %s", self._name)
+                    self._logger.info("==== DETECTED TOOL CALL: %s ====", self._name)
+                    self._logger.debug("Found complete tool call pattern: %s", m_full.group(0))
                     return ("call_started", self._name)
                 m_pre = self.ANYWHERE_PREFX.search(compact)
                 if m_pre:
@@ -114,8 +115,18 @@ class PrefixedToolCallDetector(ToolCallStrategy):
                 if self._first_paren_ix is None:
                     self._first_paren_ix = compact.find("(")
                 last_close = compact.rfind(")")
+                
+                # Debug log about parenthesis finding
+                self._logger.debug("Parenthesis locations: first_open=%s, last_close=%s",
+                               self._first_paren_ix, last_close)
+                
                 inner = compact[self._first_paren_ix + 1:last_close] if last_close != -1 else ""
-                self._logger.debug("Completed tool call: %s with args: %s", self._name, inner)
+                self._logger.info("==== COMPLETED TOOL CALL: %s ====", self._name)
+                self._logger.info("Tool call arguments (raw): %s", inner)
+                
+                # Print full raw buffer for debugging
+                raw_text = "".join(self._raw)
+                self._logger.debug("Complete raw input: %s", raw_text[:200] + ("..." if len(raw_text) > 200 else ""))
                 return ("call_complete", inner)
 
             return ("undecided", None)
