@@ -17,6 +17,7 @@ The ContextComponent is designed to be independent of any specific model or prot
 """
 
 import os
+import traceback
 import uuid
 from datetime import datetime, timezone
 from typing import List, Dict, Any, Optional, Union
@@ -355,6 +356,15 @@ class ContextComponent:
             db.commit()
             db.refresh(message)
             
-            return message.to_dict()
         finally:
             db.close()
+
+    def add_assistant_toolcall(self, history: list[dict], call_id: str, name: str, args: dict):
+        # DEBUG: dump stack whenever a tool‐call is recorded
+        print(f"DEBUG add_assistant_toolcall -> id={call_id} name={name} args={args}")
+        traceback.print_stack(limit=5)
+    
+    def add_tool_result(self, history: list[dict], call_id: str, name: str, result: Any):
+        # DEBUG: dump stack whenever a tool result is recorded
+        print(f"DEBUG add_tool_result      -> id={call_id} name={name}")
+        traceback.print_stack(limit=5)

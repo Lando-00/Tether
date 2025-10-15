@@ -30,28 +30,6 @@ from mlc_llm import MLCEngine
 import json
 from mlc_llm.serve import engine_base as _engine_base
 
-# TODO: Remove After TESTING
-# _original_convert = _engine_base.convert_function_str_to_json
-
-# def convert_function_str_to_json(stringified_calls: str):
-#     try:
-#         obj = json.loads(stringified_calls)
-#     except json.JSONDecodeError:
-#         return _original_convert(stringified_calls)
-#     calls = obj if isinstance(obj, list) else [obj]
-#     function_calls = []
-#     for c in calls:
-#         tc = c.get("tool_call") or c.get("function_call") or {}
-#         name = tc.get("name")
-#         params = tc.get("parameters") or {}
-#         if name:
-#             function_calls.append({"name": name, "arguments": params})
-#         else:
-#             function_calls.append(None)
-#     return function_calls
-
-# _engine_base.convert_function_str_to_json = convert_function_str_to_json
-
 # --- DLL resolution functions ---
 
 def base_key_from_model_name(model_name: str) -> str:
@@ -119,6 +97,10 @@ class ModelComponent:
         self._engine_cache = {}
         self._cache_lock = Lock()
         self.max_cache_size = 2  # Maximum number of models to keep in cache
+        
+        # Set up logging
+        import logging
+        self.logger = logging.getLogger("mlc_engine")
     
     def get_available_models(self) -> List[Dict[str, str]]:
         """Get a list of available models."""
@@ -148,24 +130,30 @@ class ModelComponent:
         """Get a cached engine instance or create a new one."""
         cache_key = (model_dir, device, dll_path)
         
+        self.logger.debug(f"Requesting engine for model_dir={model_dir}, device={device}, dll_path={dll_path}")
+        
         with self._cache_lock:
             if cache_key in self._engine_cache:
+                self.logger.debug(f"Using cached engine instance for {model_dir}")
                 return self._engine_cache[cache_key]
             
             # Cache eviction if full
             if len(self._engine_cache) >= self.max_cache_size:
+                self.logger.info(f"Engine cache full ({self.max_cache_size}), evicting all models")
                 for engine in self._engine_cache.values():
                     engine.terminate()
                 self._engine_cache.clear()
             
             # Create new engine
+            self.logger.info(f"==== LOADING MODEL: {os.path.basename(model_dir)} on {device} ====")
             engine = MLCEngine(
                 model=model_dir,
                 model_lib=dll_path,
                 device=device,
                 # TODO: Remove After TESTING
-                mode="interactive"
+                mode="local"
             )
+            self.logger.info(f"==== MODEL LOADED: {os.path.basename(model_dir)} ====")
             self._engine_cache[cache_key] = engine
             return engine
     
@@ -197,6 +185,13 @@ class ModelComponent:
             Model response or generator for streaming responses
         """
         try:
+            self.logger.info(f"==== GENERATING TEXT: model={model_name}, stream={stream} ====")
+            self.logger.debug(f"Generation parameters: max_tokens={max_tokens}, temp={temperature}, top_p={top_p}")
+            
+            if tools:
+                tool_names = [t.get("function", {}).get("name", "unknown") for t in tools]
+                self.logger.info(f"Available tools: {tool_names}")
+            
             model_dir = self._get_model_path(model_name)
             lib_path = self._get_model_lib_path(model_name, dll_path)
             engine = self._get_engine(model_dir, device, lib_path)
@@ -213,6 +208,8 @@ class ModelComponent:
                         args = func.get('arguments')
                         if isinstance(args, str):
                             func['arguments'] = json.loads(args)
+            
+            self.logger.info(f"==== STARTING MODEL STREAM: {model_name} ====")
             return engine.chat.completions.create(
                 messages=messages,
                 max_tokens=max_tokens,
