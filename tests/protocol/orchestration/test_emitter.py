@@ -19,7 +19,8 @@ def test_emit_token(emitter):
     
     assert event == {
         "type": "token",
-        "content": text
+        "content": text,
+        "stream_event": "text"
     }
 
 def test_emit_hidden_thought(emitter):
@@ -32,7 +33,8 @@ def test_emit_hidden_thought(emitter):
     assert event == {
         "type": "hidden_thought",
         "content": text,
-        "phase": phase
+        "phase": phase,
+        "stream_event": "think_stream"
     }
 
 def test_emit_tool_start(emitter):
@@ -45,7 +47,8 @@ def test_emit_tool_start(emitter):
     assert event == {
         "type": "tool_start",
         "id": tc_id,
-        "name": name
+        "name": name,
+        "stream_event": "tool_started"
     }
 
 def test_emit_tool_end(emitter):
@@ -60,7 +63,8 @@ def test_emit_tool_end(emitter):
         "type": "tool_end",
         "id": tc_id,
         "name": name,
-        "result": result
+        "result": result,
+        "stream_event": "tool_complete"
     }
 
 def test_emit_done(emitter):
@@ -68,7 +72,7 @@ def test_emit_done(emitter):
     event_bytes = emitter.done()
     event = _load_json_event(event_bytes)
     
-    assert event == {"type": "done"}
+    assert event == {"type": "done", "stream_event": "done"}
 
 def test_emit_error(emitter):
     """Tests the error event emission."""
@@ -80,7 +84,8 @@ def test_emit_error(emitter):
     assert event == {
         "type": "error",
         "message": message,
-        "code": code
+        "code": code,
+        "stream_event": "error"
     }
 
 def test_emit_error_no_code(emitter):
@@ -91,7 +96,8 @@ def test_emit_error_no_code(emitter):
     
     assert event == {
         "type": "error",
-        "message": message
+        "message": message,
+        "stream_event": "error"
     }
 
 def test_emit_cancelled(emitter):
@@ -99,7 +105,7 @@ def test_emit_cancelled(emitter):
     event_bytes = emitter.cancelled()
     event = _load_json_event(event_bytes)
     
-    assert event == {"type": "cancelled"}
+    assert event == {"type": "cancelled", "stream_event": "cancelled"}
 
 def test_serialization_error_handling(emitter):
     """Tests that a serialization error is handled gracefully."""

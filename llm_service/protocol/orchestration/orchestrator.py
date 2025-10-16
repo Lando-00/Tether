@@ -358,7 +358,7 @@ class ToolOrchestrator:
                 
                 tool_id, pub, start_ev = controller.on_start(pub, session_id, loops)
                 try:
-                    self.history.add_assistant_toolcall(history, tool_id, pub, args)
+                    self.history.add_assistant_toolcall(session_id,history, tool_id, pub, args)
                 except Exception as e:
                     self._logger.warning(f"Failed to record tool call in history: {e}")
                     pass

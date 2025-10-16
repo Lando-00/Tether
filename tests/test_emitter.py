@@ -44,7 +44,7 @@ def test_tool_progress_event():
     ev = parse_event(b)
     assert ev["type"] == "tool_progress"
     # No additional payload expected
-    assert set(ev.keys()) == {"type"}
+    assert set(ev.keys()) == {"type", "stream_event"}
 
 
 def test_tool_end_event():
