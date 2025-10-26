@@ -1,0 +1,26 @@
+host: "127.0.0.1"
+port: 8000
+
+providers:
+  model:
+    impl: "tether_service.providers.dummy.provider.DummyProvider"
+  parser:
+    impl: "tether_service.protocol.parsers.sliding.SlidingParser"
+  session_store:
+    impl: "tether_service.context.memory_store.MemoryStore"
+    args: {}
+
+tools:
+  registry:
+    - name: "time"
+      impl: "tether_service.tools.time_tool.TimeTool"
+    - name: "weather"
+      impl: "tether_service.tools.weather_tool.WeatherTool"
+    - name: "web_search"
+      impl: "tether_service.tools.web_search_tool.WebSearchTool"
+  enabled:
+    - "time"
+
+limits:
+  tool_timeout_sec: 5
+  max_tool_loops: 3

@@ -1,0 +1,50 @@
+host: "127.0.0.1"
+port: 8080
+system:
+  prompt: |
+    You are a helpful assistant that uses tools when appropriate.
+    To call a tool, output exactly one line that starts with:
+    <<function_call>>
+    followed by a single JSON object on the same line, e.g.:
+    <<function_call>> {"name":"get_current_time","arguments":{"timezone":"Europe/Dublin","format":"human"}}
+    Do not include extra commentary on that line. After I run the tool, I will stream the result back to you.
+providers:
+  model:
+    impl: "tether_service.providers.mlc.provider.MLCProvider"
+    args:
+      # dist_root: "dist"  # Relative to project root
+      # model_name: "Hermes-2-Pro-Llama-3-8B-q4f16_1-MLC"
+      device: "auto"
+      max_tokens: 1024
+  parser:
+    impl: "tether_service.protocol.parsers.sliding.SlidingParser"
+    args:
+      max_tool_chars: 32768
+  session_store:
+    impl: "tether_service.context.sqlite_store.SqliteSessionStore"
+    args:
+      dsn: "sqlite:///./data/tether.db"
+tools:
+  registry:
+    - name: "time"
+      impl: "tether_service.tools.time_tool.TimeTool"
+    - name: "weather"
+      impl: "tether_service.tools.weather_tool.WeatherTool"
+    - name: "forecast"
+      impl: "tether_service.tools.weather_tool.GetForecastTool"
+    - name: "web_search"
+      impl: "tether_service.tools.web_search_tool.WebSearchTool"
+  enabled:
+    - "time"
+    - "weather"
+    - "forecast"
+    - "web_search"
+  # Tool execution behavior
+  call_contract: "marker_json"  # "marker_json" (default) uses <<function_call>> {...}
+  continue_after_tool: true     # Continue generation after tool execution
+limits:
+  tool_timeout_sec: 15
+  max_tool_loops: 5
+stream:
+  parser:
+    strict_balancing: true      # Enforce balanced JSON braces

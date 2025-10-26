@@ -1,0 +1,1 @@
+# Makes 'tether_service.config' a proper package for importlib.resources
