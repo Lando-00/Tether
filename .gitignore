@@ -8,6 +8,7 @@ __pycache__/
 # Distribution and build artifacts
 dist/
 mlc_llm-utils-win-x86-01_31_2025/
+*.zip
 
 # Database
 *.db
@@ -18,6 +19,7 @@ mlc_llm-utils-win-x86-01_31_2025/
 # IDE settings
 .vscode/
 .idea/
+.github/
 
 # OS-specific
 .DS_Store
