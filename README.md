@@ -1,16 +1,17 @@
 # Tether
 
-**A personal experiment in local LLM inference with function calling**
+> A personal experiment in local LLM inference with function calling
 
 Tether is a FastAPI-based service that provides session-based, streaming access to language models compiled with [MLC-LLM](https://github.com/mlc-ai/mlc-llm). This is a personal project for experimenting with running AI models locally with complete control over your data and conversations.
 
 ## 🎯 What is Tether?
 
-Tether is my experimental playground for running large language models locally on my **Snapdragon X Elite** hardware. It started as a way to test model inference on the NPU/GPU and has evolved into a flexible service with function calling, persistent chat history, and streaming responses. 
+Tether is my experimental playground for running large language models locally on my **Snapdragon X Elite** hardware. It started as a way to test model inference on the NPU/GPU and has evolved into a flexible service with function calling, persistent chat history, and streaming responses.
 
 The project explores how to give models access to personal data (like emails, calendars, files) while keeping everything local and private—no data leaves your machine.
 
 **Current Features:**
+
 - 🔒 **Privacy First**: Your data never leaves your machine
 - 🛠️ **Function Calling**: Models can use tools (weather, web search, custom functions)
 - 💬 **Session Management**: Persistent conversation history stored in SQLite
@@ -26,6 +27,7 @@ This project started as an experiment with the **Snapdragon X Elite GPU** to see
 ## 🎯 Next Steps
 
 Current experiments and planned features:
+
 - **Email Integration**: Building tools to read, organize, and summarize emails
 - **Email Management**: Let models help categorize, prioritize, and draft responses
 - **Ollama Support**: Add Ollama as an alternative provider for broader hardware compatibility
@@ -56,33 +58,44 @@ Current experiments and planned features:
 ### Installation
 
 1. **Clone the repository:**
+
 ```powershell
 git clone https://github.com/Lando-00/Tether.git
 cd Tether
+
 ```
 
 2. **Create and activate a Python environment:**
+
 ```powershell
+
 # Using conda (recommended)
+
 conda create -n tether python=3.11
 conda activate tether
 
 # Or using venv
+
 python -m venv venv
 .\venv\Scripts\Activate.ps1  # Windows
 source venv/bin/activate      # Linux/macOS
+
 ```
 
 3. **Install dependencies:**
+
 ```powershell
 pip install -r requirements.txt
+
 ```
 
 4. **Set up MLC-LLM models** (see [Model Setup](#model-setup) below)
 
 5. **Run the service:**
+
 ```powershell
 python -m tether_service.app
+
 ```
 
 The API will be available at `http://localhost:8080`. Visit `http://localhost:8080/docs` for interactive API documentation.
@@ -94,28 +107,35 @@ Tether uses [MLC-LLM](https://github.com/mlc-ai/mlc-llm) for efficient model inf
 #### Option 1: Download Pre-compiled Models
 
 Visit the [MLC-LLM model repository](https://huggingface.co/mlc-ai) and download a pre-compiled model. Popular options:
+
 - `Llama-3-8B-Instruct-q4f16_1-MLC`
+
 - `Phi-3-mini-4k-instruct-q4f16_1-MLC`
+
 - `Mistral-7B-Instruct-v0.3-q4f16_1-MLC`
 
 #### Option 2: Compile Your Own Model
 
 ```powershell
+
 # Install MLC-LLM compilation tools
+
 pip install mlc-llm
 
 # Compile a model (example: Llama-3-8B with 4-bit quantization)
+
 mlc_llm compile meta-llama/Meta-Llama-3-8B-Instruct \
   --quantization q4f16_1 \
   --device auto \
   -o dist/Llama-3-8B-Instruct-q4f16_1-MLC
+
 ```
 
 #### Expected Directory Structure
 
 Place compiled models in the `dist/` directory:
 
-```
+```text
 Tether/
 ├── dist/
 │   ├── libs/                           # Shared libraries
@@ -136,6 +156,7 @@ providers:
       dist_root: "dist"
       model_name: "Llama-3-8B-Instruct-q4f16_1-MLC"
       device: "auto"  # or "cuda", "vulkan", "metal"
+
 ```
 
 ### Basic Usage Example
@@ -147,11 +168,13 @@ import requests
 import json
 
 # 1. Create a session
+
 response = requests.post("http://localhost:8080/sessions")
 session = response.json()
 session_id = session["session_id"]
 
 # 2. Stream a chat completion
+
 stream_request = {
     "session_id": session_id,
     "prompt": "What's the weather like in Dublin?",
@@ -165,6 +188,7 @@ response = requests.post(
 )
 
 # 3. Process NDJSON events
+
 for line in response.iter_lines():
     if line:
         event = json.loads(line)
@@ -174,6 +198,7 @@ for line in response.iter_lines():
             print(f"\n[Tool: {event['data']['name']}]")
         elif event["type"] == "tool_result":
             print(f"[Result: {event['data']['result']}]")
+
 ```
 
 ## 🏗️ Architecture
@@ -182,7 +207,7 @@ Tether follows the **Model-Context-Protocol (MCP)** architecture, which cleanly 
 
 ### MCP Layers
 
-```
+```text
 ┌─────────────────────────────────────────────────────────────┐
 │                      HTTP API Layer                          │
 │              (FastAPI Routes, WebSocket, REST)               │
@@ -203,11 +228,12 @@ Tether follows the **Model-Context-Protocol (MCP)** architecture, which cleanly 
        │  • Streaming   │     │  • Sessions     │
        │  • Inference   │     │  • History      │
        └────────────────┘     └─────────────────┘
+
 ```
 
 ### Directory Structure
 
-```
+```text
 tether_service/
 ├── app/                          # HTTP API layer
 │   ├── __main__.py              # Entry point
@@ -256,6 +282,7 @@ tether_service/
     ├── time_tool.py             # Get current time
     ├── weather_tool.py          # Weather and forecast
     └── web_search_tool.py       # News search via NewsAPI
+
 ```
 
 ### Key Design Decisions
@@ -275,20 +302,25 @@ tether_service/
 ### Endpoints
 
 #### `POST /sessions`
+
 Create a new conversation session.
 
 **Response:**
+
 ```json
 {
   "session_id": "550e8400-e29b-41d4-a716-446655440000",
   "created_at": "2025-10-27T14:30:00Z"
 }
+
 ```
 
 #### `GET /sessions`
+
 List all sessions.
 
 **Response:**
+
 ```json
 [
   {
@@ -296,38 +328,48 @@ List all sessions.
     "created_at": "2025-10-27T14:30:00Z"
   }
 ]
+
 ```
 
 #### `GET /sessions/{session_id}/messages`
+
 Get conversation history for a session.
 
 **Response:**
+
 ```json
 [
   {"role": "user", "content": "Hello!"},
   {"role": "assistant", "content": "Hi! How can I help you today?"}
 ]
+
 ```
 
 #### `DELETE /sessions/{session_id}`
+
 Delete a specific session.
 
 #### `DELETE /sessions`
+
 Delete all sessions.
 
 #### `POST /chat/stream`
+
 Stream a chat completion with function calling support.
 
 **Request:**
+
 ```json
 {
   "session_id": "550e8400-e29b-41d4-a716-446655440000",
   "prompt": "What's the weather in Dublin?",
   "model_name": "Llama-3-8B-Instruct-q4f16_1-MLC"
 }
+
 ```
 
 **Response (NDJSON stream):**
+
 ```json
 {"type": "token", "data": {"text": "Let"}}
 {"type": "token", "data": {"text": " me"}}
@@ -339,6 +381,7 @@ Stream a chat completion with function calling support.
 {"type": "token", "data": {"text": " and"}}
 {"type": "token", "data": {"text": " rainy"}}
 {"type": "done", "data": {"finish_reason": "stop"}}
+
 ```
 
 ### Event Types
@@ -358,7 +401,8 @@ Tether's function calling system allows models to interact with external tools. 
 ### How It Works
 
 1. **System Prompt**: The model is instructed to emit tool calls in the format:
-   ```
+
+   ```text
    <<function_call>> {"name": "tool_name", "arguments": {...}}
    ```
 
@@ -373,6 +417,7 @@ Tether's function calling system allows models to interact with external tools. 
 ### Built-in Tools
 
 #### TimeTool
+
 Get the current time in any timezone.
 
 ```json
@@ -383,9 +428,11 @@ Get the current time in any timezone.
     "format": "human"
   }
 }
+
 ```
 
 #### WeatherTool
+
 Get current weather conditions.
 
 ```json
@@ -395,9 +442,11 @@ Get current weather conditions.
     "location": "London, UK"
   }
 }
+
 ```
 
 #### GetForecastTool
+
 Get weather forecast.
 
 ```json
@@ -408,9 +457,11 @@ Get weather forecast.
     "days": 3
   }
 }
+
 ```
 
 #### WebSearchTool
+
 Search news via NewsAPI (requires API key in environment).
 
 ```json
@@ -421,6 +472,7 @@ Search news via NewsAPI (requires API key in environment).
     "max_results": 5
   }
 }
+
 ```
 
 ## 🔧 Configuration
@@ -428,12 +480,15 @@ Search news via NewsAPI (requires API key in environment).
 Configuration is managed through `tether_service/config/default.yml`. Here's a breakdown of key sections:
 
 ### Server Configuration
+
 ```yaml
 host: "127.0.0.1"
 port: 8080
+
 ```
 
 ### System Prompt
+
 ```yaml
 system:
   prompt: |
@@ -441,9 +496,11 @@ system:
     To call a tool, output exactly one line that starts with:
     <<function_call>>
     followed by a single JSON object on the same line.
+
 ```
 
 ### Model Provider
+
 ```yaml
 providers:
   model:
@@ -453,9 +510,11 @@ providers:
       model_name: "Llama-3-8B-q4f16_1-MLC"
       device: "auto"                 # auto | cuda | vulkan | metal | cpu | opencl
       max_tokens: 1024               # Max generation length
+
 ```
 
 ### Tool Configuration
+
 ```yaml
 tools:
   registry:
@@ -466,13 +525,16 @@ tools:
   enabled:
     - "time"
     - "weather"
+
 ```
 
 ### Limits
+
 ```yaml
 limits:
   tool_timeout_sec: 15    # Max execution time per tool
   max_tool_loops: 5       # Max consecutive tool calls
+
 ```
 
 ## 🎨 Adding Custom Tools
@@ -529,6 +591,7 @@ class CalculatorTool(BaseTool):
             "result": result,
             "expression": f"{a} {operation} {b} = {result}"
         }
+
 ```
 
 ### 2. Register in Configuration
@@ -544,6 +607,7 @@ tools:
   enabled:
     - "calculator"
     # ... other enabled tools
+
 ```
 
 ### 3. Update System Prompt (Optional)
@@ -559,25 +623,31 @@ system:
     
     To use a tool, output:
     <<function_call>> {"name":"calculator","arguments":{"operation":"add","a":5,"b":3}}
+
 ```
 
 ### 4. Restart the Service
 
 ```powershell
 python -m tether_service.app
+
 ```
 
 ### Tool Implementation Guidelines
 
 ✅ **Do:**
+
 - Inherit from `BaseTool`
+
 - Call `super().__init__()` in your `__init__`
+
 - Use type hints for all parameters (used for auto-schema generation)
 - Accept `**kwargs` in `run()` method
 - Return dictionaries or JSON-serializable objects
 - Handle errors gracefully and return error messages
 
 ❌ **Don't:**
+
 - Accept raw dictionaries as arguments (use `**kwargs` unpacking)
 - Perform long-running operations without considering the timeout
 - Raise exceptions (return error dicts instead)
@@ -593,6 +663,7 @@ class AsyncWebTool(BaseTool):
         async with aiohttp.ClientSession() as session:
             async with session.get(url) as resp:
                 return {"content": await resp.text()}
+
 ```
 
 The `ToolRunner` automatically handles both sync and async tools.
@@ -602,17 +673,23 @@ The `ToolRunner` automatically handles both sync and async tools.
 ### Running Tests
 
 ```powershell
+
 # All tests
+
 pytest
 
 # Parser unit tests (27 tests)
+
 pytest tests/protocol/parsers/ -v
 
 # Integration tests (tool calling end-to-end)
+
 pytest tests/integration/ -v
 
 # Specific test file
+
 pytest tests/protocol/parsers/test_sliding_parser.py -v
+
 ```
 
 ### Project Structure Deep Dive
@@ -629,23 +706,29 @@ pytest tests/protocol/parsers/test_sliding_parser.py -v
 
 **Enable Verbose Logging:**
 Edit `tether_service/core/logging.py`:
+
 ```python
 logging.basicConfig(level=logging.DEBUG)
+
 ```
 
 **Inspect Database:**
+
 ```powershell
 sqlite3 data/tether.db
 sqlite> SELECT * FROM messages WHERE session_id='...' ORDER BY ts;
+
 ```
 
 **Trace a Request:**
+
 1. HTTP request → `app/http/routers/chat.py`
 2. → `protocol/service/generation_service.py`
 3. → `protocol/orchestration/orchestrator.py`
 4. → Model streaming + parser + tool execution
 
 **Test Parser Directly:**
+
 ```python
 from tether_service.protocol.parsers.sliding import SlidingParser
 
@@ -656,6 +739,7 @@ parser.feed('"name":"time"}')
 if parser.has_tool_call():
     call = parser.extract_tool_call()
     print(call)  # ToolCall(name='time', args_json='{}', raw=...)
+
 ```
 
 ### Common Issues
@@ -673,7 +757,8 @@ if parser.has_tool_call():
 ### MLC-LLM Model Issues
 
 **Problem:** Model fails to load
-```
+
+```text
 Solution:
 1. Verify model directory structure matches expected format
 2. Check that DLL/shared library is in dist/libs/
@@ -682,25 +767,29 @@ Solution:
 ```
 
 **Problem:** Slow inference
-```
+
+```text
 Solution:
 1. Check device is set correctly (GPU vs CPU)
 2. Reduce max_tokens in config
 3. Use smaller quantized models (q4f16 vs q0f16)
 4. Enable model caching (happens automatically)
+
 ```
 
 ### Tool Calling Issues
 
 **Problem:** Model describes actions but doesn't call tools
-```
+
+```text
 Solution: The system prompt must explicitly show the tool call format.
 Edit config/default.yml and ensure the prompt includes:
   <<function_call>> {"name":"tool_name","arguments":{...}}
 ```
 
 **Problem:** Tools timing out
-```
+
+```text
 Solution: Increase timeout in config/default.yml:
   limits:
     tool_timeout_sec: 30  # Increase from default 15
@@ -709,17 +798,20 @@ Solution: Increase timeout in config/default.yml:
 ### Database Issues
 
 **Problem:** Database locked errors
-```
+
+```text
 Solution: Tether uses WAL mode by default. If issues persist:
 1. Ensure only one Tether instance is running
 2. Delete data/tether.db-wal and data/tether.db-shm
 3. Restart the service
+
 ```
 
 ### API Issues
 
 **Problem:** Connection refused
-```
+
+```text
 Solution:
 1. Check service is running: python -m tether_service.app
 2. Verify port isn't in use: netstat -ano | findstr :8080
@@ -729,6 +821,7 @@ Solution:
 ## 🤝 Contributing
 
 This is a personal experiment, but contributions and ideas are welcome! Areas I'm exploring:
+
 - Additional tool implementations (especially email/calendar tools)
 - Alternative model providers (Ollama, llama.cpp)
 - Performance optimizations
