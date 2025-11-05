@@ -4,14 +4,7 @@ from typing import Dict, Any, Literal
 
 
 class TimeTool(BaseTool):
-    """
-    Get the current time for a timezone in various formats.
-    Args:
-        timezone: IANA timezone (e.g., Europe/Dublin, America/New_York, UTC). Defaults to UTC if not provided.
-        format: The format for the returned time string. (e.g., "iso", "rfc2822", "human")
-    Returns:
-        dict: {"time": <formatted time string>}
-    """
+    """Get the current time for a timezone in various formats (ISO, RFC2822, or human-readable)."""
     
     def __init__(self):
         super().__init__()
@@ -26,10 +19,12 @@ class TimeTool(BaseTool):
         format: Literal["iso", "rfc2822", "human"] = "human"
     ) -> dict:
         """
-        Get the current time for a timezone in various formats.
+        Get the current time for a timezone.
+        
         Args:
-            timezone: IANA timezone (e.g., Europe/Dublin, America/New_York, UTC). Defaults to UTC if not provided.
-            format: The format for the returned time string. (e.g., "iso", "rfc2822", "human")
+            timezone: IANA timezone (e.g., 'Europe/Dublin', 'America/New_York', 'UTC'). Defaults to UTC.
+            format: Output format - 'iso' (ISO 8601), 'rfc2822' (RFC 2822), or 'human' (readable). Defaults to 'human'.
+        
         Returns:
             dict: {"time": <formatted time string>}
         """
