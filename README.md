@@ -89,9 +89,20 @@ pip install -r requirements.txt
 
 ```
 
-4. **Set up MLC-LLM models** (see [Model Setup](#model-setup) below)
+4. **Configure environment variables:**
 
-5. **Run the service:**
+```powershell
+# Copy the example environment file
+cp .env.example .env
+
+# Edit .env and add your API keys (required for web_search tool)
+# BRAVE_API_KEY=your_key_here
+
+```
+
+5. **Set up MLC-LLM models** (see [Model Setup](#model-setup) below)
+
+6. **Run the service:**
 
 ```powershell
 python -m tether_service.app
@@ -279,9 +290,10 @@ tether_service/
 │
 └── tools/                        # Tool implementations (extends BaseTool)
     ├── base.py                  # Abstract tool base class
+    ├── brave_client.py          # Brave Search API client wrapper
     ├── time_tool.py             # Get current time
     ├── weather_tool.py          # Weather and forecast
-    └── web_search_tool.py       # News search via NewsAPI
+    └── web_search_tool.py       # Web search via Brave Search API
 
 ```
 
@@ -462,18 +474,52 @@ Get weather forecast.
 
 #### WebSearchTool
 
-Search news via NewsAPI (requires API key in environment).
+Search the web using Brave Search API (requires API key in environment).
+
+**Parameters:**
+
+- `query` (required): Search query string
+- `count` (optional): Number of results (default: 5, max: 20)
+- `country` (optional): 2-letter country code (default: "us")
+- `search_lang` (optional): 2-letter language code (default: "en")
+- `freshness` (optional): Time filter - "pd" (past day), "pw" (past week), "pm" (past month), "py" (past year)
+
+**Example:**
 
 ```json
 {
   "name": "web_search",
   "arguments": {
     "query": "AI developments 2025",
-    "max_results": 5
+    "count": 5,
+    "country": "us",
+    "search_lang": "en"
   }
 }
 
 ```
+
+**Response Format:**
+
+The tool returns a structured JSON response with:
+
+- `results`: Array of search results with `url`, `title`, `snippet`, and `rank`
+- `meta`: Metadata including query, search time, and engine name
+- `articles`: (Deprecated) Formatted strings for backward compatibility
+
+**Setup:**
+
+1. Get a free API key from <https://api-dashboard.search.brave.com/>
+2. Add to `.env` file: `BRAVE_API_KEY=your_key_here`
+3. Free tier: 2,000 queries/month, 10 requests/minute
+
+**Deprecated Parameters:**
+
+The tool was migrated from NewsAPI to Brave Search. The following parameters are deprecated:
+
+- `language` - Use `search_lang` instead (backward compatible with deprecation warning)
+- `sources`, `domains`, `exclude_domains` - Not supported by Brave API
+- `sort_by`, `from_param`, `to`, `page` - Use `freshness` for time filtering instead
 
 ## 🔧 Configuration
 
@@ -522,9 +568,28 @@ tools:
       impl: "tether_service.tools.time_tool.TimeTool"
     - name: "weather"
       impl: "tether_service.tools.weather_tool.WeatherTool"
+    - name: "web_search"
+      impl: "tether_service.tools.web_search_tool.WebSearchTool"
   enabled:
     - "time"
     - "weather"
+    - "web_search"
+  # Web search specific configuration
+  web_search:
+    provider: "brave"           # Future: support multiple providers
+    timeouts:
+      connect_sec: 2            # Connection timeout
+      read_sec: 6               # Read timeout
+      total_sec: 15             # Total timeout (includes retries)
+    retries:
+      max_attempts: 3           # Initial attempt + 2 retries
+      backoff_base_sec: 0.5     # Exponential backoff starting at 0.5s
+    defaults:
+      count: 5                  # Default number of results
+      max_count: 20             # Maximum results to prevent token overflow
+      country: "us"             # Default 2-letter country code
+      search_lang: "en"         # Default language for results
+      freshness: null           # null = no filter; valid: pd/pw/pm/py
 
 ```
 
@@ -793,6 +858,49 @@ Edit config/default.yml and ensure the prompt includes:
 Solution: Increase timeout in config/default.yml:
   limits:
     tool_timeout_sec: 30  # Increase from default 15
+```
+
+### Web Search Tool Issues
+
+**Problem:** `BRAVE_API_KEY` not found error
+
+```text
+Solution:
+1. Create a .env file in project root (copy from .env.example)
+2. Add your API key: BRAVE_API_KEY=your_key_here
+3. Get free key at: https://api-dashboard.search.brave.com/
+4. Restart the service after adding the key
+```
+
+**Problem:** Rate limit errors (429 responses)
+
+```text
+Solution:
+Free tier limits: 2,000 queries/month, 10 requests/minute
+1. Check remaining quota at Brave API dashboard
+2. Reduce web search frequency in prompts
+3. Consider upgrading to paid tier for higher limits
+4. The tool automatically retries with exponential backoff
+```
+
+**Problem:** Web search returns no results
+
+```text
+Solution:
+1. Check query is specific enough
+2. Try different country/language settings
+3. Use freshness filter for recent results only
+4. Verify API key has not expired
+5. Check Brave API status page for outages
+```
+
+**Problem:** Search results have HTML tags
+
+```text
+Solution: This should not happen - HTML tags are automatically removed.
+If you see this:
+1. Report as a bug with example query
+2. Check brave_client.py _normalize_response() function
 ```
 
 ### Database Issues
