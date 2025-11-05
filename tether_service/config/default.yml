@@ -42,6 +42,22 @@ tools:
   # Tool execution behavior
   call_contract: "marker_json"  # "marker_json" (default) uses <<function_call>> {...}
   continue_after_tool: true     # Continue generation after tool execution
+  # Web search specific configuration
+  web_search:
+    provider: "brave"  # Future: support multiple providers
+    timeouts:
+      connect_sec: 2   # Connection timeout
+      read_sec: 6      # Read timeout
+      total_sec: 15    # Total timeout (includes retries)
+    retries:
+      max_attempts: 3  # Initial attempt + 2 retries
+      backoff_base_sec: 0.5  # Exponential backoff starting at 0.5s
+    defaults:
+      count: 5         # Default number of results
+      max_count: 20    # Maximum results to prevent token overflow
+      country: "us"    # Default 2-letter country code for Brave API
+      search_lang: "en"  # Default language for search results
+      freshness: null  # null = no filter; valid: pd/pw/pm/py (past day/week/month/year)
 limits:
   tool_timeout_sec: 15
   max_tool_loops: 5
