@@ -1,73 +1,84 @@
 """
-web_search_tool.py - Web search tools using NewsAPI.
+web_search_tool.py - Web search tool using Brave Search API.
 
-This module provides news search and source listing tools that fetch live data
-from the NewsAPI service.
+This module provides web search functionality via the Brave Search API,
+replacing the legacy NewsAPI implementation.
 """
 
 import os
 import logging
-from typing import Any, Dict, List, Optional, Literal
-from datetime import datetime
-from newsapi import NewsApiClient
-from newsapi.newsapi_exception import NewsAPIException
+from typing import Any, Dict, Optional
 from dotenv import load_dotenv
 from tether_service.tools.base import BaseTool
+from tether_service.tools.brave_client import BraveSearchClient
 
 
 load_dotenv()
 logger = logging.getLogger(__name__)
 
+# Track if deprecation warning has been shown for 'language' param
+_language_deprecation_warned = False
 
-def _get_client() -> NewsApiClient:
-    """Get configured NewsAPI client."""
-    api_key = os.getenv("NEWSAPI_KEY")
+
+def _get_client() -> BraveSearchClient:
+    """
+    Get configured Brave Search client.
+    
+    Reads BRAVE_API_KEY from environment and returns an initialized client
+    with default timeout/retry settings.
+    
+    Returns:
+        BraveSearchClient instance
+        
+    Raises:
+        ValueError: If BRAVE_API_KEY is not set or empty
+    """
+    api_key = os.getenv("BRAVE_API_KEY")
     if not api_key:
-        raise ValueError("Environment variable NEWSAPI_KEY not set")
-    if len(api_key) != 32:
-        raise ValueError("NEWSAPI_KEY must be a 32-character UUID string")
-    return NewsApiClient(api_key=api_key)
+        raise ValueError(
+            "Environment variable BRAVE_API_KEY not set. "
+            "Get your free API key at https://api-dashboard.search.brave.com/"
+        )
+    
+    # Return client with default settings (2s connect, 6s read, 15s total)
+    return BraveSearchClient(
+        api_key=api_key,
+        connect_timeout=2.0,
+        read_timeout=6.0,
+        total_timeout=15.0,
+        max_retries=2,
+        backoff_base=0.5
+    )
 
 
-def _format_article(article: Dict[str, Any]) -> str:
-    """Format a single article into a readable string."""
-    title = (article.get("title") or "No title").strip()
-    src = (article.get("source", {}).get("name") or "Unknown source").strip()
-    desc = (article.get("description") or "").strip()
-    url = (article.get("url") or "").strip()
-    pub = article.get("publishedAt", "")
-    date_str = ""
-    if pub:
-        try:
-            date_str = pub.split("T")[0]
-            datetime.strptime(date_str, "%Y-%m-%d")
-        except Exception:
-            logger.warning(f"Invalid date: {pub}")
-
-    text = title
-    if src:
-        text += f" [{src}]"
-    if desc:
-        if len(desc) > 100:
-            desc = desc[:97] + "..."
-        text += f": {desc}"
-    if date_str:
-        text += f" ({date_str})"
-    if url:
-        text += f" - {url}"
-    return text
-
-
-def _validate_common(page_size: Optional[int], page: Optional[int]) -> None:
-    """Validate common pagination parameters."""
-    if page_size is not None and (not isinstance(page_size, int) or not (1 <= page_size <= 100)):
-        raise ValueError("page_size must be an int between 1 and 100")
-    if page is not None and (not isinstance(page, int) or page < 1):
-        raise ValueError("page must be an int > 0")
+def _validate_count(count: int, max_count: int = 20) -> int:
+    """
+    Validate and clamp count parameter.
+    
+    Args:
+        count: Requested number of results
+        max_count: Maximum allowed (default 20)
+        
+    Returns:
+        Clamped count value (silently clamped if over max)
+    """
+    if not isinstance(count, int) or count < 1:
+        raise ValueError("count must be a positive integer")
+    
+    # Silently clamp to max_count (don't error)
+    if count > max_count:
+        logger.debug(f"count={count} clamped to max_count={max_count}")
+        return max_count
+    
+    return count
 
 
 class WebSearchTool(BaseTool):
-    """Search historical news articles using NewsAPI (/v2/everything endpoint)."""
+    """
+    Search the web using Brave Search API.
+    
+    Provides general web search with country, language, and freshness filters.
+    """
     
     def __init__(self):
         super().__init__()
@@ -80,72 +91,90 @@ class WebSearchTool(BaseTool):
         self,
         query: str,
         count: int = 5,
-        sources: Optional[str] = None,
-        domains: Optional[str] = None,
-        exclude_domains: Optional[str] = None,
-        from_param: Optional[str] = None,
-        to: Optional[str] = None,
-        language: str = "en",
-        sort_by: Literal["relevancy", "popularity", "publishedAt"] = "relevancy",
-        page: int = 1
+        country: str = "us",
+        search_lang: str = "en",
+        freshness: Optional[str] = None,
+        language: Optional[str] = None  # Deprecated alias
     ) -> Dict[str, Any]:
         """
-        Search historical news articles.
+        Search the web using Brave Search.
 
         Args:
             query: Search query (required).
-            count: Number of results to return (1-100).
-            sources: Comma-separated source IDs to filter by.
-            domains: Comma-separated domains to filter by.
-            exclude_domains: Comma-separated domains to exclude.
-            from_param: Start date (YYYY-MM-DD or YYYY-MM-DDTHH:MM:SS).
-            to: End date (YYYY-MM-DD or YYYY-MM-DDTHH:MM:SS).
-            language: 2-letter ISO language code.
-            sort_by: Sort order (relevancy, popularity, or publishedAt).
-            page: Page number (>0).
+            count: Number of results to return (1-20, default 5).
+            country: 2-letter country code (default "us"). Maps to Brave's 'cc' param.
+            search_lang: 2-letter language code (default "en"). Maps to Brave's 'hl' param.
+            freshness: Freshness filter - 'pd' (past day), 'pw' (past week), 'pm' (past month), 'py' (past year), or None (no filter).
+            language: DEPRECATED - Use 'search_lang' instead. Kept for backward compatibility.
 
         Returns:
-            Dictionary with articles list or error information.
+            Dictionary with structured format:
+            {
+                "results": [{"url", "title", "snippet", "rank"}],
+                "meta": {"took_ms", "engine", "query"},
+                "articles": List[str]  # Deprecated, for backward compatibility
+            }
+            
+            Or error format:
+            {
+                "error": "error message"
+            }
         """
+        global _language_deprecation_warned
+        
+        # Handle deprecated 'language' parameter
+        if language is not None:
+            if not _language_deprecation_warned:
+                logger.warning(
+                    "Parameter 'language' is deprecated. Use 'search_lang' instead. "
+                    "The 'language' parameter will be removed in a future release."
+                )
+                _language_deprecation_warned = True
+            # Map deprecated language to search_lang if search_lang is still default
+            if search_lang == "en" and language != "en":
+                search_lang = language
+        
+        # Validate query
         query = query.strip()
         if not query:
             return {"error": "query must be a non-empty string"}
-
+        
+        # Validate and clamp count (max 20 as per config plan)
         try:
-            _validate_common(count, page)
-            if len(language) != 2:
-                return {"error": "language must be a 2-letter ISO code"}
-
-            date_args: Dict[str, str] = {}
-            for name, val in (("from_param", from_param), ("to", to)):
-                if val:
-                    try:
-                        _ = datetime.fromisoformat(val.replace("Z", "")) if "T" in val else datetime.strptime(val, "%Y-%m-%d")
-                    except Exception:
-                        return {"error": f"{name} must be YYYY-MM-DD or YYYY-MM-DDTHH:MM:SS"}
-                    date_args[name] = val
-
-            client = _get_client()
-            resp = client.get_everything(
-                q=query, page_size=count, language=language, sort_by=sort_by,
-                page=page, **date_args,
-                sources=sources or None,
-                domains=domains or None,
-                exclude_domains=exclude_domains or None
-            )
-        except NewsAPIException as e:
-            return {"error": f"NewsAPI error: {e}"}
+            count = _validate_count(count, max_count=20)
         except ValueError as e:
-            return {"error": f"Parameter error: {e}"}
+            return {"error": str(e)}
+        
+        # Validate country code (2-letter)
+        if not isinstance(country, str) or len(country) != 2:
+            return {"error": "country must be a 2-letter ISO code"}
+        
+        # Validate search_lang (2-letter)
+        if not isinstance(search_lang, str) or len(search_lang) != 2:
+            return {"error": "search_lang must be a 2-letter ISO code"}
+        
+        # Validate freshness if provided
+        if freshness is not None:
+            valid_freshness = {"pd", "pw", "pm", "py"}
+            if freshness not in valid_freshness:
+                return {"error": f"freshness must be one of {valid_freshness} or None"}
+        
+        # Execute search
+        try:
+            client = _get_client()
+            result = await client.search(
+                q=query,
+                count=count,
+                country=country,  # Mapped to 'cc' in brave_client.py (line 109)
+                search_lang=search_lang,  # Mapped to 'hl' in brave_client.py (line 110)
+                freshness=freshness
+            )
+            return result
+            
+        except ValueError as e:
+            # Friendly errors (e.g., 403 auth failure)
+            return {"error": str(e)}
         except Exception as e:
-            logger.error(f"web_search error: {e}")
-            return {"error": f"Unexpected error: {e}"}
-
-        if resp.get("status") != "ok":
-            return {"error": f"NewsAPI error ({resp.get('code')}): {resp.get('message')}"}
-
-        articles = resp.get("articles", [])
-        if not articles:
-            return {"articles": [], "message": f"No articles for query='{query}'"}
-
-        return {"articles": [_format_article(a) for a in articles[:count]]}
+            # Unexpected errors
+            logger.error(f"web_search error: {type(e).__name__}: {str(e)}")
+            return {"error": f"Search failed: {str(e)}"}
