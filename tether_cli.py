@@ -243,8 +243,10 @@ def select_model(model_name: Optional[str]) -> str:
 
     while True:
         try:
-            prompt_text = "\nPlease enter the number of the model you want to use [default=1]: "
-            choice_str = console.input(prompt_text)
+            choice_str = Prompt.ask(
+                "\nPlease enter the number of the model you want to use",
+                default="1"
+            )
             if not choice_str.strip():
                 choice_str = "1"
             choice = int(choice_str)

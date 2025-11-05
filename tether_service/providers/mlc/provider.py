@@ -122,7 +122,7 @@ class MLCProvider(ModelProvider):
                 model=str(model_dir),
                 model_lib=model_lib_path,
                 device=self.device,
-                mode="server",  # Use server mode for async
+                mode="interactive",  # Use server mode for async
             )
             print(f"==== MODEL LOADED: {model_name} ====")
             self._engine_cache[cache_key] = engine
