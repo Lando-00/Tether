@@ -1,7 +1,6 @@
 fastapi
 uvicorn[standard]
 httpx
-newsapi-python
 sqlalchemy
 pydantic
 typer

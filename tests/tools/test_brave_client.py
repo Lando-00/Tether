@@ -98,7 +98,7 @@ class TestBraveSearchClientSuccess:
             # Verify response structure
             assert "results" in result
             assert "meta" in result
-            assert "articles" in result  # Backward compatibility
+
             
             # Verify results
             assert len(result["results"]) == 2
@@ -111,10 +111,6 @@ class TestBraveSearchClientSuccess:
             assert result["meta"]["engine"] == "brave"
             assert result["meta"]["query"] == "test query"
             assert "took_ms" in result["meta"]  # Just verify it exists, value varies
-            
-            # Verify articles (deprecated format)
-            assert len(result["articles"]) == 2
-            assert "Test Result 1" in result["articles"][0]
     
     @pytest.mark.asyncio
     async def test_param_mapping(self):
@@ -357,7 +353,6 @@ class TestBraveSearchClientErrors:
             
             # Should return valid structure with empty arrays
             assert result["results"] == []
-            assert result["articles"] == []
             assert result["meta"]["engine"] == "brave"
 
 

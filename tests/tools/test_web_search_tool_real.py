@@ -90,25 +90,6 @@ class TestWebSearchToolRealAPI:
         
         print(f"\n✓ Count clamping: requested 100, got {len(result['results'])}")
     
-    async def test_deprecated_language_param_with_real_api(self):
-        """Test deprecated 'language' parameter still works."""
-        tool = WebSearchTool()
-        tool._registry_name = "web_search"
-        
-        await asyncio.sleep(1)
-        
-        # Use deprecated 'language' parameter
-        result = await tool.run(
-            query="machine learning",
-            count=2,
-            language="en"  # Deprecated, should map to search_lang
-        )
-        
-        assert "results" in result
-        assert len(result["results"]) >= 0
-        
-        print(f"\n✓ Deprecated language param: {len(result['results'])} results")
-    
     async def test_unicode_query_with_real_api(self):
         """Test Unicode characters in query."""
         tool = WebSearchTool()

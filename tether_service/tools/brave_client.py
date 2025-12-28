@@ -89,8 +89,7 @@ class BraveSearchClient:
             Dict with structured format:
             {
                 "results": [{"url", "title", "snippet", "rank"}],
-                "meta": {"took_ms", "engine", "query"},
-                "articles": List[str]  # Deprecated, for backward compatibility
+                "meta": {"took_ms", "engine", "query"}
             }
         
         Raises:
@@ -287,18 +286,10 @@ class BraveSearchClient:
             "query": query
         }
         
-        # Build deprecated articles format for backward compatibility
-        articles = []
-        for r in results:
-            # Format: "{title}: {snippet} - {url}"
-            article_str = f"{r['title']}: {r['snippet']} - {r['url']}"
-            articles.append(article_str)
-        
         # Log result count (NO full results or API key)
         logger.info(f"Normalized {len(results)} results for query='{query}'")
         
         return {
             "results": results,
-            "meta": meta,
-            "articles": articles  # Deprecated - will be removed in future release
+            "meta": meta
         }

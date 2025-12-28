@@ -16,9 +16,6 @@ from tether_service.tools.brave_client import BraveSearchClient
 load_dotenv()
 logger = logging.getLogger(__name__)
 
-# Track if deprecation warning has been shown for 'language' param
-_language_deprecation_warned = False
-
 
 def _get_client() -> BraveSearchClient:
     """
@@ -93,8 +90,7 @@ class WebSearchTool(BaseTool):
         count: int = 5,
         country: str = "us",
         search_lang: str = "en",
-        freshness: Optional[str] = None,
-        language: Optional[str] = None  # Deprecated alias
+        freshness: Optional[str] = None
     ) -> Dict[str, Any]:
         """
         Search the web using Brave Search.
@@ -105,14 +101,12 @@ class WebSearchTool(BaseTool):
             country: 2-letter country code (default "us"). Maps to Brave's 'cc' param.
             search_lang: 2-letter language code (default "en"). Maps to Brave's 'hl' param.
             freshness: Freshness filter - 'pd' (past day), 'pw' (past week), 'pm' (past month), 'py' (past year), or None (no filter).
-            language: DEPRECATED - Use 'search_lang' instead. Kept for backward compatibility.
 
         Returns:
             Dictionary with structured format:
             {
                 "results": [{"url", "title", "snippet", "rank"}],
-                "meta": {"took_ms", "engine", "query"},
-                "articles": List[str]  # Deprecated, for backward compatibility
+                "meta": {"took_ms", "engine", "query"}
             }
             
             Or error format:
@@ -120,20 +114,6 @@ class WebSearchTool(BaseTool):
                 "error": "error message"
             }
         """
-        global _language_deprecation_warned
-        
-        # Handle deprecated 'language' parameter
-        if language is not None:
-            if not _language_deprecation_warned:
-                logger.warning(
-                    "Parameter 'language' is deprecated. Use 'search_lang' instead. "
-                    "The 'language' parameter will be removed in a future release."
-                )
-                _language_deprecation_warned = True
-            # Map deprecated language to search_lang if search_lang is still default
-            if search_lang == "en" and language != "en":
-                search_lang = language
-        
         # Validate query
         query = query.strip()
         if not query:

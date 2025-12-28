@@ -513,14 +513,6 @@ The tool returns a structured JSON response with:
 2. Add to `.env` file: `BRAVE_API_KEY=your_key_here`
 3. Free tier: 2,000 queries/month, 10 requests/minute
 
-**Deprecated Parameters:**
-
-The tool was migrated from NewsAPI to Brave Search. The following parameters are deprecated:
-
-- `language` - Use `search_lang` instead (backward compatible with deprecation warning)
-- `sources`, `domains`, `exclude_domains` - Not supported by Brave API
-- `sort_by`, `from_param`, `to`, `page` - Use `freshness` for time filtering instead
-
 ## 🔧 Configuration
 
 Configuration is managed through `tether_service/config/default.yml`. Here's a breakdown of key sections:

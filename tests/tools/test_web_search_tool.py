@@ -44,9 +44,6 @@ class TestWebSearchToolSchema:
         assert "search_lang" in properties
         assert "freshness" in properties
         
-        # Deprecated parameter should still be present
-        assert "language" in properties
-        
         # Old NewsAPI parameters should NOT be present
         assert "sources" not in properties
         assert "domains" not in properties
@@ -98,8 +95,7 @@ class TestWebSearchToolParameterValidation:
         mock_client = AsyncMock()
         mock_client.search.return_value = {
             "results": [],
-            "meta": {"engine": "brave", "query": "test", "took_ms": 100},
-            "articles": []
+            "meta": {"engine": "brave", "query": "test", "took_ms": 100}
         }
         
         with patch('tether_service.tools.web_search_tool._get_client') as mock_get_client:
@@ -154,8 +150,8 @@ class TestWebSearchToolDeprecation:
     """Test deprecation handling for old parameters."""
     
     @pytest.mark.asyncio
-    async def test_language_param_logs_deprecation_warning(self):
-        """Test that using 'language' parameter logs deprecation warning."""
+    async def test_search_lang_parameter(self):
+        """Test that 'search_lang' parameter works correctly."""
         tool = WebSearchTool()
         
         mock_client = AsyncMock()
@@ -168,40 +164,11 @@ class TestWebSearchToolDeprecation:
         with patch('tether_service.tools.web_search_tool._get_client') as mock_get_client:
             mock_get_client.return_value = mock_client
             
-            with patch('tether_service.tools.web_search_tool.logger') as mock_logger:
-                await tool.run(query="test", language="fr")
-                
-                # Should log deprecation warning (check for any warning/info call)
-                warning_logged = False
-                for call in mock_logger.warning.call_args_list + mock_logger.info.call_args_list:
-                    call_str = str(call).lower()
-                    if "deprecat" in call_str or "language" in call_str:
-                        warning_logged = True
-                        break
-                
-                assert warning_logged, "Deprecation warning should be logged"
-    
-    @pytest.mark.asyncio
-    async def test_language_maps_to_search_lang(self):
-        """Test that 'language' parameter is mapped to 'search_lang'."""
-        tool = WebSearchTool()
-        
-        mock_client = AsyncMock()
-        mock_client.search.return_value = {
-            "results": [],
-            "meta": {"engine": "brave", "query": "test", "took_ms": 100},
-            "articles": []
-        }
-        
-        with patch('tether_service.tools.web_search_tool._get_client') as mock_get_client:
-            mock_get_client.return_value = mock_client
+            await tool.run(query="test", search_lang="fr")
             
-            with patch('tether_service.tools.web_search_tool.logger'):
-                await tool.run(query="test", language="fr")
-                
-                # Verify search_lang was set correctly
-                call_kwargs = mock_client.search.call_args.kwargs
-                assert call_kwargs['search_lang'] == "fr"
+            # Verify search_lang was passed correctly
+            call_kwargs = mock_client.search.call_args.kwargs
+            assert call_kwargs['search_lang'] == "fr"
 
 
 class TestWebSearchToolExecution:
@@ -209,7 +176,7 @@ class TestWebSearchToolExecution:
     
     @pytest.mark.asyncio
     async def test_successful_search_returns_structured_format(self):
-        """Test that successful search returns results/meta/articles structure."""
+        """Test that successful search returns results/meta structure."""
         tool = WebSearchTool()
         tool._registry_name = "web_search"
         
@@ -227,10 +194,7 @@ class TestWebSearchToolExecution:
                 "engine": "brave",
                 "query": "test query",
                 "took_ms": 123
-            },
-            "articles": [
-                "Test Result 1: This is a test - https://example.com/1"
-            ]
+            }
         }
         
         with patch('tether_service.tools.web_search_tool._get_client') as mock_get_client:
@@ -241,7 +205,6 @@ class TestWebSearchToolExecution:
             # Verify structured format
             assert "results" in result
             assert "meta" in result
-            assert "articles" in result
             
             # Verify results content
             assert len(result["results"]) == 1
@@ -251,9 +214,6 @@ class TestWebSearchToolExecution:
             # Verify meta
             assert result["meta"]["engine"] == "brave"
             assert result["meta"]["query"] == "test query"
-            
-            # Verify deprecated articles format still present
-            assert len(result["articles"]) == 1
     
     @pytest.mark.asyncio
     async def test_api_key_error_handling(self):
