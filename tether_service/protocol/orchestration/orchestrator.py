@@ -27,6 +27,7 @@ async def orchestrate(
     settings = load_settings()
     limits = settings.get("limits", {})
     max_tool_loops = limits.get("max_tool_loops", 3)
+    auto_reload_on_fatal_error = limits.get("auto_reload_on_fatal_error", False)
 
     # The tool_runner is now created with the tools dict directly.
     tool_runner = ToolRunner(tools)
@@ -53,45 +54,88 @@ async def orchestrate(
             tool_call_to_run = None
             tool_started_notified = False
 
-            async for chunk in provider.stream(model_name=model_name, messages=messages, tools=tool_schemas):
-                logger.debug(f"Provider stream chunk: {chunk}")
-                events = parser.feed(chunk)
-                for evt in events:
-                    logger.debug(f"Parser event: {evt}")
-                    evt_type = evt.get("type")
-                    evt_data = evt.get("data", {})
+            try:
+                async for chunk in provider.stream(model_name=model_name, messages=messages, tools=tool_schemas):
+                    logger.debug(f"Provider stream chunk: {chunk}")
+                    events = parser.feed(chunk)
+                    for evt in events:
+                        logger.debug(f"Parser event: {evt}")
+                        evt_type = evt.get("type")
+                        evt_data = evt.get("data", {})
 
-                    if evt_type == StreamEvent.TEXT:
-                        delta = evt_data.get("delta", "")
-                        if delta:
-                            full_response_text += delta
-                            yield emitter.emit({"type": "text", "session_id": session_id, "data": {"delta": delta}})
-                    
-                    elif evt_type == StreamEvent.THINK:
-                        delta = evt_data.get("delta", "")
-                        if delta:
-                            yield emitter.emit({"type": "think", "session_id": session_id, "data": {"delta": delta}})
-                    
-                    elif evt_type == StreamEvent.TOOL_STARTED:
-                        # Parser detected <<function_call>> marker
-                        logger.info(f"Tool call marker detected for session_id={session_id}")
-                        if not tool_started_notified:
-                            yield emitter.emit({"type": "tool_marker_detected", "session_id": session_id, "data": {}})
-                            tool_started_notified = True
+                        if evt_type == StreamEvent.TEXT:
+                            delta = evt_data.get("delta", "")
+                            if delta:
+                                full_response_text += delta
+                                yield emitter.emit({"type": "text", "session_id": session_id, "data": {"delta": delta}})
+                        
+                        elif evt_type == StreamEvent.THINK:
+                            delta = evt_data.get("delta", "")
+                            if delta:
+                                yield emitter.emit({"type": "think", "session_id": session_id, "data": {"delta": delta}})
+                        
+                        elif evt_type == StreamEvent.TOOL_STARTED:
+                            # Parser detected <<function_call>> marker
+                            logger.info(f"Tool call marker detected for session_id={session_id}")
+                            if not tool_started_notified:
+                                yield emitter.emit({"type": "tool_marker_detected", "session_id": session_id, "data": {}})
+                                tool_started_notified = True
 
-                    elif evt_type == StreamEvent.TOOL_COMPLETE:
-                        # A tool call has been fully parsed.
-                        tool_call_to_run = evt_data
-                        logger.info(f"Tool call detected: {tool_call_to_run}")
-                        # We break the inner loop to proceed with execution.
+                        elif evt_type == StreamEvent.TOOL_COMPLETE:
+                            # A tool call has been fully parsed.
+                            tool_call_to_run = evt_data
+                            logger.info(f"Tool call detected: {tool_call_to_run}")
+                            # We break the inner loop to proceed with execution.
+                            break
+                        
+                        elif evt_type == StreamEvent.ERROR:
+                            logger.error(f"Parser error: {evt_data}")
+                            yield emitter.emit({"type": "error", "session_id": session_id, "data": evt_data})
+                    
+                    if tool_call_to_run:
                         break
-                    
-                    elif evt_type == StreamEvent.ERROR:
-                        logger.error(f"Parser error: {evt_data}")
-                        yield emitter.emit({"type": "error", "session_id": session_id, "data": evt_data})
+            
+            except Exception as stream_error:
+                # Handle model streaming errors (e.g., TVM/OpenCL errors)
+                error_msg = str(stream_error)
+                error_type = type(stream_error).__name__
+                logger.error(f"Model streaming error in loop {loop_num+1}: {error_msg}", exc_info=True)
                 
-                if tool_call_to_run:
-                    break
+                # Check if this is a fatal error (OpenCL/TVM)
+                is_fatal = "TVMError" in error_type or "CLML" in error_msg or "CL_" in error_msg
+                
+                # Attempt model recovery if enabled and it's a fatal error
+                if is_fatal and auto_reload_on_fatal_error and hasattr(provider, 'unload_model'):
+                    logger.warning(f"Fatal error detected, attempting to unload model {model_name} for recovery")
+                    try:
+                        provider.unload_model(model_name)
+                        yield emitter.emit({
+                            "type": "info",
+                            "session_id": session_id,
+                            "data": {"message": "Model unloaded due to fatal error. It will be reloaded on next request."}
+                        })
+                    except Exception as unload_err:
+                        logger.error(f"Failed to unload model: {unload_err}")
+                
+                # Send error event to client
+                yield emitter.emit({
+                    "type": "error",
+                    "session_id": session_id,
+                    "data": {
+                        "message": f"Model streaming failed: {error_msg}",
+                        "error_type": error_type,
+                        "is_fatal": is_fatal,
+                        "recoverable": False
+                    }
+                })
+                
+                # If we have partial text response, save it
+                if full_response_text:
+                    await store.add_assistant_text(session_id, full_response_text)
+                    logger.info(f"Partial assistant text persisted before error: session_id={session_id}, text_length={len(full_response_text)}")
+                
+                # Exit the tool loop - don't retry on streaming errors
+                break
             
             # 6. After the stream, check if a tool needs to be run
             if tool_call_to_run:

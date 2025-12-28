@@ -11,6 +11,7 @@ import asyncio
 class DummyProvider(ModelProvider):
     async def stream(
         self,
+        model_name: str,
         messages: List[Dict[str, Any]],
         tools: Optional[List[Dict[str, Any]]] = None,
     ) -> AsyncGenerator[str, None]:
@@ -28,3 +29,15 @@ class DummyProvider(ModelProvider):
         """Simulate unloading a model."""
         print(f"Unloaded dummy model: {model_name}")
         return True
+
+    def get_context_window(self, model_name: str) -> int:
+        """
+        Get the context window size for a dummy model.
+        
+        Args:
+            model_name: Name of the model (e.g., "dummy-model-1")
+        
+        Returns:
+            Context window size in tokens (hardcoded to 2048 for testing)
+        """
+        return 2048

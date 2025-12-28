@@ -61,6 +61,8 @@ tools:
 limits:
   tool_timeout_sec: 15
   max_tool_loops: 5
+  # Model error recovery
+  auto_reload_on_fatal_error: true  # Experimental: auto-reload model on fatal OpenCL/TVM errors
 stream:
   parser:
     strict_balancing: true      # Enforce balanced JSON braces
