@@ -442,8 +442,30 @@ class ChattyAgentOrchestrator(OrchestratorABC):
                     yield wire
 
         except asyncio.CancelledError:
-            # Loop-level cancellation: re-raise after finally runs.
+            # Loop-level cancellation: yield ONE terminal MessageStop
+            # before re-raising. Async generators cannot yield once an
+            # exception is propagating through ``finally``, so the
+            # post-finally ``yield MessageStop`` below never runs on
+            # this path. Synthesis §3.5: cancellation contract requires
+            # exactly one terminal MessageStop on every cancel path
+            # (including outer ``task.cancel()`` from FastAPI's response-
+            # generator teardown or library callers using ``aclosing``).
+            #
+            # Phase 5 followups F2 (rubber-duck review by xhigh): wrap
+            # in try/except so a consumer that already aclose()'d the
+            # generator (GeneratorExit during yield) doesn't mask the
+            # original CancelledError that follows. ``BaseException``
+            # is intentionally broad — we're already in cleanup mode
+            # and the bare ``raise`` below re-raises the ORIGINAL
+            # outer CancelledError currently being handled.
             cancelled = True
+            try:
+                yield MessageStop(
+                    **_envelope(),
+                    stop_reason="cancelled",
+                )
+            except BaseException:
+                pass
             raise
         except LoopLimitReachedError:
             # RAISE policy — propagate to caller without further wire events.
