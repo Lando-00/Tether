@@ -50,8 +50,8 @@ Current experiments and planned features:
 
 ### Prerequisites
 
-- **Python 3.10+**
-- **MLC-LLM** installed ([installation guide](https://llm.mlc.ai/docs/install/mlc_llm.html))
+- **Python 3.12**
+- **MLC-LLM runtime** installed separately (see `environment.yml` for Qualcomm CodeLinaro wheel notes)
 - **A compiled MLC model** (see [Model Setup](#model-setup))
 - **Windows/Linux/macOS** (tested on Windows with Snapdragon X Elite)
 
@@ -71,8 +71,8 @@ cd Tether
 
 # Using conda (recommended)
 
-conda create -n tether python=3.11
-conda activate tether
+conda create -n mlc-venv2 python=3.12
+conda activate mlc-venv2
 
 # Or using venv
 
@@ -85,9 +85,12 @@ source venv/bin/activate      # Linux/macOS
 3. **Install dependencies:**
 
 ```powershell
-pip install -r requirements.txt
+pip install -e ".[server,cli,brave,dev]"
 
 ```
+
+`requirements.txt` continues to work for one transition cycle, but editable install is the preferred path.
+For Snapdragon/Adreno MLC runtime wheels, follow the separate CodeLinaro notes in `environment.yml`.
 
 4. **Configure environment variables:**
 
@@ -948,3 +951,4 @@ This project is licensed under the MIT License. See LICENSE file for details.
 ---
 
 **A personal experiment in local AI, privacy, and giving models access to your data - safely.**
+

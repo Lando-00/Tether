@@ -7,7 +7,8 @@
 ```powershell
 # Environment
 conda activate mlc-venv2
-pip install -r requirements.txt
+pip install -e ".[server,cli,brave,dev]"
+# MLC CodeLinaro wheels are installed separately; see environment.yml.
 
 # Run tether_service (new implementation)
 python -m tether_service.app      # http://localhost:8000
