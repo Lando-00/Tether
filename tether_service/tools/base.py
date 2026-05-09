@@ -164,7 +164,19 @@ class BaseTool(Tool):
         are logged but never raised; partial cleanup is preferable to a
         crash that obscures the real shutdown reason.
 
-        Synthesis §4 Phase 4 step 41.
+        Phase 4.5 ordering caveat (rubber-duck consensus, xhigh
+        OBSERVATION): when a tool is owned by a connector — i.e.
+        returned by ``connector.tools()`` — :meth:`Engine.aclose` stops
+        the connector FIRST (so no in-flight ``invoke()`` outlives its
+        owner), then runs the tool's ``shutdown``. By the time this
+        method runs for a connector-owned tool, the connector has
+        already been stopped. Do NOT rely on connector resources here
+        — fold any connector-dependent cleanup into the connector's
+        own ``stop()`` method instead. The tool's ``shutdown`` should
+        only release resources the tool itself owns (caches, files,
+        in-memory state, etc.).
+
+        Synthesis §4 Phase 4 step 41 + Phase 4.5 step 47d.
         """
         return None
 

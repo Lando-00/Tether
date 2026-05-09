@@ -403,6 +403,12 @@ async def test_stop_connector_exception_logged_not_raised(
 
 @pytest.mark.anyio
 async def test_start_all_returns_failures_dict(tmp_path: Path) -> None:
+    """Both connectors are READY by default (per ``_make_fake_connector``);
+    ``start_all`` attempts both, records bad's failure in the dict.
+
+    Phase 4.5 follow-up (F7): start_all filters by READY but these
+    fakes already report READY, so behaviour is unchanged.
+    """
     ok_start = AsyncMock()
     bad_start = AsyncMock(side_effect=RuntimeError("nope"))
     a = _make_fake_connector(
@@ -418,6 +424,78 @@ async def test_start_all_returns_failures_dict(tmp_path: Path) -> None:
     assert "nope" in str(results["bad"])
     ok_start.assert_awaited_once()
     bad_start.assert_awaited_once()
+
+
+@pytest.mark.anyio
+async def test_start_all_skips_non_ready(tmp_path: Path) -> None:
+    """F7: start_all must filter connectors by ``auth_status``: only
+    READY connectors are started; UNCONFIGURED / LOGGED_OUT / ERROR
+    connectors are skipped (and don't appear in the result dict).
+
+    Before the fix, start_all blindly called start_connector on every
+    registered connector, which contradicted spec §3.3 step 4 and
+    differed from Engine.__aenter__ (which already filtered to READY).
+    """
+    ready_start = AsyncMock()
+    skipped_start = AsyncMock()
+
+    # ``ready`` connector: auth_status returns READY (default).
+    ready = _make_fake_connector(
+        connector_id="ready",
+        tool_names=("ready_x",),
+        start=ready_start,
+    )
+    # ``unc`` connector: override auth_status to return UNCONFIGURED.
+    unc = _make_fake_connector(
+        connector_id="unc",
+        tool_names=("unc_y",),
+        start=skipped_start,
+    )
+
+    async def _unconfigured_status() -> AuthStatus:
+        return AuthStatus(state=ConnectorState.UNCONFIGURED)
+
+    unc.auth_status = _unconfigured_status  # type: ignore[method-assign]
+
+    registry = ConnectorRegistry([ready, unc], data_dir=tmp_path)
+    results = await registry.start_all()
+
+    # Only the READY one is in the result dict.
+    assert "ready" in results
+    assert results["ready"] is None
+    assert "unc" not in results, (
+        f"UNCONFIGURED connector should be filtered out of start_all results; "
+        f"got {results!r}"
+    )
+
+    # READY connector's start ran; UNCONFIGURED connector's start did NOT.
+    ready_start.assert_awaited_once()
+    skipped_start.assert_not_awaited()
+
+
+@pytest.mark.anyio
+async def test_start_all_records_auth_status_failure(tmp_path: Path) -> None:
+    """F7: if a connector's ``auth_status`` itself raises, that
+    connector is recorded with the exception in the result dict and
+    its ``start_connector`` is NOT called.
+    """
+    start_mock = AsyncMock()
+    conn = _make_fake_connector(
+        connector_id="boom", tool_names=("boom_x",), start=start_mock
+    )
+
+    async def _failing_status() -> AuthStatus:
+        raise RuntimeError("auth_status failure")
+
+    conn.auth_status = _failing_status  # type: ignore[method-assign]
+
+    registry = ConnectorRegistry([conn], data_dir=tmp_path)
+    results = await registry.start_all()
+
+    assert isinstance(results["boom"], RuntimeError)
+    assert "auth_status failure" in str(results["boom"])
+    # start_connector was NOT called because auth_status raised.
+    start_mock.assert_not_awaited()
 
 
 @pytest.mark.anyio
