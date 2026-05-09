@@ -75,7 +75,13 @@ class SessionStore(ABC):
         ...
 
     @abstractmethod
-    async def add_assistant_text(self, session_id: str, text: str) -> None:
+    async def add_assistant_text(
+        self,
+        session_id: str,
+        text: str,
+        thinking_text: Optional[str] = None,
+        save_thinking: bool = True,
+    ) -> None:
         ...
 
     @abstractmethod
@@ -87,7 +93,9 @@ class SessionStore(ABC):
         ...
 
     @abstractmethod
-    async def get_history(self, session_id: str) -> List[Dict[str, Any]]:
+    async def get_history(
+        self, session_id: str, include_thinking: bool = False
+    ) -> List[Dict[str, Any]]:
         ...
 
     @abstractmethod
@@ -107,5 +115,11 @@ class Tool(ABC):
         ...
 
     @abstractmethod
-    async def run(self, args: Dict[str, Any]) -> Any:
+    async def invoke(self, args: Dict[str, Any]) -> Any:
+        """Invoke the tool with a dict of arguments.
+
+        The registry-facing API: what the orchestrator and ToolRunner call.
+        The author-facing API is BaseTool.run(**kwargs); BaseTool.invoke is
+        a shim that unpacks the dict. Synthesis §6 row 4 / A2 step 1.
+        """
         ...

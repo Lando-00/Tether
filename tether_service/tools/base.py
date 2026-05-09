@@ -36,6 +36,13 @@ class BaseTool(Tool):
     def __init__(self):
         self._registry_name: str | None = None
 
+    async def invoke(self, args: Dict[str, Any]) -> Any:
+        """Registry-facing shim. Synthesis §6 row 4: unpacks the args dict
+        into keyword arguments and delegates to the author-defined run().
+        The orchestrator always calls tool.invoke(args); concrete tool authors
+        always write a typed run(**kwargs) signature."""
+        return await self.run(**args)
+
     @staticmethod
     def _extract_param_descriptions(docstring: str) -> dict:
         """
@@ -143,5 +150,10 @@ class BaseTool(Tool):
 
     @abstractmethod
     async def run(self, *args, **kwargs) -> Any:
-        """Execute tool with given arguments (auto-schema will match signature)."""
+        """Author-facing API. Concrete tools override with typed signatures
+        (e.g., `async def run(self, timezone: str = 'UTC')`).
+
+        NOT part of the Tool ABC — do not call from the orchestrator or
+        ToolRunner. Use tool.invoke(args) instead (synthesis §6 row 4).
+        """
         raise NotImplementedError()

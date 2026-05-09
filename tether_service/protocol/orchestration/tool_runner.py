@@ -18,5 +18,6 @@ class ToolRunner:
         tool = self.tools.get(name)
         if not tool:
             raise ValueError(f"Tool '{name}' not found")
-        # execute with timeout - unpack args as keyword arguments
-        return await asyncio.wait_for(tool.run(**args), timeout=self.timeout)
+        # Synthesis §6 row 4: orchestrator-facing API is invoke(args).
+        # BaseTool.invoke unpacks the dict into kwargs for the typed run() method.
+        return await asyncio.wait_for(tool.invoke(args), timeout=self.timeout)
