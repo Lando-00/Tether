@@ -222,6 +222,151 @@ def test_post_login_begin_unknown_connector_returns_404():
 
 
 # ---------------------------------------------------------------------------
+# Phase 4.5 follow-up (F5): /login/begin populates oauth_state cache when
+# the connector emits an ``oauth_state`` token in ``LoginPrompt.extra``.
+# Per rubber-duck consensus (1m CONCERN); enables Phase 2b Gmail OAuth.
+# ---------------------------------------------------------------------------
+
+
+class _OAuthBeginConnector(Connector):
+    """Connector fake whose ``begin_login`` emits ``oauth_state`` in extra."""
+
+    id = "oauth_fake"
+
+    def __init__(self, *, state_token: Optional[str] = "abc123") -> None:
+        self._state_token = state_token
+        extra: Dict[str, Any] = {}
+        if state_token is not None:
+            extra["oauth_state"] = state_token
+            extra["pkce_verifier"] = "verifier-xyz"
+        self._prompt = LoginPrompt(
+            kind="url",
+            payload="https://accounts.example.com/o/oauth2/auth?...",
+            extra=extra,
+        )
+        self.complete_login_mock = AsyncMock(
+            return_value=LoginContinueResult(state=ConnectorState.READY)
+        )
+        self.start_mock = AsyncMock()
+
+    async def start(self) -> None:
+        await self.start_mock()
+
+    async def stop(self) -> None:
+        return None
+
+    async def logout(self) -> None:
+        return None
+
+    async def health(self) -> HealthStatus:
+        return HealthStatus(state=ConnectorState.UNCONFIGURED)
+
+    async def auth_status(self) -> AuthStatus:
+        return AuthStatus(state=ConnectorState.UNCONFIGURED)
+
+    async def begin_login(self) -> LoginPrompt:
+        return self._prompt
+
+    async def complete_login(
+        self, *, payload: Dict[str, Any]
+    ) -> LoginContinueResult:
+        return await self.complete_login_mock(payload=payload)
+
+    def tools(self) -> Dict[str, Tool]:
+        return {}
+
+    async def inbound_stream(self) -> AsyncIterator[InboundEvent]:
+        if False:  # pragma: no cover
+            yield  # type: ignore[unreachable]
+
+
+def test_login_begin_populates_oauth_state():
+    """F5: when the connector returns a ``LoginPrompt`` with an
+    ``oauth_state`` key in ``extra``, the route must store it in the
+    registry's TTL cache so the matching ``/oauth/callback`` can
+    validate the round-trip.
+
+    Before the fix, the registry's oauth_state cache was never populated
+    by ``/login/begin``, so any subsequent ``/oauth/callback`` returned
+    400 on the missing-state guard.
+    """
+    conn = _OAuthBeginConnector(state_token="state-token-1")
+    app, registry = _make_app(conn)
+    client = TestClient(app)
+
+    resp = client.post("/api/v1/connectors/oauth_fake/login/begin")
+    assert resp.status_code == 200
+
+    # The state must now live in the registry's TTL cache.
+    cached = registry.oauth_state.get("state-token-1")
+    assert cached is not None, "oauth_state was not populated by /login/begin"
+    assert cached["connector_id"] == "oauth_fake"
+    # The full ``extra`` dict (including PKCE verifier etc.) is forwarded
+    # so complete_login on callback can use connector-defined data.
+    assert cached["extra"] == {
+        "oauth_state": "state-token-1",
+        "pkce_verifier": "verifier-xyz",
+    }
+
+
+def test_login_begin_no_oauth_state_no_op():
+    """F5: a ``LoginPrompt.extra`` without an ``oauth_state`` key must
+    leave the registry's oauth_state cache untouched.
+
+    Echo / QR-flow connectors don't emit oauth_state; the populator
+    must not invent one for them.
+    """
+    conn = _OAuthBeginConnector(state_token=None)
+    app, registry = _make_app(conn)
+    client = TestClient(app)
+
+    resp = client.post("/api/v1/connectors/oauth_fake/login/begin")
+    assert resp.status_code == 200
+    # Cache stays empty.
+    assert len(registry.oauth_state) == 0
+
+
+def test_oauth_callback_uses_cached_state():
+    """F5: end-to-end — ``/login/begin`` populates oauth_state, then
+    ``/oauth/callback?state=...`` consumes it and forwards to
+    ``complete_login`` with the cached payload.
+
+    Verifies the begin → callback handshake actually closes (the bug
+    1m flagged: producer + consumer were disconnected, so callback
+    always 400'd).
+    """
+    conn = _OAuthBeginConnector(state_token="round-trip-state")
+    app, registry = _make_app(conn)
+    client = TestClient(app)
+
+    # Step 1: begin_login populates state.
+    resp = client.post("/api/v1/connectors/oauth_fake/login/begin")
+    assert resp.status_code == 200
+    assert registry.oauth_state.get("round-trip-state") is not None
+
+    # Step 2: callback consumes state + forwards to complete_login.
+    resp = client.get(
+        "/api/v1/connectors/oauth_fake/oauth/callback",
+        params={"state": "round-trip-state", "code": "auth-code-Y"},
+    )
+    assert resp.status_code == 200
+    assert resp.json()["state"] == "ready"
+
+    # State token consumed (single-use).
+    assert registry.oauth_state.get("round-trip-state") is None
+
+    conn.complete_login_mock.assert_awaited_once()
+    payload = conn.complete_login_mock.await_args.kwargs["payload"]
+    assert payload["state"] == "round-trip-state"
+    assert payload["code"] == "auth-code-Y"
+    assert payload["state_payload"]["connector_id"] == "oauth_fake"
+    assert payload["state_payload"]["extra"]["oauth_state"] == "round-trip-state"
+
+    # On READY, start_connector ran.
+    conn.start_mock.assert_awaited_once()
+
+
+# ---------------------------------------------------------------------------
 # A2.4 — POST /connectors/{id}/login/complete
 # ---------------------------------------------------------------------------
 

@@ -183,10 +183,37 @@ async def login_begin(connector_id: str, request: Request) -> Dict[str, Any]:
 
     Returns a serialized :class:`LoginPrompt` (QR-code data URL, OAuth
     URL, password instructions, etc.) per connector spec §3.5.
+
+    Phase 4.5 follow-up (rubber-duck consensus, 1m CONCERN): if the
+    connector emits an ``oauth_state`` token in ``LoginPrompt.extra``,
+    persist it in the registry's TTL cache so a subsequent
+    ``/oauth/callback?state=...`` can validate the round-trip
+    (CSRF guard). Without this hop, Phase 2b Gmail's OAuth flow could
+    never succeed end-to-end — ``oauth_callback`` would always 400 on
+    missing state. Connectors that don't use OAuth (e.g. EchoConnector,
+    WhatsApp's QR flow) simply omit ``oauth_state`` and this branch
+    is a no-op.
     """
     registry = _get_registry(request)
     conn = _resolve(registry, connector_id)
     prompt = await conn.begin_login()
+
+    state_token = (
+        prompt.extra.get("oauth_state") if prompt.extra else None
+    )
+    if state_token:
+        # Forward the full ``extra`` dict to ``complete_login`` on
+        # callback so connectors can attach arbitrary connector-defined
+        # data (PKCE verifier, scope hints, etc.) without changing this
+        # route's signature.
+        registry.oauth_state.set(
+            state_token,
+            {
+                "connector_id": connector_id,
+                "extra": dict(prompt.extra),
+            },
+        )
+
     return _serialize_prompt(prompt)
 
 
