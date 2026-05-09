@@ -175,3 +175,37 @@ def test_daemon_thread_call_completes_quickly():
     assert daemon_thread_call(fn, timeout=2.0, gc_disable=False) == "ok"
     elapsed = time.time() - start
     assert elapsed < 1.0
+
+
+def test_daemon_thread_call_default_does_not_disable_gc():
+    """Phase 3 follow-up: the ``gc_disable`` default is now ``False``.
+
+    Pre-flip (default ``True``) was a footgun for Phase 4.5 connectors
+    that run ``daemon_thread_call`` during process lifetime (e.g. logout
+    teardown) — silently leaving GC disabled for the rest of the process.
+
+    With no ``gc_disable`` kwarg, ``fn()`` observes ``gc.isenabled() is
+    True`` and the parent thread's GC state is unchanged.
+
+    :class:`HardwareWatchdog.shutdown_all` passes ``gc_disable=True``
+    explicitly (see ``runtime/hw_watchdog.py``), so the shutdown
+    invariant (R5) is preserved by that explicit kwarg, not by this
+    default.
+    """
+    observed: dict[str, bool] = {}
+
+    def fn() -> str:
+        observed["enabled_inside"] = gc.isenabled()
+        return "default-gc"
+
+    if not gc.isenabled():
+        gc.enable()
+
+    # Call with NO ``gc_disable`` kwarg — exercises the new default.
+    result = daemon_thread_call(fn, timeout=2.0, label="default-gc-test")
+
+    assert result == "default-gc"
+    # Inside the daemon thread: GC was NOT disabled.
+    assert observed["enabled_inside"] is True
+    # After: parent thread's GC state unchanged.
+    assert gc.isenabled() is True
