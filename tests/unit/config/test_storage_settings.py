@@ -71,10 +71,23 @@ def test_sqlite_settings_is_strict():
         SqliteSettings(unknown_field="x")
 
 
+def test_resolved_dsn_no_doubled_tether_segment():
+    """resolved_dsn must NOT include 'Tether/Tether' or 'Tether\\Tether'."""
+    s = _min_settings()
+    resolved = s.storage.resolved_dsn()
+    assert "Tether/Tether" not in resolved, (
+        f"resolved_dsn has doubled Tether segment (platformdirs appauthor): {resolved}"
+    )
+    assert "Tether\\Tether" not in resolved, (
+        f"resolved_dsn has doubled Tether segment (Windows backslash): {resolved}"
+    )
+
+
 def test_resolved_dsn_idempotent():
     """Calling resolved_dsn twice returns the same string."""
     s = _min_settings()
     a = s.storage.resolved_dsn()
     b = s.storage.resolved_dsn()
     assert a == b
+
 

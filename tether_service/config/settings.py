@@ -201,7 +201,7 @@ class StorageSettings(StrictModel):
 
         import platformdirs
 
-        data_dir = Path(platformdirs.user_data_dir("Tether"))
+        data_dir = Path(platformdirs.user_data_dir("Tether", appauthor=False))
         data_dir.mkdir(parents=True, exist_ok=True)
         db_path = data_dir / "tether.db"
         return f"sqlite:///{db_path.as_posix()}"
