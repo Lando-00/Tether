@@ -8,12 +8,10 @@ replacing the legacy NewsAPI implementation.
 import os
 import logging
 from typing import Any, Dict, Optional
-from dotenv import load_dotenv
 from tether_service.tools.base import BaseTool
 from tether_service.tools.brave_client import BraveSearchClient
 
 
-load_dotenv()
 logger = logging.getLogger(__name__)
 
 

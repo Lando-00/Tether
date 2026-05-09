@@ -15,6 +15,7 @@ place (per §11.3 R22 dependency-graph clarification).
 """
 from __future__ import annotations
 
+import asyncio
 from typing import Any, AsyncGenerator, Dict, List, Optional
 
 from tether_service.config.settings import Settings
@@ -24,6 +25,8 @@ from tether_service.core.interfaces import (
     StreamParser,
     Tool,
 )
+from tether_service.core.types import OrchestratorConfig
+from tether_service.protocol.orchestration.tool_runner import ToolRunner
 from tether_service.runtime.watchdog_mode import WatchdogMode
 
 
@@ -39,13 +42,31 @@ class Engine:
         tools: Dict[str, Tool],
         system_prompt: str,
         watchdog_mode: WatchdogMode = WatchdogMode.LIBRARY,
+        orchestrator_config: Optional[OrchestratorConfig] = None,
+        tool_runner: Optional[ToolRunner] = None,
     ):
+        """Build an Engine from already-constructed components.
+
+        ``orchestrator_config`` and ``tool_runner`` may be omitted; sensible
+        defaults are produced (``OrchestratorConfig`` with library defaults,
+        ``ToolRunner`` with the default 15s timeout) so direct constructors
+        and the deprecated ``GenerationService`` alias keep working. Tests
+        and advanced callers may pass them explicitly. Per p2-cleanup
+        (synthesis §4 Phase 2 step 23).
+        """
         self.provider = provider
         self.parser = parser
         self.store = session_store
         self.tools = tools
         self.system_prompt = system_prompt
         self.watchdog_mode = watchdog_mode
+        self.orchestrator_config = orchestrator_config or OrchestratorConfig(
+            max_tool_loops=5,
+            auto_reload_on_fatal_error=True,
+            save_thinking=True,
+            include_thinking_in_history=False,
+        )
+        self.tool_runner = tool_runner or ToolRunner(tools)
         self._closed = False
 
     @classmethod
@@ -84,6 +105,9 @@ class Engine:
         registry = ToolRegistry(registry_cfg, list(tools_settings.enabled))
         tools = registry.all()
 
+        orchestrator_config = OrchestratorConfig.from_settings(settings)
+        tool_runner = ToolRunner(tools, timeout_sec=settings.limits.tool_timeout_sec)
+
         return cls(
             provider=provider,
             parser=parser,
@@ -91,6 +115,8 @@ class Engine:
             tools=tools,
             system_prompt=settings.system.prompt,
             watchdog_mode=watchdog_mode,
+            orchestrator_config=orchestrator_config,
+            tool_runner=tool_runner,
         )
 
     # --- Streaming chat (the core API) ---
@@ -101,6 +127,7 @@ class Engine:
         session_id: str,
         prompt: str,
         model_name: str,
+        cancel_event: Optional[asyncio.Event] = None,
     ) -> AsyncGenerator[bytes, None]:
         """Drive the core orchestration to stream NDJSON bytes."""
         from tether_service.protocol.orchestration.orchestrator import orchestrate
@@ -114,6 +141,9 @@ class Engine:
             store=self.store,
             tools=self.tools,
             system_prompt=self.system_prompt,
+            config=self.orchestrator_config,
+            tool_runner=self.tool_runner,
+            cancel_event=cancel_event,
         ):
             yield chunk
 
