@@ -1,0 +1,7 @@
+# Phase 1 keeps ruff separate from pyproject so packaging metadata stays focused; this is intentionally non-strict.
+line-length = 120
+target-version = "py312"
+exclude = ["llm_service/", "legacy/", "dist/", "build/"]
+
+[lint]
+select = ["E", "F", "W", "I"]

@@ -1,0 +1,16 @@
+name: mlc-venv2
+channels:
+  - conda-forge
+dependencies:
+  - python=3.12
+  - pip
+  - pip:
+    # REFACTOR_BRIEFING.md hardware constraints: Tether targets x64 Python 3.12 under Prism
+    # on Snapdragon X Elite, using the Adreno X1 GPU via OpenCL.
+    # Note: MLC runtime wheels are Qualcomm CodeLinaro and not on PyPI.
+    # Install the exact 2025.06.r1 wheel artifacts separately:
+    #   pip install mlc_llm_adreno_cpu_clml-2025.06.r1-cp312-cp312-win_amd64.whl
+    #   pip install tvm_adreno_cpu_clml-2025.06.r1-cp312-cp312-win_amd64.whl
+    # Then editable install of tether:
+    #   pip install -e ".[server,cli,brave,dev]"
+    - -e ".[server,cli,brave,dev]"

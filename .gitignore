@@ -5,10 +5,16 @@ __pycache__/
 *.pyd
 .pytest_cache/
 
-# Distribution and build artifacts
-dist/
+# Distribution and build artifacts (Python packages plus local MLC model artifacts)
+/dist/
+/build/
+*.egg-info
 mlc_llm-utils-win-x86-01_31_2025/
 *.zip
+
+# Tool caches
+.ruff_cache/
+.mypy_cache/
 
 # Database
 *.db
