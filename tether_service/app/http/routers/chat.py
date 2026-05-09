@@ -187,6 +187,16 @@ async def stream(request: Request, body: StreamRequest):
                 yield (
                     f"event: error\ndata: {json.dumps(error_payload)}\n\n"
                 ).encode("utf-8")
+                # Phase 5 followups F7: synthesize a terminal MessageStop
+                # frame so SSE consumers don't block on a missing terminal
+                # event after a fatal streaming exception.
+                stop_payload = {
+                    "type": "message_stop",
+                    "stop_reason": "error",
+                }
+                yield (
+                    f"event: message_stop\ndata: {json.dumps(stop_payload)}\n\n"
+                ).encode("utf-8")
 
         return StreamingResponse(
             sse_generator(),
@@ -235,9 +245,21 @@ async def stream(request: Request, body: StreamRequest):
                         "message": f"Streaming error: {str(e)}",
                         "error_type": type(e).__name__,
                     },
-                    "ts": None,
+                    # Phase 5 followups F7: was None, now an ISO timestamp
+                    # like every other v0 frame.
+                    "ts": datetime.now(timezone.utc).isoformat(),
                 }
                 yield (json.dumps(error_event) + "\n").encode("utf-8")
+                # Phase 5 followups F7: synthesize a terminal v0 ``done``
+                # event so legacy consumers see a complete stream after
+                # a fatal streaming exception.
+                done_event = {
+                    "type": "done",
+                    "session_id": body.session_id,
+                    "data": {},
+                    "ts": datetime.now(timezone.utc).isoformat(),
+                }
+                yield (json.dumps(done_event) + "\n").encode("utf-8")
 
         return StreamingResponse(
             ndjson_v0_generator(),
@@ -290,6 +312,20 @@ async def stream(request: Request, body: StreamRequest):
                 "is_fatal": False,
             }
             yield (json.dumps(error_payload) + "\n").encode("utf-8")
+            # Phase 5 followups F7: synthesize a terminal MessageStop
+            # frame so v2 consumers don't block on a missing terminal
+            # event after a fatal streaming exception. Same hand-rolled
+            # shape as the error frame above (no Pydantic round-trip).
+            stop_payload = {
+                "protocol_version": "1.0",
+                "session_id": body.session_id,
+                "turn_id": "error",
+                "seq": 1,
+                "ts": datetime.now(timezone.utc).isoformat(),
+                "type": "message_stop",
+                "stop_reason": "error",
+            }
+            yield (json.dumps(stop_payload) + "\n").encode("utf-8")
 
     return StreamingResponse(
         ndjson_v2_generator(),
