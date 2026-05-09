@@ -12,6 +12,8 @@ system:
 providers:
   model:
     impl: "tether_service.providers.mlc.provider.MLCProvider"
+    # Future: uncomment for Nexa NPU (stub only in this refactor):
+    # impl: "tether_service.providers.nexa.provider.NexaProvider"
     args:
       # dist_root: "dist"  # Relative to project root
       # model_name: "Hermes-2-Pro-Llama-3-8B-q4f16_1-MLC"
