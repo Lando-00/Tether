@@ -99,7 +99,7 @@ class TestWebSearchWithMockedServer:
     async def test_web_search_via_orchestrator(self):
         """Test web search tool via orchestrator (simulated)."""
         from tether_service.tools.web_search_tool import WebSearchTool
-        from unittest.mock import AsyncMock, patch
+        from unittest.mock import AsyncMock
         
         # Create tool
         tool = WebSearchTool()
@@ -125,35 +125,36 @@ class TestWebSearchWithMockedServer:
             ]
         }
         
-        with patch('tether_service.tools.web_search_tool._get_client') as mock_get_client:
-            mock_get_client.return_value = mock_client
-            
-            # Execute tool as orchestrator would
-            result = await tool.invoke({
-                "query": "AI developments 2025",
-                "count": 5,
-                "country": "us",
-                "search_lang": "en",
-            })
-            
-            # Verify result structure
-            assert "results" in result
-            assert "meta" in result
-            assert "articles" in result
-            
-            # Verify content
-            assert len(result["results"]) == 1
-            assert "AI" in result["results"][0]["title"]
-            assert result["meta"]["engine"] == "brave"
-            
-            # Verify client was called correctly
-            mock_client.search.assert_called_once_with(
-                q="AI developments 2025",
-                count=5,
-                country="us",
-                search_lang="en",
-                freshness=None
-            )
+        # p4-brave-client-lifecycle: bypass startup() for this targeted
+        # mock. Synthesis §4 Phase 4 step 44.
+        tool._client = mock_client
+        
+        # Execute tool as orchestrator would
+        result = await tool.invoke({
+            "query": "AI developments 2025",
+            "count": 5,
+            "country": "us",
+            "search_lang": "en",
+        })
+        
+        # Verify result structure
+        assert "results" in result
+        assert "meta" in result
+        assert "articles" in result
+        
+        # Verify content
+        assert len(result["results"]) == 1
+        assert "AI" in result["results"][0]["title"]
+        assert result["meta"]["engine"] == "brave"
+        
+        # Verify client was called correctly
+        mock_client.search.assert_called_once_with(
+            q="AI developments 2025",
+            count=5,
+            country="us",
+            search_lang="en",
+            freshness=None
+        )
     
     async def test_web_search_in_multi_turn_conversation(self):
         """Test that web search results are included in conversation history."""
@@ -179,7 +180,7 @@ class TestWebSearchErrorHandling:
     async def test_rate_limit_error_in_orchestration(self):
         """Test that rate limit errors are handled gracefully in orchestration."""
         from tether_service.tools.web_search_tool import WebSearchTool
-        from unittest.mock import AsyncMock, patch
+        from unittest.mock import AsyncMock
         import httpx
         
         tool = WebSearchTool()
@@ -196,20 +197,20 @@ class TestWebSearchErrorHandling:
             response=mock_response
         )
         
-        with patch('tether_service.tools.web_search_tool._get_client') as mock_get_client:
-            mock_get_client.return_value = mock_client
+        # p4-brave-client-lifecycle: bypass startup() for direct mock.
+        tool._client = mock_client
 
-            # The Style A run() now catches exceptions and returns
-            # ``{"error": ...}`` rather than re-raising. Verify the
-            # error dict captures the rate-limit failure.
-            result = await tool.invoke({"query": "test"})
-            assert "error" in result
-            assert "Rate limited" in result["error"] or "429" in result["error"]
+        # The Style A run() now catches exceptions and returns
+        # ``{"error": ...}`` rather than re-raising. Verify the
+        # error dict captures the rate-limit failure.
+        result = await tool.invoke({"query": "test"})
+        assert "error" in result
+        assert "Rate limited" in result["error"] or "429" in result["error"]
     
     async def test_timeout_error_in_orchestration(self):
         """Test that timeout errors are handled gracefully."""
         from tether_service.tools.web_search_tool import WebSearchTool
-        from unittest.mock import AsyncMock, patch
+        from unittest.mock import AsyncMock
         import asyncio
         
         tool = WebSearchTool()
@@ -222,13 +223,12 @@ class TestWebSearchErrorHandling:
         
         mock_client.search = timeout_search
         
-        with patch('tether_service.tools.web_search_tool._get_client') as mock_get_client:
-            mock_get_client.return_value = mock_client
-            
-            # Should timeout (when executed via ToolRunner with timeout)
-            # For this unit test, we'll just verify the mock is set up
-            # Actual timeout enforcement happens in ToolRunner
-            assert mock_client.search == timeout_search
+        tool._client = mock_client
+        
+        # Should timeout (when executed via ToolRunner with timeout)
+        # For this unit test, we'll just verify the mock is set up
+        # Actual timeout enforcement happens in ToolRunner
+        assert mock_client.search == timeout_search
 
 
 @pytest.mark.asyncio
@@ -239,7 +239,7 @@ class TestWebSearchBackwardCompatibility:
     async def test_both_formats_present_in_response(self):
         """Verify both new (results/meta) and old (articles) formats are present."""
         from tether_service.tools.web_search_tool import WebSearchTool
-        from unittest.mock import AsyncMock, patch
+        from unittest.mock import AsyncMock
         
         tool = WebSearchTool()
         
@@ -252,18 +252,18 @@ class TestWebSearchBackwardCompatibility:
             "articles": ["Test: Desc - http://ex.com"]
         }
         
-        with patch('tether_service.tools.web_search_tool._get_client') as mock_get_client:
-            mock_get_client.return_value = mock_client
-            
-            result = await tool.invoke({"query": "test"})
-            
-            # New format
-            assert "results" in result
-            assert isinstance(result["results"], list)
-            assert "meta" in result
-            
-            # Old format (backward compatibility)
-            assert "articles" in result
-            assert isinstance(result["articles"], list)
-            if result["articles"]:
-                assert isinstance(result["articles"][0], str)
+        # p4-brave-client-lifecycle: bypass startup() for direct mock.
+        tool._client = mock_client
+        
+        result = await tool.invoke({"query": "test"})
+        
+        # New format
+        assert "results" in result
+        assert isinstance(result["results"], list)
+        assert "meta" in result
+        
+        # Old format (backward compatibility)
+        assert "articles" in result
+        assert isinstance(result["articles"], list)
+        if result["articles"]:
+            assert isinstance(result["articles"][0], str)
