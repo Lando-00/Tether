@@ -247,11 +247,11 @@ class Engine:
         emit transport (``p5-cutover-a-dual-emit``) iterate
         :class:`WireEvent` directly.
         """
-        from tether_service.protocol.orchestration.orchestrator_class import (
-            Orchestrator,
+        from tether_service.protocol.orchestration.chatty import (
+            ChattyAgentOrchestrator,
         )
 
-        orch = Orchestrator(
+        orch = ChattyAgentOrchestrator(
             provider=self.provider,
             parser=self.parser,
             store=self.store,
