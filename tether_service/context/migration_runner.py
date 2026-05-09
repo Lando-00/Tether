@@ -61,18 +61,29 @@ def apply_pending_migrations(dsn: str, *, migrations_dir: Optional[Path] = None)
     backend = get_backend(normalized_dsn)
     migrations = read_migrations(str(target))
 
-    with backend.lock():
-        pending = backend.to_apply(migrations)
-        applied_count = len(pending)
-        if pending:
-            logger.info(
-                "Applying %d pending schema migration(s) from %s",
-                applied_count,
-                target,
-            )
-            backend.apply_migrations(pending)
-        else:
-            logger.debug("DB schema is up to date; no migrations to apply")
+    try:
+        with backend.lock():
+            pending = backend.to_apply(migrations)
+            applied_count = len(pending)
+            if pending:
+                logger.info(
+                    "Applying %d pending schema migration(s) from %s",
+                    applied_count,
+                    target,
+                )
+                backend.apply_migrations(pending)
+            else:
+                logger.debug("DB schema is up to date; no migrations to apply")
+    finally:
+        # Close the backend's SQLite connection immediately so it is not left
+        # open until GC runs. Without explicit close, processes that call
+        # apply_pending_migrations for many unique DSNs (e.g. test suites with
+        # per-test tmp_path) accumulate open file handles that are all closed
+        # during interpreter teardown, causing unpredictable cleanup delays.
+        try:
+            backend.connection.close()
+        except Exception:
+            pass  # best-effort; never mask a migration error
 
     _MIGRATED_DSNS.add(normalized_dsn)
     return applied_count
