@@ -57,6 +57,8 @@ class Engine:
         tool_runner: Optional[ToolRunner] = None,
         hw_watchdog: Optional["HardwareWatchdog"] = None,
         connector_registry: Optional["ConnectorRegistry"] = None,
+        orchestrator_registry: Optional[Dict[str, str]] = None,
+        orchestrator_default_mode: str = "chat",
     ):
         """Build an Engine from already-constructed components.
 
@@ -79,6 +81,11 @@ class Engine:
         construction by ``from_settings`` so the orchestrator/ToolRunner
         sees a single flat dict regardless of source. Per Phase 4.5
         steps 47d-47e (synthesis §4) and connector spec §3.3.
+
+        ``orchestrator_registry`` and ``orchestrator_default_mode`` control
+        which Orchestrator class is instantiated per-request based on the
+        ``mode`` parameter to :meth:`chat`. Mirrors the tools.registry
+        pattern. Briefing §2 Seam B item 4; synthesis §3.5.
         """
         self.provider = provider
         self.parser = parser
@@ -96,6 +103,11 @@ class Engine:
         )
         self.tool_runner = tool_runner or ToolRunner(tools)
         self._closed = False
+        self._orchestrator_registry: Dict[str, str] = orchestrator_registry or {
+            "chat": "tether_service.protocol.orchestration.chatty.ChattyAgentOrchestrator",
+            "research": "tether_service.protocol.orchestration.notebook.NotebookOrchestrator",
+        }
+        self._orchestrator_default_mode = orchestrator_default_mode
         # Phase 4.5 step 47d: __aenter__ schedules start_connector(id) for
         # each READY connector; __aexit__/aclose cancels any still-pending
         # tasks before invoking stop_all so we never tear down a connector
@@ -188,6 +200,8 @@ class Engine:
             tool_runner=tool_runner,
             hw_watchdog=hw_watchdog,
             connector_registry=connector_registry,
+            orchestrator_registry=dict(settings.orchestrator.registry),
+            orchestrator_default_mode=settings.orchestrator.default,
         )
 
     # --- Streaming chat (the core API) ---
@@ -198,38 +212,37 @@ class Engine:
         session_id: str,
         prompt: str,
         model_name: str,
+        mode: Optional[str] = None,
         cancel_event: Optional[asyncio.Event] = None,
     ) -> AsyncGenerator[bytes, None]:
         """Drive the core orchestration to stream NDJSON bytes (v0 vocabulary).
 
-        Wraps :meth:`chat` and serializes each :class:`WireEvent` via the
-        v0 compatibility shim so the bytes wire vocabulary stays
-        UNCHANGED (``text``, ``think``, ``tool_started``,
-        ``tool_completed``, ``tool_error``, ``error``, ``done``, ``info``,
-        ``loop_limit_reached``) until ``p5-cutover-c`` flips the default
-        to v2. The legacy ``orchestrate()`` function is still exported
-        as a thin shim around this so external callers / patch-based
-        tests keep working unchanged.
-        """
-        from tether_service.protocol.orchestration.orchestrator import (
-            orchestrate,
-        )
+        Routes through :meth:`chat` (which performs mode-based orchestrator
+        selection via the registry) and serializes each :class:`WireEvent`
+        through the v0 compatibility shim. Mode dispatch happens at the
+        orchestrator-resolution boundary; bytes wire format is independent.
 
-        async for chunk in orchestrate(
+        Replaces the former ``orchestrate()`` shim call so that
+        ``mode`` is actually honored: callers passing ``mode="research"``
+        get :class:`NotebookOrchestrator` (which raises
+        :class:`NotImplementedError`) rather than silently falling back to
+        ``ChattyAgentOrchestrator``. Briefing §2 Seam B item 4.
+        """
+        from tether_service.protocol.orchestration.cancel import AsyncEventCancelToken
+        from tether_service.protocol.orchestration.emitter import v0_compat_serialize
+
+        cancel_token = AsyncEventCancelToken(cancel_event) if cancel_event else None
+
+        async for wire_event in self.chat(
             session_id=session_id,
             prompt=prompt,
             model_name=model_name,
-            provider=self.provider,
-            parser=self.parser,
-            store=self.store,
-            tools=self.tools,
-            system_prompt=self.system_prompt,
-            config=self.orchestrator_config,
-            tool_runner=self.tool_runner,
-            cancel_event=cancel_event,
-            hw_watchdog=self.hw_watchdog,
+            mode=mode,
+            cancel_token=cancel_token,
         ):
-            yield chunk
+            bytes_out = v0_compat_serialize(wire_event)
+            if bytes_out:  # MessageStart returns b"" — skip
+                yield bytes_out
 
     async def chat(
         self,
@@ -237,6 +250,7 @@ class Engine:
         session_id: str,
         prompt: str,
         model_name: str,
+        mode: Optional[str] = None,
         cancel_token: Optional["CancelToken"] = None,
     ) -> AsyncGenerator["WireEvent", None]:
         """Library-mode typed event stream (synthesis §3.4).
@@ -246,12 +260,21 @@ class Engine:
         back-compat shim). Library consumers and the future SSE / dual-
         emit transport (``p5-cutover-a-dual-emit``) iterate
         :class:`WireEvent` directly.
+
+        ``mode`` selects the Orchestrator class from the registry. Defaults
+        to ``self._orchestrator_default_mode`` ("chat") when None.
+        Briefing §2 Seam B item 4; synthesis §3.5.
         """
-        from tether_service.protocol.orchestration.chatty import (
-            ChattyAgentOrchestrator,
+        from tether_service.protocol.orchestration.registry import (
+            resolve_orchestrator_class,
         )
 
-        orch = ChattyAgentOrchestrator(
+        effective_mode = mode if mode is not None else self._orchestrator_default_mode
+        orchestrator_cls = resolve_orchestrator_class(
+            effective_mode, self._orchestrator_registry
+        )
+
+        orch = orchestrator_cls(
             provider=self.provider,
             parser=self.parser,
             store=self.store,

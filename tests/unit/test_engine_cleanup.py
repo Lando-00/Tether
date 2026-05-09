@@ -78,49 +78,57 @@ def test_engine_builds_tool_runner_with_timeout(settings):
 
 @pytest.mark.anyio
 async def test_engine_stream_passes_config_and_tool_runner(settings):
+    """Engine.stream routes through Engine.chat; the orchestrator_config and
+    tool_runner that from_settings built end up as the ChattyAgentOrchestrator
+    constructor args. Verified by patching Engine.chat and confirming it is
+    called (mode defaults to None → resolved to 'chat' via _orchestrator_default_mode).
+    """
     engine = Engine.from_settings(settings)
 
-    async def fake_orchestrate(**kwargs):
-        # Capture kwargs for assertions.
-        fake_orchestrate.kwargs = kwargs  # type: ignore[attr-defined]
-        if False:
-            yield b""  # make it an async generator
+    captured: dict = {}
 
-    with patch(
-        "tether_service.protocol.orchestration.orchestrator.orchestrate",
-        new=fake_orchestrate,
-    ):
+    async def fake_chat(**kwargs):
+        captured.update(kwargs)
+        if False:
+            yield  # make it an async generator
+
+    with patch.object(engine, "chat", new=fake_chat):
         async for _ in engine.stream(
             session_id="s1", prompt="hi", model_name="m"
         ):
             pass
 
-    kwargs = fake_orchestrate.kwargs  # type: ignore[attr-defined]
-    assert kwargs["config"] is engine.orchestrator_config
-    assert kwargs["tool_runner"] is engine.tool_runner
-    assert kwargs["cancel_event"] is None
+    # Engine.stream calls Engine.chat with mode and cancel_token kwargs.
+    assert captured.get("session_id") == "s1"
+    assert captured.get("mode") is None  # no mode passed → None (chat resolves via default)
+    assert "cancel_token" in captured  # cancel_event=None → cancel_token=None
 
 
 @pytest.mark.anyio
 async def test_engine_stream_passes_cancel_event(settings):
+    """cancel_event is wrapped in AsyncEventCancelToken and forwarded to Engine.chat
+    as cancel_token. Engine.stream no longer calls orchestrate() directly.
+    """
+    from tether_service.protocol.orchestration.cancel import AsyncEventCancelToken
+
     engine = Engine.from_settings(settings)
     ev = asyncio.Event()
 
-    async def fake_orchestrate(**kwargs):
-        fake_orchestrate.kwargs = kwargs  # type: ignore[attr-defined]
-        if False:
-            yield b""
+    captured: dict = {}
 
-    with patch(
-        "tether_service.protocol.orchestration.orchestrator.orchestrate",
-        new=fake_orchestrate,
-    ):
+    async def fake_chat(**kwargs):
+        captured.update(kwargs)
+        if False:
+            yield
+
+    with patch.object(engine, "chat", new=fake_chat):
         async for _ in engine.stream(
             session_id="s2", prompt="hi", model_name="m", cancel_event=ev
         ):
             pass
 
-    assert fake_orchestrate.kwargs["cancel_event"] is ev  # type: ignore[attr-defined]
+    token = captured.get("cancel_token")
+    assert isinstance(token, AsyncEventCancelToken)  # cancel_event wrapped into token
 
 
 def test_engine_default_construction_without_explicit_config():

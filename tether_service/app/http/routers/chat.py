@@ -1,7 +1,8 @@
 
-from fastapi import APIRouter, Request
+from fastapi import APIRouter, HTTPException, Request
 from fastapi.responses import StreamingResponse
 from pydantic import BaseModel, Field
+from typing import Literal
 import asyncio
 import json
 from tether_service.core.logging import logger
@@ -25,6 +26,15 @@ class StreamRequest(BaseModel):
         description="The name of the model to use for this generation.",
         pattern=r"^[A-Za-z0-9._-]{1,128}$",
     )
+    mode: Literal["chat", "research"] = Field(
+        default="chat",
+        description=(
+            "Orchestrator mode. 'chat' uses ChattyAgentOrchestrator; "
+            "'research' uses NotebookOrchestrator (currently 501 Not Implemented). "
+            "Honored on both Accept: text/event-stream (SSE) and "
+            "application/x-ndjson (NDJSON back-compat) responses."
+        ),
+    )
 
 
 @router.post("/stream")
@@ -37,6 +47,11 @@ async def stream(request: Request, body: StreamRequest):
 
     Response carries X-Tether-Protocol-Version: 1.0 on every path.
 
+    Mode dispatch: body.mode selects the Orchestrator via the registry
+    (settings.orchestrator.registry). Unimplemented modes (is_implemented=False)
+    return 501 before any streaming begins. Unknown modes rejected by
+    Pydantic Literal with 422. Briefing §2 Seam B item 4; synthesis §3.5.
+
     Synthesis §4 Phase 5 step 53.
     """
     accept = request.headers.get("accept", "")
@@ -44,11 +59,38 @@ async def stream(request: Request, body: StreamRequest):
 
     logger.info(
         f"/chat/stream called: session_id={body.session_id}, "
-        f"model_name={body.model_name}, sse={use_sse}"
+        f"model_name={body.model_name}, mode={body.mode}, sse={use_sse}"
     )
 
     engine = request.app.state.gen_svc
     headers = {"X-Tether-Protocol-Version": "1.0"}
+
+    # Eagerly resolve the Orchestrator class to return 501 before streaming
+    # begins if the mode is a stub (is_implemented=False). Pydantic's Literal
+    # already rejects unknown modes with 422, so this branch handles only the
+    # known-but-unimplemented case. Briefing §2 Seam B item 4.
+    from tether_service.protocol.orchestration.registry import (
+        UnknownOrchestratorMode,
+        resolve_orchestrator_class,
+    )
+    try:
+        orchestrator_cls = resolve_orchestrator_class(
+            body.mode, getattr(engine, "_orchestrator_registry", {
+                "chat": "tether_service.protocol.orchestration.chatty.ChattyAgentOrchestrator",
+                "research": "tether_service.protocol.orchestration.notebook.NotebookOrchestrator",
+            })
+        )
+    except UnknownOrchestratorMode as exc:
+        # Defensive: Pydantic Literal rejects unknowns at validation time,
+        # so this branch is reached only when Pydantic is bypassed (library
+        # mode). 400 is appropriate here.
+        raise HTTPException(status_code=400, detail=str(exc))
+
+    if not orchestrator_cls.is_implemented:
+        raise HTTPException(
+            status_code=501,
+            detail="research mode tracked in docs/research/06_context_strategies.md",
+        )
 
     if use_sse:
         # SSE path: Engine.chat() yields typed WireEvents; transport_sse frames them.
@@ -65,6 +107,7 @@ async def stream(request: Request, body: StreamRequest):
                         session_id=body.session_id,
                         prompt=body.prompt,
                         model_name=body.model_name,
+                        mode=body.mode,
                         cancel_token=cancel_token,
                     ):
                         if await request.is_disconnected():
@@ -102,6 +145,7 @@ async def stream(request: Request, body: StreamRequest):
                 session_id=body.session_id,
                 prompt=body.prompt,
                 model_name=body.model_name,
+                mode=body.mode,
                 cancel_event=cancel_event,
             ):
                 if await request.is_disconnected():
