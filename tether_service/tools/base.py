@@ -1,5 +1,5 @@
 from abc import abstractmethod
-from typing import Dict, Any, Optional
+from typing import Any, Dict, List, Literal, Optional, get_args, get_origin
 from tether_service.core.interfaces import Tool
 
 # =============================
@@ -64,42 +64,124 @@ class BaseTool(Tool):
                     param_desc[name] = desc.strip()
         return param_desc
 
+    @staticmethod
+    def _python_type_to_json_schema(t: Any, default: Any = ...) -> Dict[str, Any]:
+        """Recursively convert a Python type annotation to a JSON Schema fragment.
+
+        Synthesis §6 row 5 / R8 / connector spec §8.1:
+        Single function — no class hierarchy (R6 anti-overengineering rule).
+
+        Nullable convention: Optional[T] adds "nullable": true to the schema
+        (OpenAPI 3.0 style). anyOf with null would be equally valid; we use the
+        simpler nullable flag to keep emitted schemas compact.
+        """
+        import types as _types
+
+        # Annotated[T, ...]: strip metadata, recurse on the inner type
+        if get_origin(t) is _types.UnionType or get_origin(t) is None:
+            pass  # handled below in the Union branch
+
+        # typing.get_origin helpers for stdlib generics
+        origin = get_origin(t)
+        args = get_args(t)
+
+        # Annotated[T, metadata, ...]  — ignore metadata, recurse on T
+        try:
+            import typing
+            if origin is typing.Annotated:
+                return BaseTool._python_type_to_json_schema(args[0], default)
+        except AttributeError:
+            pass
+
+        # Optional[T]  ≡  Union[T, None]  (also handles T | None in 3.10+)
+        is_union = (origin is getattr(__import__('typing'), 'Union', None))
+        is_pep604_union = (
+            hasattr(__import__('types'), 'UnionType') and
+            isinstance(t, __import__('types').UnionType)
+        )
+        if is_union or is_pep604_union:
+            non_none = [a for a in args if a is not type(None)]
+            if len(non_none) == 1:
+                inner = BaseTool._python_type_to_json_schema(non_none[0])
+                inner["nullable"] = True
+                return inner
+            # multi-type union without None: fall through to string fallback
+
+        # list[T] / List[T]
+        if origin is list:
+            item_schema = (
+                BaseTool._python_type_to_json_schema(args[0]) if args else {"type": "string"}
+            )
+            return {"type": "array", "items": item_schema}
+
+        # dict[str, Any] / Dict[str, Any]
+        if origin is dict:
+            return {"type": "object"}
+
+        # Literal["a", "b", ...]
+        if origin is Literal:
+            values = list(args)
+            # Infer JSON type from first member
+            first = values[0] if values else ""
+            if isinstance(first, int):
+                json_type = "integer"
+            elif isinstance(first, float):
+                json_type = "number"
+            elif isinstance(first, bool):
+                json_type = "boolean"
+            else:
+                json_type = "string"
+            return {"type": json_type, "enum": values}
+
+        # Primitive types
+        _PRIMITIVES: Dict[Any, str] = {
+            str: "string",
+            int: "integer",
+            float: "number",
+            bool: "boolean",
+        }
+        if t in _PRIMITIVES:
+            return {"type": _PRIMITIVES[t]}
+
+        # Fallback: unknown type maps to string (preserves backward compat)
+        return {"type": "string"}
+
     @property
     def auto_schema(self) -> Dict[str, Any]:
         import inspect
         from typing import get_type_hints
         sig = inspect.signature(self.run)
-        hints = get_type_hints(self.run)
+        # get_type_hints resolves string annotations and Annotated metadata
+        try:
+            hints = get_type_hints(self.run, include_extras=True)
+        except Exception:
+            hints = {}
         docstring = self.run.__doc__ or self.__doc__ or ""
         param_docs = self._extract_param_descriptions(docstring)
         params = {}
         required = []
         for name, param in sig.parameters.items():
-            if name == 'self':
+            if name == "self":
                 continue
-            param_type = hints.get(name, str)
-            # Map Python types to JSON schema types
-            if param_type is str:
-                typ = 'string'
-            elif param_type is int:
-                typ = 'integer'
-            elif param_type is float:
-                typ = 'number'
-            elif param_type is bool:
-                typ = 'boolean'
+            # Skip *args and **kwargs — not tool parameters
+            if param.kind in (
+                inspect.Parameter.VAR_POSITIONAL,
+                inspect.Parameter.VAR_KEYWORD,
+            ):
+                continue
+            t = hints.get(name, str)
+            prop = self._python_type_to_json_schema(t)
+            prop["description"] = param_docs.get(name, "")
+            if param.default is not inspect.Parameter.empty:
+                prop["default"] = param.default
             else:
-                typ = 'string'
-            params[name] = {
-                'type': typ,
-                'description': param_docs.get(name, '')
-            }
-            if param.default is inspect.Parameter.empty:
                 required.append(name)
+            params[name] = prop
         return self.build_schema(
             function_name=self.name,
-            description=self.__doc__ or '',
+            description=self.__doc__ or "",
             parameters=params,
-            required=required
+            required=required,
         )
 
     @property
