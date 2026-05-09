@@ -110,7 +110,12 @@ class MemoryStore(SessionStore):
                 })
             elif role == "tool_result":
                 tool_name = message.get("tool")
-                result = message.get("result") if message.get("result") is not None else {}
+                # Phase 5 followups F9: align with SqliteSessionStore which
+                # round-trips None through json.dumps/json.loads as "null".
+                # The previous ``... else {}`` coercion produced "{}"
+                # which diverged from the sqlite store. Now both stores
+                # render None as "null". Synthesis §11.3 R19.
+                result = message.get("result")
                 result_text = json.dumps(result, indent=2)
                 history.append({
                     "role": "user",
