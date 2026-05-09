@@ -195,8 +195,13 @@ def create_app():
     from tether_service.core.factory import load
     from tether_service.protocol.service.generation_service import GenerationService
     from tether_service.config.settings import load_settings as load_settings_v2
+    from tether_service.engine import Engine
 
     settings = load_settings_legacy()
+    # NOTE: legacy dict-based provider/parser/store/tool_registry construction
+    # below is preserved for one cycle for diff readability and to avoid mixing
+    # this PR's scope with p2-cleanup. It is no longer referenced after the
+    # Engine.from_settings call further down. p2-cleanup will delete this block.
     # instantiate model provider
     model_cfg = settings.get('providers', {}).get('model', {})
     provider = cast(ModelProvider, load(model_cfg.get('impl', ''), **model_cfg.get('args', {}) or {}))
@@ -217,20 +222,18 @@ def create_app():
     # Get system prompt
     system_prompt = settings.get("system", {}).get("prompt", "")
 
-    # create service
-    gen_service = GenerationService(
-        provider,
-        parser=parser,
-        session_store=session_store,
-        tools=tools,
-        system_prompt=system_prompt,
-    )
+    # Phase 2 (p2-engine-class): build the Engine from typed Settings. The
+    # Engine class has the same method surface as the old GenerationService,
+    # so existing routers (chat.py, sessions.py, models.py, health.py) work
+    # unchanged. Per _synthesis.md §4 Phase 2 step 22.
+    settings_v2 = load_settings_v2()
+    gen_service = Engine.from_settings(settings_v2)
     app = FastAPI(lifespan=lifespan)
     # store service on app state
     app.state.gen_svc = gen_service
     # Phase 2 (p2-settings): also expose typed Settings on app.state. Existing
     # dict-based wiring above is unchanged; p2-cleanup migrates consumers.
-    app.state.settings = load_settings_v2()
+    app.state.settings = settings_v2
 
     # Create a new APIRouter for versioning
     v1_router = APIRouter(prefix="/api/v1")
