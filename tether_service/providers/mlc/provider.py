@@ -169,26 +169,43 @@ class MLCProvider(ModelProvider):
         return [m["model_name"] for m in models]
 
     def unload_model(self, model_name: str) -> bool:
+        """Unload a specific cached engine by EXACT model_name match.
+
+        Phase 3 follow-up (rubber-duck consensus, gpt-5.5 BLOCKING +
+        xhigh BLOCKING-2): replaces the previous substring match
+        (``if model_name in key``) with canonical-key construction. The
+        substring match could unload the WRONG engine when one model
+        name is a prefix of another (e.g. ``Qwen3-4B`` vs
+        ``Qwen3-4B-Instruct``); ``hw_reset`` calls this directly, so the
+        recovery path inherited the bug. Synthesis §6 bug #15; R10/R21.
+
+        Returns:
+            ``True`` if a matching engine was found and torn down;
+            ``False`` if not in the cache, or the model_name doesn't
+            resolve to a real model dir / library (no engine to unload).
         """
-        Unload a model from the cache.
-        Detaches under lock, then terminates outside lock with timeout.
-        """
-        to_terminate = None
-        
-        # Find and detach under lock
-        with self._cache_lock:
-            key_to_delete = None
-            for key, engine in self._engine_cache.items():
-                if model_name in key:  # Consider stricter matching if needed
-                    key_to_delete = key
-                    break
-            if key_to_delete:
-                to_terminate = self._engine_cache.pop(key_to_delete)
-        
-        if not to_terminate:
+        self._validate_model_name(model_name)
+
+        # Compute the canonical cache key for this model_name. Mirrors
+        # the construction in ``_get_engine`` / ``_ensure_engine`` so we
+        # match the exact key that was inserted on load.
+        try:
+            model_dir = self.dist_root / model_name
+            model_lib_path = resolve_model_lib(model_name, self.libs_dir)
+            canonical_key = f"{model_dir}:{self.device}:{model_lib_path}"
+        except (ValueError, FileNotFoundError):
+            # Model name doesn't resolve to a real model dir / library
+            # (e.g. dist was wiped after load). Nothing to unload; return
+            # False rather than raising so callers can decide.
             return False
-        
-        # Terminate outside lock with timeout
+
+        # Atomically pop the engine under the lock.
+        with self._cache_lock:
+            if canonical_key not in self._engine_cache:
+                return False
+            to_terminate = self._engine_cache.pop(canonical_key)
+
+        # Terminate outside the lock with bounded timeout.
         try:
             _abort_all_requests(to_terminate)
             _terminate_bounded(to_terminate, timeout=0.75)
@@ -196,7 +213,7 @@ class MLCProvider(ModelProvider):
             print(f"Timeout terminating engine for {model_name} — abandoning")
         except Exception as e:
             print(f"Warning: Error terminating engine for {model_name}: {e}")
-        
+
         print(f"==== MODEL UNLOADED: {model_name} ====")
         return True
 

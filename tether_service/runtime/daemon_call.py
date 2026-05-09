@@ -34,7 +34,7 @@ def daemon_thread_call(
     fn: Callable[[], T],
     *,
     timeout: float,
-    gc_disable: bool = True,
+    gc_disable: bool = False,
     label: str = "daemon",
 ) -> T:
     """Run ``fn()`` in a daemon thread; return its result if it completes
@@ -48,6 +48,14 @@ def daemon_thread_call(
             MLC/OpenCL teardown paths (synthesis §6 / GC-disable rule). If
             GC was already disabled by the caller, this is a no-op (we
             don't try to re-disable).
+
+            DEFAULT FALSE (Phase 3 follow-up; rubber-duck 1m CONCERN):
+            callers like Phase 4.5 connectors that run during process
+            lifetime (e.g. logout teardown) MUST NOT disable GC — that
+            would silently leak GC state for the rest of the process.
+            :class:`HardwareWatchdog.shutdown_all` passes ``True``
+            explicitly because the GC-disable rule is load-bearing for
+            shutdown ONLY. New callers must opt in.
         label: thread name suffix (for debugging / log messages); the
             spawned thread's name is ``f"{label}-thread"``.
 
