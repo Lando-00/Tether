@@ -39,6 +39,7 @@ class TestBraveSearchClientRealAPI:
             read_timeout=6.0,
             total_timeout=15.0
         )
+        await client.aopen()
         
         result = await client.search(q="Python programming", count=3)
         
@@ -73,7 +74,7 @@ class TestBraveSearchClientRealAPI:
     async def test_real_search_with_country_filter(self):
         """Test search with country parameter."""
         client = BraveSearchClient(api_key=os.environ["BRAVE_API_KEY"])
-        
+        await client.aopen()
         # Add small delay to avoid rate limiting
         await asyncio.sleep(1)
         
@@ -91,7 +92,7 @@ class TestBraveSearchClientRealAPI:
     async def test_real_search_with_language_filter(self):
         """Test search with language parameter."""
         client = BraveSearchClient(api_key=os.environ["BRAVE_API_KEY"])
-        
+        await client.aopen()
         await asyncio.sleep(1)
         
         result = await client.search(
@@ -107,7 +108,7 @@ class TestBraveSearchClientRealAPI:
     async def test_real_search_with_freshness_filter(self):
         """Test search with freshness (time) filter."""
         client = BraveSearchClient(api_key=os.environ["BRAVE_API_KEY"])
-        
+        await client.aopen()
         await asyncio.sleep(1)
         
         # Search for recent results only (past day)
@@ -124,7 +125,7 @@ class TestBraveSearchClientRealAPI:
     async def test_real_search_html_sanitization(self):
         """Test that HTML tags are properly removed from real API responses."""
         client = BraveSearchClient(api_key=os.environ["BRAVE_API_KEY"])
-        
+        await client.aopen()
         await asyncio.sleep(1)
         
         result = await client.search(q="HTML tutorial", count=2)
@@ -142,7 +143,7 @@ class TestBraveSearchClientRealAPI:
     async def test_real_search_snippet_length(self):
         """Test that snippets are properly truncated."""
         client = BraveSearchClient(api_key=os.environ["BRAVE_API_KEY"])
-        
+        await client.aopen()
         await asyncio.sleep(1)
         
         result = await client.search(q="machine learning", count=3)
@@ -158,7 +159,7 @@ class TestBraveSearchClientRealAPI:
     async def test_real_search_empty_query_handling(self):
         """Test API behavior with unusual queries."""
         client = BraveSearchClient(api_key=os.environ["BRAVE_API_KEY"])
-        
+        await client.aopen()
         await asyncio.sleep(1)
         
         # Very specific query that might return few/no results
@@ -178,7 +179,7 @@ class TestBraveSearchClientRealAPI:
     async def test_real_search_unicode_query(self):
         """Test search with Unicode characters."""
         client = BraveSearchClient(api_key=os.environ["BRAVE_API_KEY"])
-        
+        await client.aopen()
         await asyncio.sleep(1)
         
         result = await client.search(q="日本 Japan", count=2)
@@ -191,7 +192,7 @@ class TestBraveSearchClientRealAPI:
     async def test_real_search_special_characters(self):
         """Test search with special characters in query."""
         client = BraveSearchClient(api_key=os.environ["BRAVE_API_KEY"])
-        
+        await client.aopen()
         await asyncio.sleep(1)
         
         result = await client.search(q='"Python" & "JavaScript"', count=2)
@@ -203,7 +204,7 @@ class TestBraveSearchClientRealAPI:
     async def test_real_api_rate_limit_headers(self):
         """Test that we can see rate limit headers in responses."""
         client = BraveSearchClient(api_key=os.environ["BRAVE_API_KEY"])
-        
+        await client.aopen()
         await asyncio.sleep(1)
         
         # This test verifies the API returns rate limit info
@@ -218,7 +219,7 @@ class TestBraveSearchClientRealAPI:
     async def test_real_search_max_count_parameter(self):
         """Test requesting maximum number of results."""
         client = BraveSearchClient(api_key=os.environ["BRAVE_API_KEY"])
-        
+        await client.aopen()
         await asyncio.sleep(1)
         
         # Request 20 results (our max_count)
@@ -233,7 +234,7 @@ class TestBraveSearchClientRealAPI:
     async def test_real_search_response_time(self):
         """Test that search completes within reasonable time."""
         client = BraveSearchClient(api_key=os.environ["BRAVE_API_KEY"])
-        
+        await client.aopen()
         await asyncio.sleep(1)
         
         import time
@@ -259,6 +260,7 @@ class TestBraveSearchClientRealAPIErrorCases:
     async def test_invalid_api_key_403(self):
         """Test that invalid API key returns 403/422 with clear error."""
         client = BraveSearchClient(api_key="invalid_key_12345")
+        await client.aopen()
         
         with pytest.raises(ValueError) as exc_info:
             await client.search(q="test")
@@ -270,8 +272,8 @@ class TestBraveSearchClientRealAPIErrorCases:
     
     async def test_empty_api_key(self):
         """Test that empty API key is rejected."""
-        # This would fail in _get_client() in WebSearchTool
-        # but we can test the client initialization
+        # Construction itself raises (api_key cannot be empty); we never
+        # reach the search() call, so no aopen() needed.
         with pytest.raises((ValueError, Exception)):
             client = BraveSearchClient(api_key="")
             await client.search(q="test")
@@ -286,7 +288,7 @@ class TestBraveSearchClientRealAPIBackwardCompatibility:
     async def test_both_formats_in_real_response(self):
         """Verify both new (results/meta) and old (articles) formats."""
         client = BraveSearchClient(api_key=os.environ["BRAVE_API_KEY"])
-        
+        await client.aopen()
         await asyncio.sleep(1)
         
         result = await client.search(q="Python", count=2)

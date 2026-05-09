@@ -33,7 +33,7 @@ class TestWebSearchToolRealAPI:
     async def test_basic_search_with_real_api(self):
         """Test basic web search with real API."""
         tool = WebSearchTool()
-        
+        await tool.startup()
         result = await tool.invoke({"query": "Python programming", "count": 3})
         
         # Verify response structure
@@ -58,7 +58,7 @@ class TestWebSearchToolRealAPI:
     async def test_search_with_all_parameters(self):
         """Test search with all available parameters."""
         tool = WebSearchTool()
-        
+        await tool.startup()
         await asyncio.sleep(1)
         
         result = await tool.invoke({
@@ -79,7 +79,7 @@ class TestWebSearchToolRealAPI:
         rather than silently clamping. Synthesis §4 Phase 4 step 43."""
         from pydantic import ValidationError
         tool = WebSearchTool()
-
+        await tool.startup()
         await asyncio.sleep(1)
 
         with pytest.raises(ValidationError):
@@ -90,7 +90,7 @@ class TestWebSearchToolRealAPI:
     async def test_unicode_query_with_real_api(self):
         """Test Unicode characters in query."""
         tool = WebSearchTool()
-        
+        await tool.startup()
         await asyncio.sleep(1)
         
         result = await tool.invoke({
@@ -105,7 +105,7 @@ class TestWebSearchToolRealAPI:
     async def test_special_characters_with_real_api(self):
         """Test special characters in query."""
         tool = WebSearchTool()
-        
+        await tool.startup()
         await asyncio.sleep(1)
         
         result = await tool.invoke({
@@ -120,7 +120,7 @@ class TestWebSearchToolRealAPI:
     async def test_country_filter_with_real_api(self):
         """Test country filter with real API."""
         tool = WebSearchTool()
-        
+        await tool.startup()
         await asyncio.sleep(1)
         
         # Search with UK country filter
@@ -138,7 +138,7 @@ class TestWebSearchToolRealAPI:
     async def test_freshness_filter_with_real_api(self):
         """Test time-based freshness filter."""
         tool = WebSearchTool()
-        
+        await tool.startup()
         await asyncio.sleep(1)
         
         # Search for recent content only
@@ -156,7 +156,7 @@ class TestWebSearchToolRealAPI:
     async def test_schema_matches_execution(self):
         """Test that tool schema matches actual execution."""
         tool = WebSearchTool()
-        
+        await tool.startup()
         # Get schema
         schema = tool.auto_schema
         params = schema["function"]["parameters"]["properties"]
@@ -187,7 +187,7 @@ class TestWebSearchToolRealAPI:
     async def test_response_format_contract_with_real_api(self):
         """Test that real API responses match expected contract."""
         tool = WebSearchTool()
-        
+        await tool.startup()
         await asyncio.sleep(1)
         
         result = await tool.invoke({"query": "Python", "count": 2})
@@ -221,7 +221,7 @@ class TestWebSearchToolRealAPI:
     async def test_execution_timing_with_real_api(self):
         """Test that tool execution completes in reasonable time."""
         tool = WebSearchTool()
-        
+        await tool.startup()
         await asyncio.sleep(1)
         
         import time
@@ -249,7 +249,7 @@ class TestWebSearchToolRealAPIErrors:
         Pydantic ``min_length=1``)."""
         from pydantic import ValidationError
         tool = WebSearchTool()
-
+        await tool.startup()
         with pytest.raises(ValidationError):
             await tool.invoke({"query": ""})
 
@@ -259,7 +259,7 @@ class TestWebSearchToolRealAPIErrors:
         """Invalid count raises ValidationError (Pydantic ``ge=1``)."""
         from pydantic import ValidationError
         tool = WebSearchTool()
-
+        await tool.startup()
         with pytest.raises(ValidationError):
             await tool.invoke({"query": "test", "count": 0})
 
@@ -279,6 +279,7 @@ class TestWebSearchToolRealAPIErrors:
             
             tool = WebSearchTool()
             
+            await tool.startup()
             # Tool should return error dict or raise exception
             try:
                 result = await tool.invoke({"query": "test"})
@@ -306,7 +307,7 @@ class TestWebSearchToolRealAPIOrchestration:
     async def test_multiple_sequential_searches(self):
         """Test multiple searches in sequence (simulating conversation)."""
         tool = WebSearchTool()
-        
+        await tool.startup()
         # First search
         result1 = await tool.invoke({"query": "Python", "count": 2})
         assert len(result1["results"]) > 0
@@ -325,7 +326,7 @@ class TestWebSearchToolRealAPIOrchestration:
     async def test_search_result_as_context(self):
         """Test that search results could be used as context in conversation."""
         tool = WebSearchTool()
-        
+        await tool.startup()
         await asyncio.sleep(1)
         
         result = await tool.invoke({"query": "climate change", "count": 3})
@@ -349,7 +350,7 @@ class TestWebSearchToolRealAPIOrchestration:
     async def test_tool_kwargs_format(self):
         """Test that tool works with kwargs dict (as orchestrator passes)."""
         tool = WebSearchTool()
-        
+        await tool.startup()
         await asyncio.sleep(1)
         
         # Orchestrator passes args as dict that gets unpacked
@@ -374,7 +375,7 @@ class TestWebSearchToolRealAPIBackwardCompatibility:
     async def test_articles_format_stability(self):
         """Test that deprecated 'articles' format remains stable."""
         tool = WebSearchTool()
-        
+        await tool.startup()
         await asyncio.sleep(1)
         
         result = await tool.invoke({"query": "Python tutorial", "count": 3})
@@ -397,7 +398,7 @@ class TestWebSearchToolRealAPIBackwardCompatibility:
     async def test_transition_period_compatibility(self):
         """Test that both old and new consumers can use the response."""
         tool = WebSearchTool()
-        
+        await tool.startup()
         await asyncio.sleep(1)
         
         result = await tool.invoke({"query": "AI", "count": 2})

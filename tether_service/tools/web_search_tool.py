@@ -11,51 +11,32 @@ calling :meth:`run`. Hand-rolled validation in the previous ``run()``
 body has been deleted — Pydantic enforces the same constraints
 declaratively (``min_length=1`` for query, ``ge=1, le=20`` for count,
 ``pattern`` for country/search_lang, ``Literal`` for freshness).
+
+Lifecycle migration (synthesis §4 Phase 4 step 44; §6 row 17):
+The tool now owns a long-lived :class:`BraveSearchClient` opened in
+:meth:`startup` and closed in :meth:`shutdown`. The legacy
+``_get_client()`` helper that constructed a fresh client per call has
+been removed — synthesis §6 row 17 (cold TLS per call). The
+:class:`SecretsProvider` (default
+:class:`tether_service.core.secrets.EnvFileSecretsProvider`) supplies
+the ``BRAVE_API_KEY``; if the secret is missing the tool stays in the
+registry (``REQUIRED = False``) but :meth:`run` returns an error dict.
+That choice keeps ``/tools`` discoverable and lets the model see a
+clear, structured "missing-key" message rather than a silent drop.
 """
 
-import os
 import logging
 from typing import Any, Dict, Literal, Optional
 
 from pydantic import Field, field_validator
 
+from tether_service.core.secrets import EnvFileSecretsProvider, SecretsProvider
 from tether_service.tools.base import BaseTool, ToolInputs
 from tether_service.tools.brave_client import BraveSearchClient
 from tether_service.tools.registration import tool
 
 
 logger = logging.getLogger(__name__)
-
-
-def _get_client() -> BraveSearchClient:
-    """
-    Get configured Brave Search client.
-    
-    Reads BRAVE_API_KEY from environment and returns an initialized client
-    with default timeout/retry settings.
-    
-    Returns:
-        BraveSearchClient instance
-        
-    Raises:
-        ValueError: If BRAVE_API_KEY is not set or empty
-    """
-    api_key = os.getenv("BRAVE_API_KEY")
-    if not api_key:
-        raise ValueError(
-            "Environment variable BRAVE_API_KEY not set. "
-            "Get your free API key at https://api-dashboard.search.brave.com/"
-        )
-    
-    # Return client with default settings (2s connect, 6s read, 15s total)
-    return BraveSearchClient(
-        api_key=api_key,
-        connect_timeout=2.0,
-        read_timeout=6.0,
-        total_timeout=15.0,
-        max_retries=2,
-        backoff_base=0.5
-    )
 
 
 class WebSearchInputs(ToolInputs):
@@ -125,16 +106,77 @@ class WebSearchTool(BaseTool):
     Provides general web search with country, language, and freshness
     filters. Style A: input validation lives in :class:`WebSearchInputs`
     (synthesis §4 Phase 4 step 43; A2 step 5).
+
+    Lifecycle: opens a long-lived :class:`BraveSearchClient` in
+    :meth:`startup` and reuses it across every :meth:`run` call. If
+    ``BRAVE_API_KEY`` is missing from the :class:`SecretsProvider`,
+    :meth:`startup` logs a warning and leaves ``_client`` as ``None``;
+    :meth:`run` then returns a structured error dict (synthesis §4
+    Phase 4 step 44; §6 row 17).
     """
 
     Inputs = WebSearchInputs
 
-    def __init__(self):
+    def __init__(self, *, secrets: Optional[SecretsProvider] = None):
+        """Construct the tool.
+
+        Args:
+            secrets: Optional :class:`SecretsProvider` for tests / DI;
+                defaults to :class:`EnvFileSecretsProvider` (env-first,
+                file-fallback under ``<data_dir>/secrets/<key>``).
+                Connector spec §3.5; synthesis §4 Phase 4.5 step 47a.
+        """
         super().__init__()
+        self._secrets: SecretsProvider = secrets or EnvFileSecretsProvider()
+        self._client: Optional[BraveSearchClient] = None
 
     @property
     def schema(self) -> Dict[str, Any]:
         return self.auto_schema
+
+    async def startup(self) -> None:
+        """Open the shared :class:`BraveSearchClient`.
+
+        Reads ``BRAVE_API_KEY`` via the configured
+        :class:`SecretsProvider`. Per synthesis §4 Phase 4 step 41 +
+        step 44, ``REQUIRED = False`` (default for :class:`BaseTool`)
+        means a missing key does NOT abort engine startup: we log a
+        warning, leave ``_client = None``, and let :meth:`run` return
+        a structured error so the model gets a clear message rather
+        than a silent registry drop. The tool stays discoverable in
+        ``/tools`` listings.
+        """
+        api_key = self._secrets.get("BRAVE_API_KEY")
+        if not api_key:
+            logger.warning(
+                "BRAVE_API_KEY not set; WebSearchTool will return errors "
+                "until the key is configured (env var or "
+                "<data_dir>/secrets/BRAVE_API_KEY)."
+            )
+            return
+
+        self._client = BraveSearchClient(
+            api_key=api_key,
+            connect_timeout=2.0,
+            read_timeout=6.0,
+            total_timeout=15.0,
+            max_retries=2,
+            backoff_base=0.5,
+        )
+        await self._client.aopen()
+
+    async def shutdown(self) -> None:
+        """Close the shared :class:`BraveSearchClient` if opened.
+
+        Safe to call when :meth:`startup` skipped client construction
+        (missing key) — the ``None`` check makes shutdown idempotent.
+        Per synthesis §4 Phase 4 step 41, shutdown failures are caught
+        upstream by :func:`tether_service.tools.lifecycle.shutdown_all`
+        and never raised.
+        """
+        if self._client is not None:
+            await self._client.aclose()
+            self._client = None
 
     async def run(self, inputs: WebSearchInputs) -> Dict[str, Any]:
         """Execute the search.
@@ -146,12 +188,21 @@ class WebSearchTool(BaseTool):
         Returns:
             Structured result dict with ``results`` / ``meta`` /
             ``articles`` keys, or an error dict ``{"error": "..."}``
-            for transport failures (so the orchestrator can feed the
-            error back to the model rather than crashing the loop).
+            for transport / configuration failures (so the orchestrator
+            can feed the error back to the model rather than crashing
+            the loop).
         """
+        if self._client is None:
+            return {
+                "error": (
+                    "web_search not initialised — BRAVE_API_KEY is not "
+                    "configured. Set the env var or write the value to "
+                    "<data_dir>/secrets/BRAVE_API_KEY and restart."
+                )
+            }
+
         try:
-            client = _get_client()
-            return await client.search(
+            return await self._client.search(
                 q=inputs.query,
                 count=inputs.count,
                 country=inputs.country,

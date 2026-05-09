@@ -61,6 +61,7 @@ class TestBraveSearchClientSuccess:
     async def test_successful_search_with_results(self):
         """Test successful search returning structured results."""
         client = BraveSearchClient(api_key="test_key")
+        await client.aopen()  # p4-brave-client-lifecycle: shared client
         
         # Mock successful response
         mock_response = MagicMock()
@@ -116,6 +117,7 @@ class TestBraveSearchClientSuccess:
     async def test_param_mapping(self):
         """Test that country->cc and search_lang->hl are mapped correctly."""
         client = BraveSearchClient(api_key="test_key")
+        await client.aopen()
         
         mock_response = MagicMock()
         mock_response.status_code = 200
@@ -142,6 +144,7 @@ class TestBraveSearchClientSuccess:
     async def test_snippet_truncation(self):
         """Test that snippets longer than 360 chars are truncated."""
         client = BraveSearchClient(api_key="test_key")
+        await client.aopen()
         
         # Create a description longer than 360 chars
         long_desc = "a" * 400
@@ -174,6 +177,7 @@ class TestBraveSearchClientSuccess:
     async def test_html_tag_removal(self):
         """Test that HTML tags are removed from descriptions."""
         client = BraveSearchClient(api_key="test_key")
+        await client.aopen()
         
         mock_response = MagicMock()
         mock_response.status_code = 200
@@ -210,6 +214,7 @@ class TestBraveSearchClientErrors:
     async def test_auth_failure_403(self):
         """Test 403 authentication failure with friendly error message."""
         client = BraveSearchClient(api_key="invalid_key")
+        await client.aopen()
         
         mock_response = MagicMock()
         mock_response.status_code = 403
@@ -234,6 +239,7 @@ class TestBraveSearchClientErrors:
     async def test_rate_limit_429_with_retry(self):
         """Test 429 rate limit with automatic retry."""
         client = BraveSearchClient(api_key="test_key", max_retries=2, backoff_base=0.1)
+        await client.aopen()
         
         # First call returns 429, second succeeds
         mock_response_429 = MagicMock()
@@ -262,6 +268,7 @@ class TestBraveSearchClientErrors:
     async def test_rate_limit_respects_retry_after_header(self):
         """Test that Retry-After header is respected for 429 responses."""
         client = BraveSearchClient(api_key="test_key", max_retries=2)
+        await client.aopen()
         
         mock_response_429 = MagicMock()
         mock_response_429.status_code = 429
@@ -287,6 +294,7 @@ class TestBraveSearchClientErrors:
     async def test_server_error_5xx_with_retry(self):
         """Test 5xx server errors trigger retry with exponential backoff."""
         client = BraveSearchClient(api_key="test_key", max_retries=2, backoff_base=0.1)
+        await client.aopen()
         
         mock_response_500 = MagicMock()
         mock_response_500.status_code = 500
@@ -317,6 +325,7 @@ class TestBraveSearchClientErrors:
     async def test_no_retry_on_4xx_except_429(self):
         """Test that 4xx errors (except 429) don't trigger retries."""
         client = BraveSearchClient(api_key="test_key", max_retries=2)
+        await client.aopen()
         
         mock_response = MagicMock()
         mock_response.status_code = 400
@@ -339,6 +348,7 @@ class TestBraveSearchClientErrors:
     async def test_empty_results_handling(self):
         """Test graceful handling of empty results from Brave API."""
         client = BraveSearchClient(api_key="test_key")
+        await client.aopen()
         
         # Response with no results
         mock_response = MagicMock()
@@ -368,6 +378,7 @@ class TestBraveSearchClientTimeout:
             read_timeout=6.0,
             total_timeout=15.0
         )
+        await client.aopen()
         
         mock_response = MagicMock()
         mock_response.status_code = 200
@@ -394,6 +405,7 @@ class TestBraveSearchClientTimeout:
             backoff_base=2.0,  # Long backoff
             total_timeout=5.0  # But short total timeout
         )
+        await client.aopen()
         
         # All attempts return 500
         mock_response = MagicMock()
@@ -423,6 +435,7 @@ class TestBraveSearchClientLogging:
     async def test_no_api_key_in_logs(self):
         """Test that API keys are never logged."""
         client = BraveSearchClient(api_key="super_secret_key_12345")
+        await client.aopen()
         
         mock_response = MagicMock()
         mock_response.status_code = 200
