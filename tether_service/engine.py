@@ -337,6 +337,19 @@ class Engine:
         risk hitting an already-closed provider. Tool shutdown is
         best-effort — failures are logged but never raised.
 
+        Phase 4.5 step 47d: connectors are stopped BEFORE tools. The
+        order is: cancel any still-pending ``_connector_start_tasks``
+        → ``connector_registry.stop_all(timeout_sec=2.0)`` → tool
+        ``shutdown_all`` → watchdog/provider shutdown. Connectors must
+        stop before tools because connector tools dispatch through the
+        connector instance (e.g. an ``echo_send`` tool that references
+        the connector's open session); tearing down the connector
+        first guarantees no in-flight tool ``invoke()`` outlives its
+        owner. The 2 s cooperative budget is the connector spec §3.3
+        step 6 contract — connectors with potentially blocking native
+        cleanup are responsible for their own daemon-thread + force-exit
+        pattern (see ``tether_service.connectors.base.Connector``).
+
         Routes through ``self.hw_watchdog.shutdown_all()`` for any
         provider implementing :class:`HardwareLifecycle` — that path
         uses :func:`tether_service.runtime.daemon_call.daemon_thread_call`
@@ -349,14 +362,30 @@ class Engine:
         is ``None`` — only direct constructor / test paths produce
         that.
 
-        Synthesis §4 Phase 3 step 35 + §4 Phase 4 step 41; supersedes
-        the §11.3 R22 placeholder.
+        Synthesis §4 Phase 3 step 35 + §4 Phase 4 step 41 + §4 Phase
+        4.5 step 47d; supersedes the §11.3 R22 placeholder.
         """
         if self._closed:
             return
         self._closed = True
 
-        # Tools first (they may still need the provider during shutdown).
+        # Phase 4.5: cancel any pending start_connector tasks first so we
+        # don't tear down a connector mid-start. ``return_exceptions=True``
+        # swallows the ``CancelledError`` we just induced.
+        if self._connector_start_tasks:
+            for task in self._connector_start_tasks:
+                if not task.done():
+                    task.cancel()
+            await asyncio.gather(
+                *self._connector_start_tasks, return_exceptions=True
+            )
+            self._connector_start_tasks.clear()
+
+        # Phase 4.5: stop connectors before tools (see docstring).
+        if self.connector_registry is not None:
+            await self.connector_registry.stop_all(timeout_sec=2.0)
+
+        # Tools next (they may still need the provider during shutdown).
         if self.tools:
             from tether_service.tools.lifecycle import shutdown_all
 
