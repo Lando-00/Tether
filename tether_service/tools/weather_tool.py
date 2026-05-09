@@ -3,11 +3,17 @@ weather_tool.py - Weather-related tools using real-time weather API.
 
 This module provides weather-related tools that fetch live data from the
 Open-Meteo API.
+
+Style B (synthesis §4 Phase 4 step 43; A2 step 7): both ``GetWeatherTool``
+and ``GetForecastTool`` use ``Annotated[T, Field(...)]`` parameters on
+``run()`` so :meth:`BaseTool.auto_schema` lifts descriptions and bounds
+into the JSON schema.
 """
 
-from typing import Dict, Any, Literal
+from typing import Annotated, Any, Dict, Literal
 from datetime import datetime
 import requests
+from pydantic import Field
 from tether_service.tools.base import BaseTool
 from tether_service.tools.registration import tool
 
@@ -51,19 +57,16 @@ class GetWeatherTool(BaseTool):
 
     async def run(
         self,
-        location: str,
-        unit: Literal["celsius", "fahrenheit"] = "celsius"
+        location: Annotated[
+            str,
+            Field(description="The city name."),
+        ],
+        unit: Annotated[
+            Literal["celsius", "fahrenheit"],
+            Field(description="The temperature unit (celsius or fahrenheit)."),
+        ] = "celsius",
     ) -> Dict[str, Any]:
-        """
-        Get the current weather conditions for a location.
-        
-        Args:
-            location: The city name.
-            unit: The temperature unit (celsius or fahrenheit).
-            
-        Returns:
-            Dictionary containing weather information.
-        """
+        """Get the current weather conditions for a location."""
         location_info = _get_location_lat_lon(location)
         if "error" in location_info:
             return location_info
@@ -111,26 +114,34 @@ class GetForecastTool(BaseTool):
 
     async def run(
         self,
-        location: str,
-        days: int = 3,
-        unit: Literal["celsius", "fahrenheit"] = "celsius"
+        location: Annotated[
+            str,
+            Field(description="The city name."),
+        ],
+        days: Annotated[
+            int,
+            Field(
+                ge=1,
+                le=16,
+                description="Number of days to forecast (1-16).",
+            ),
+        ] = 3,
+        unit: Annotated[
+            Literal["celsius", "fahrenheit"],
+            Field(description="The temperature unit (celsius or fahrenheit)."),
+        ] = "celsius",
     ) -> Dict[str, Any]:
-        """
-        Get a weather forecast for a location.
-        
-        Args:
-            location: The city name.
-            days: Number of days to forecast (1-16).
-            unit: The temperature unit (celsius or fahrenheit).
-            
-        Returns:
-            Dictionary containing forecast information.
+        """Get a weather forecast for a location.
+
+        ``days`` is clamped to the API's [1, 16] range defensively in
+        case a Style B caller bypasses the schema bound.
         """
         location_info = _get_location_lat_lon(location)
         if "error" in location_info:
             return location_info
 
-        # Limit days to API's max
+        # Defensive clamp — Style B does not Pydantic-validate at invoke
+        # time, so a hand-rolled caller could pass days=0 or days=999.
         days = max(1, min(16, days))
 
         params = {
@@ -173,7 +184,3 @@ class GetForecastTool(BaseTool):
             return {"error": f"Failed to fetch forecast data: {e}"}
         except (KeyError, IndexError):
             return {"error": "Could not parse forecast data from API response."}
-
-
-# Alias for backward compatibility with config
-WeatherTool = GetWeatherTool

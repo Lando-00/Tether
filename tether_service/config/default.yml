@@ -43,7 +43,7 @@ tools:
     - name: "time"
       impl: "tether_service.tools.time_tool.TimeTool"
     - name: "weather"
-      impl: "tether_service.tools.weather_tool.WeatherTool"
+      impl: "tether_service.tools.weather_tool.GetWeatherTool"
     - name: "forecast"
       impl: "tether_service.tools.weather_tool.GetForecastTool"
     - name: "web_search"
