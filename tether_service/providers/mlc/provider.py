@@ -13,6 +13,7 @@ from typing import Any, AsyncGenerator, Dict, List, Optional
 
 from mlc_llm import AsyncMLCEngine
 from tether_service.core.interfaces import ModelProvider
+from tether_service.providers.hw import HwErrorClass, HwHealth
 
 # §security R-pathtraversal: model_name must be a plain directory component.
 # This pattern deliberately excludes path separators, colons, and any other
@@ -300,6 +301,116 @@ class MLCProvider(ModelProvider):
         print(f"==== MODEL UNLOADED BY CACHE KEY: {cache_key} ====")
         return True
 
+    # ------------------------------------------------------------------
+    # HardwareLifecycle Protocol implementation.
+    #
+    # MLCProvider owns native hardware resources (OpenCL command queues
+    # via TVM, the Adreno X1 GPU through Qualcomm CLML). The watchdog
+    # (``HardwareWatchdog``, Phase 3 step 30) detects that we own such
+    # resources via ``isinstance(provider, HardwareLifecycle)`` and routes
+    # shutdown / recovery / health probes through these 5 members.
+    #
+    # DummyProvider deliberately does NOT implement this Protocol so the
+    # watchdog skips it (DummyProvider has no native handles to release).
+    #
+    # Synthesis §4 Phase 3 step 34; B6 step 5; A3 step 6.
+    # ------------------------------------------------------------------
+
+    def hw_classify(self, exc: BaseException) -> HwErrorClass:
+        """Classify an MLC-emitted exception.
+
+        Delegates to the canonical ``classify_mlc_error`` so all consumers
+        (orchestrator, watchdog, signal_supervisor's thread exception
+        handler) agree on what's fatal. The import is lazy to keep the
+        ``providers.mlc.errors`` module load off the import-time path of
+        anything that just touches ``MLCProvider``'s class object.
+        """
+        from tether_service.providers.mlc.errors import classify_mlc_error
+        return classify_mlc_error(exc)
+
+    async def hw_reset(self, model_name: str) -> None:
+        """Tear down + EAGER reload the named model.
+
+        Called by ``HardwareWatchdog.reset_after`` when ``hw_classify``
+        returns ``FATAL_RECOVERABLE`` (synthesis §4 Phase 3 step 36).
+
+        Implementation:
+
+            1. ``_validate_model_name`` — path-traversal guard from
+               Phase 0A (security R-pathtraversal). hw_reset is reachable
+               from anywhere a FatalProviderError surfaces, so we must
+               re-validate the name even though stream() already did.
+            2. ``unload_model`` — releases OpenCL/TVM resources for the
+               cache entry whose key contains ``model_name``.
+            3. ``_ensure_engine`` — eagerly recreates the engine.
+
+        The eager reload (vs. defer-to-next-request) is intentional: the
+        next request may immediately re-trigger the corrupted state if we
+        don't proactively prove the engine works. Synthesis A3 step 6.
+
+        NOTE: this method does NOT manipulate Python GC. The GC-disable
+        invariant (R5) only applies to ``HardwareWatchdog.shutdown_all``'s
+        daemon thread, not to runtime recovery.
+        """
+        self._validate_model_name(model_name)
+        self.unload_model(model_name)
+        # Eager reload: load the engine again so the next request doesn't
+        # pay the cold-start cost AND we surface any reload failure now
+        # (not later, in the middle of a user request).
+        await self._ensure_engine(model_name)
+
+    async def hw_health(self) -> HwHealth:
+        """Cheap health probe — does NOT touch the model graph.
+
+        Used by the ``/readyz`` handler (synthesis §4 Phase 3 step 37
+        replaces the legacy ``list_models()`` probe with this).
+
+        Returns:
+            - ``"healthy"`` if the engine cache has at least one entry
+              (engines are pre-warmed and ready)
+            - ``"degraded"`` if no engines loaded yet (cold cache; not
+              an error — readyz consumers may choose to treat this as
+              "not ready" without flagging it as a failure)
+
+        We do not currently track recent reset failures here; if
+        ``hw_reset`` raised, the orchestrator surfaces the error event
+        directly. Future iterations may add a "last reset failed at"
+        timestamp and downgrade the status accordingly.
+        """
+        with self._cache_lock:
+            engine_count = len(self._engine_cache)
+
+        if engine_count == 0:
+            return HwHealth(
+                status="degraded",
+                details={"loaded_models": 0, "note": "cold cache"},
+            )
+        return HwHealth(
+            status="healthy",
+            details={"loaded_models": engine_count},
+        )
+
+    @property
+    def hw_shutdown_budget_sec(self) -> float:
+        """Total budget for shutting down all engines.
+
+        Matches the legacy ``api.py:189`` hardcoded ``3.0`` seconds. The
+        watchdog's daemon thread waits at most this long before
+        abandoning cleanup. Synthesis §4 Phase 3 step 30.
+        """
+        return 3.0
+
+    @property
+    def hw_per_engine_terminate_sec(self) -> float:
+        """Per-engine cap when shutting down in parallel.
+
+        Default: ``hw_shutdown_budget_sec / 4``. Matches the existing
+        ``shutdown_all(per_engine_timeout=0.75)`` and
+        ``_terminate_bounded(timeout=0.75)`` constants in this file.
+        Synthesis §4 Phase 3 step 38.
+        """
+        return self.hw_shutdown_budget_sec / 4
+
     def get_context_window(self, model_name: str) -> int:
         """
         Get the context window size for a specific model from its config.
@@ -457,25 +568,46 @@ class MLCProvider(ModelProvider):
             # Re-raise GeneratorExit (client disconnect)
             raise
         except Exception as e:
-            # Catch all exceptions from the MLC engine (including TVM/OpenCL errors)
+            # Catch all exceptions from the MLC engine (including TVM/OpenCL errors).
+            #
+            # Synthesis §4 Phase 3 step 34 / §6 row 13: classify via the
+            # canonical ``classify_mlc_error`` (single source of truth) and
+            # raise typed errors so the orchestrator and watchdog can branch
+            # on class, not on substring grep. Lazy-imported here so import
+            # of this module doesn't pull errors.py.
+            from tether_service.core.errors import (
+                FatalProviderError,
+                TransientProviderError,
+            )
+            from tether_service.providers.mlc.errors import classify_mlc_error
+
             error_type = type(e).__name__
             error_msg = str(e)
             print(f"==== MODEL STREAM ERROR: {model_name} ====")
             print(f"Error type: {error_type}")
             print(f"Error message: {error_msg}")
             traceback.print_exc(file=sys.stderr)
-            
-            # Check if this is a fatal OpenCL/TVM error that requires model reload
-            is_fatal = "TVMError" in error_type or "CLML Error" in error_msg or "CL_" in error_msg
-            
+
+            # Classify using the canonical function — replaces the legacy
+            # 3-line substring grep that was here before. Kept as a local
+            # bool so the inline log message below stays readable.
+            err_class = classify_mlc_error(e)
+            is_fatal = err_class == HwErrorClass.FATAL_RECOVERABLE
+
             if is_fatal:
                 print(f"==== FATAL ERROR DETECTED - Model may need to be reloaded ====")
-                # Mark engine as potentially corrupted (future enhancement: auto-reload)
-            
-            # Re-raise with more context to allow orchestrator to handle
-            raise RuntimeError(
-                f"Model streaming failed for '{model_name}': {error_type} - {error_msg}"
-            ) from e
+                # Watchdog (Phase 3 step 30) handles the reload via hw_reset.
+
+            # Re-raise as a typed TetherError so callers can branch on
+            # class. ``from e`` preserves the original cause for diagnostics.
+            wrapped_msg = (
+                f"Model streaming failed for '{model_name}': "
+                f"{error_type} - {error_msg}"
+            )
+            if is_fatal:
+                raise FatalProviderError(wrapped_msg) from e
+            else:
+                raise TransientProviderError(wrapped_msg) from e
         finally:
             # Proactively close the async generator to release native handles
             if stream_generator is not None:
