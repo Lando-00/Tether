@@ -4,7 +4,7 @@ from typing import Dict, Any, AsyncGenerator
 from tether_service.core.interfaces import ModelProvider, StreamParser, SessionStore, Tool
 from tether_service.protocol.orchestration.emitter import NdjsonEmitter
 from tether_service.protocol.orchestration.tool_runner import ToolRunner
-from tether_service.core.config import load_settings
+from tether_service.core.config import load_settings_legacy
 from tether_service.core.types import StreamEvent
 from tether_service.core.logging import logger
 
@@ -33,7 +33,7 @@ async def orchestrate(
     Manages a multi-turn loop for tool execution.
     """
     emitter = NdjsonEmitter()
-    settings = load_settings()
+    settings = load_settings_legacy()
     limits = settings.get("limits", {})
     max_tool_loops = limits.get("max_tool_loops", 3)
     auto_reload_on_fatal_error = limits.get("auto_reload_on_fatal_error", False)

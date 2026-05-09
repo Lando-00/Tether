@@ -1,5 +1,6 @@
-host: "127.0.0.1"
-port: 8080
+http:
+  host: "127.0.0.1"
+  port: 8080
 system:
   prompt: |
     You are a helpful assistant that uses tools when appropriate.
@@ -69,3 +70,11 @@ context:
 stream:
   parser:
     strict_balancing: true      # Enforce balanced JSON braces
+# Phase placeholders — populated in later phases. Keep as empty mappings so
+# the strict Settings model accepts them today and future phases can add
+# fields without re-touching the YAML.
+security: {}
+observability: {}
+storage: {}
+connectors: {}
+inbox: {}

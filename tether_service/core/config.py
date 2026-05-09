@@ -20,24 +20,24 @@ def _yaml_load_text(path) -> Dict[str, Any]:
     return data or {}
 
 
-def load_settings() -> Dict[str, Any]:
+def load_settings_legacy() -> Dict[str, Any]:
     """
-    Load default.yml, overlay dev.yml if present, then apply env overrides using
-    TETHER__A__B=val -> cfg['a']['b']=parsed(val)
+    DEPRECATED (one-cycle coexistence): legacy ``dict``-returning loader.
+
+    Use :func:`tether_service.config.settings.load_settings` for new code; that
+    returns a typed :class:`tether_service.config.settings.Settings`. This
+    function is preserved unchanged so that existing call sites continue to
+    work; ``p2-cleanup`` will migrate them and delete this name.
+
+    Loads default.yml, overlays dev.yml if present, then applies env overrides
+    using ``TETHER__A__B=val`` -> ``cfg['a']['b']=parsed(val)``.
     """
     # base config dir within package
     pkg_root = resources.files("tether_service.config")
     cfg = _yaml_load_text(pkg_root / "default.yml")
 
-    # Check for env var to ignore dev.yml, useful for testing default config
-    ignore_dev_config = os.environ.get("TETHER_IGNORE_DEV_CONFIG", "false").lower() in (
-        "true",
-        "1",
-        "yes",
-    )
-
     dev_file = pkg_root / "dev.yml"
-    if not ignore_dev_config and dev_file.is_file():
+    if dev_file.is_file():
         dev_cfg = _yaml_load_text(dev_file)
         # If dev config has `_replaces_default: true`, use it as the base
         if dev_cfg.pop("_replaces_default", False):

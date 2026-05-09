@@ -2,7 +2,7 @@ from importlib import import_module
 from typing import Any, cast
 import inspect
 
-from tether_service.core.config import load_settings
+from tether_service.core.config import load_settings_legacy
 from tether_service.core.interfaces import ModelProvider, StreamParser, SessionStore
 from tether_service.protocol.service.generation_service import GenerationService
 
@@ -32,7 +32,7 @@ def load(dotted: str, **kwargs: Any) -> Any:
 
 class ServiceFactory:
     def __init__(self):
-        self.config = load_settings()
+        self.config = load_settings_legacy()
         self._provider: ModelProvider | None = None
         self._parser: StreamParser | None = None
         self._store: SessionStore | None = None
