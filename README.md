@@ -187,7 +187,7 @@ response = requests.post("http://localhost:8080/sessions")
 session = response.json()
 session_id = session["session_id"]
 
-# 2. Stream a chat completion
+# 2. Stream a chat completion (v2 vocabulary — opt in via Accept header)
 
 stream_request = {
     "session_id": session_id,
@@ -198,20 +198,27 @@ stream_request = {
 response = requests.post(
     "http://localhost:8080/chat/stream",
     json=stream_request,
+    headers={"Accept": "application/x-ndjson; version=1.0"},
     stream=True
 )
 
-# 3. Process NDJSON events
+# 3. Process NDJSON events (v2 vocabulary)
 
 for line in response.iter_lines():
     if line:
         event = json.loads(line)
-        if event["type"] == "token":
-            print(event["data"]["text"], end="", flush=True)
+        if event["type"] == "text_delta":
+            print(event["text"], end="", flush=True)
         elif event["type"] == "tool_call":
-            print(f"\n[Tool: {event['data']['name']}]")
+            print(f"\n[Tool: {event['name']}]")
         elif event["type"] == "tool_result":
-            print(f"[Result: {event['data']['result']}]")
+            status = event.get("status", "ok")
+            if status == "ok":
+                print(f"[Result: {event.get('result')}]")
+            else:
+                print(f"[Tool error: {event.get('error')}]")
+        elif event["type"] == "message_stop":
+            print()  # newline after streaming
 
 ```
 
@@ -310,7 +317,7 @@ tether_service/
 
 4. **Tool Loop**: The orchestrator can execute multiple tool calls in sequence (up to `max_tool_loops`), allowing the model to "think with tools."
 
-5. **Event Streaming**: All outputs use a structured NDJSON event format (`token`, `tool_call`, `tool_result`, `done`).
+5. **Event Streaming**: All outputs use a structured NDJSON event format. The v2 vocabulary (`text_delta`, `tool_call`, `tool_result`, `message_stop`) is available via `Accept: application/x-ndjson; version=1.0`.
 
 ## 📡 API Documentation
 
@@ -383,31 +390,56 @@ Stream a chat completion with function calling support.
 
 ```
 
-**Response (NDJSON stream):**
+**Response (NDJSON stream, v2 vocabulary):**
+
+To receive v2 events, send `Accept: application/x-ndjson; version=1.0`. The
+default (no Accept header) is currently v0 vocabulary and will be deprecated
+in a future release.
 
 ```json
-{"type": "token", "data": {"text": "Let"}}
-{"type": "token", "data": {"text": " me"}}
-{"type": "token", "data": {"text": " check"}}
-{"type": "tool_call", "data": {"name": "weather", "arguments": {"location": "Dublin"}}}
-{"type": "tool_result", "data": {"tool_name": "weather", "result": {"temp": 12, "condition": "Rainy"}}}
-{"type": "token", "data": {"text": "It's"}}
-{"type": "token", "data": {"text": " 12°C"}}
-{"type": "token", "data": {"text": " and"}}
-{"type": "token", "data": {"text": " rainy"}}
-{"type": "done", "data": {"finish_reason": "stop"}}
+{"protocol_version": "1.0", "session_id": "...", "turn_id": "...", "seq": 0, "ts": "...", "type": "message_start", "available_tools": [...]}
+{"protocol_version": "1.0", "session_id": "...", "turn_id": "...", "seq": 1, "ts": "...", "type": "text_delta", "text": "Let me check"}
+{"protocol_version": "1.0", "session_id": "...", "turn_id": "...", "seq": 2, "ts": "...", "type": "tool_call", "tool_call_id": "...", "name": "weather", "arguments": {"location": "Dublin"}}
+{"protocol_version": "1.0", "session_id": "...", "turn_id": "...", "seq": 3, "ts": "...", "type": "tool_result", "tool_call_id": "...", "name": "weather", "status": "ok", "result": {"temp": 12, "condition": "Rainy"}, "error": null, "error_kind": null, "missing_capabilities": []}
+{"protocol_version": "1.0", "session_id": "...", "turn_id": "...", "seq": 4, "ts": "...", "type": "text_delta", "text": "It's 12°C and rainy"}
+{"protocol_version": "1.0", "session_id": "...", "turn_id": "...", "seq": 5, "ts": "...", "type": "message_stop", "stop_reason": "complete"}
 
+```
+
+### Streaming Event Format (v2)
+
+Each event has a common envelope plus type-specific fields:
+
+```json
+{
+  "protocol_version": "1.0",
+  "session_id": "...",
+  "turn_id": "...",
+  "seq": 0,
+  "ts": "2026-01-01T12:00:00+00:00",
+  "type": "<event type>",
+  "...type-specific fields..."
+}
 ```
 
 ### Event Types
 
-| Event Type | Description | Data Fields |
-|------------|-------------|-------------|
-| `token` | Model-generated text token | `text`: string |
-| `tool_call` | Model requests tool execution | `name`: string, `arguments`: dict |
-| `tool_result` | Tool execution completed | `tool_name`: string, `result`: any |
-| `done` | Generation finished | `finish_reason`: "stop" \| "length" \| "error" |
-| `error` | Error occurred | `message`: string |
+| Event Type | Description | Key Fields |
+|------------|-------------|------------|
+| `message_start` | Turn opens | `available_tools` |
+| `text_delta` | Assistant text chunk | `text` |
+| `thinking_delta` | Reasoning chunk | `text` |
+| `tool_call` | Tool invocation | `tool_call_id`, `name`, `arguments` |
+| `tool_result` | Tool result | `tool_call_id`, `name`, `status` (ok/error), `result`, `error`, `error_kind` |
+| `error` | Fatal error | `message`, `error_type`, `is_fatal` |
+| `loop_limit_reached` | Tool-loop max hit | `loops` |
+| `hw_reset` | Hardware watchdog reset | `model_name` |
+| `message_stop` | Turn ends | `stop_reason` (complete/tool_loop_exhausted/cancelled/client_disconnect/error) |
+
+> **v0 wire format (deprecated)**: The default response (no Accept header or
+> `Accept: application/x-ndjson` without `version=1.0`) uses the legacy v0
+> vocabulary (`text`, `think`, `tool_started`, `tool_completed`, `tool_error`,
+> `done`). This default will flip to v2 in a future release.
 
 ## 🛠️ Tool System
 
