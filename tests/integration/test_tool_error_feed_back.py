@@ -16,7 +16,7 @@ import pytest
 
 from tether_service.core.interfaces import ModelProvider, Tool
 from tether_service.core.types import OrchestratorConfig, ToolExecutionContext
-from tether_service.protocol.orchestration.orchestrator_class import Orchestrator
+from tether_service.protocol.orchestration.chatty import ChattyAgentOrchestrator
 from tether_service.protocol.orchestration.policies import (
     LoopLimitPolicy,
     ToolErrorPolicy,
@@ -163,7 +163,7 @@ def _config(
 
 
 def _build(provider, tools, config):
-    return Orchestrator(
+    return ChattyAgentOrchestrator(
         provider=provider,
         parser=SlidingParser(),
         store=MinimalMemoryStore(),

@@ -1,4 +1,4 @@
-"""Unit tests for :class:`Orchestrator` (synthesis §3.5).
+"""Unit tests for :class:`ChattyAgentOrchestrator` (synthesis §3.5).
 
 Verifies:
 
@@ -20,7 +20,7 @@ import pytest
 from tether_service.core.interfaces import ModelProvider, SessionStore, StreamParser
 from tether_service.core.types import OrchestratorConfig
 from tether_service.protocol.orchestration.cancel import AsyncEventCancelToken
-from tether_service.protocol.orchestration.orchestrator_class import Orchestrator
+from tether_service.protocol.orchestration.chatty import ChattyAgentOrchestrator
 from tether_service.protocol.orchestration.policies import (
     LoopLimitPolicy,
     ToolErrorPolicy,
@@ -104,9 +104,9 @@ def _build_orch(
     parser: Optional[StreamParser] = None,
     tools: Optional[Dict[str, Any]] = None,
     config: Optional[OrchestratorConfig] = None,
-) -> Orchestrator:
+) -> ChattyAgentOrchestrator:
     tools = tools or {}
-    return Orchestrator(
+    return ChattyAgentOrchestrator(
         provider=provider,
         parser=parser or SlidingParser(),
         store=store or MinimalMemoryStore(),
@@ -138,7 +138,7 @@ def test_orchestrator_class_constructor_accepts_all_kwargs():
 def test_orchestrator_class_rejects_missing_required():
     """Missing any required kwarg raises TypeError (Python ``__init__``)."""
     with pytest.raises(TypeError):
-        Orchestrator()  # type: ignore[call-arg]
+        ChattyAgentOrchestrator()  # type: ignore[call-arg]
 
 
 # ---------------------------------------------------------------------------
@@ -157,7 +157,7 @@ def test_orchestrator_seams_exist():
         "_wire",
     ]
     for name in expected:
-        assert hasattr(Orchestrator, name), f"Orchestrator missing seam: {name}"
+        assert hasattr(ChattyAgentOrchestrator, name), f"Orchestrator missing seam: {name}"
 
 
 # ---------------------------------------------------------------------------
@@ -422,3 +422,4 @@ async def test_orchestrator_cancel_before_first_loop():
 
     assert isinstance(events[-1], MessageStop)
     assert events[-1].stop_reason == "cancelled"
+
