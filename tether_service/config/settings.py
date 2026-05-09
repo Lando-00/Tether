@@ -98,6 +98,12 @@ class ToolsSettings(StrictModel):
 
     registry: List[ToolSpec] = Field(default_factory=list)
     enabled: List[str] = Field(default_factory=list)
+    disabled: List[str] = Field(default_factory=list)
+    """Phase 4 (synthesis §4 step 42): tools opt-out list for the
+    discover path. When ``registry`` is empty, ToolRegistry auto-
+    discovers @tool-decorated classes; this list filters them out by
+    name. Has no effect when ``registry`` is non-empty (legacy path).
+    """
     call_contract: Literal["marker_json"] = "marker_json"
     continue_after_tool: bool = True
     web_search: WebSearchSettings = Field(default_factory=WebSearchSettings)

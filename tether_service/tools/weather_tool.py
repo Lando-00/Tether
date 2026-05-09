@@ -9,6 +9,7 @@ from typing import Dict, Any, Literal
 from datetime import datetime
 import requests
 from tether_service.tools.base import BaseTool
+from tether_service.tools.registration import tool
 
 
 # --- API Configuration ---
@@ -37,6 +38,7 @@ def _get_location_lat_lon(location: str) -> Dict[str, Any]:
         return {"error": f"Failed to connect to geocoding service: {e}"}
 
 
+@tool(name="weather")
 class GetWeatherTool(BaseTool):
     """Get the current weather conditions for a location."""
     
@@ -96,6 +98,7 @@ class GetWeatherTool(BaseTool):
             return {"error": "Could not parse weather data from API response."}
 
 
+@tool(name="forecast")
 class GetForecastTool(BaseTool):
     """Get a weather forecast for a location."""
     

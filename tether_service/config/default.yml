@@ -28,6 +28,17 @@ providers:
     args:
       dsn: "sqlite:///./data/tether.db"
 tools:
+  # Phase 4 (synthesis §4 step 42): tools may be configured two ways:
+  #   1. Legacy (this section): `registry` + `enabled` lists explicitly
+  #      enumerate tools by dotted-path. ToolRegistry uses this path
+  #      whenever `registry` is non-empty (back-compat for one cycle).
+  #   2. Discover: leave `registry` empty; ToolRegistry auto-discovers
+  #      every @tool-decorated class in tether_service.tools (and any
+  #      installed `tether.tools` entry-point). `disabled` filters them
+  #      out by name. The four bundled tools below are decorated, so
+  #      removing `registry` would still make them available — listing
+  #      them here is what the production config does today; flipping
+  #      to discover-only is a one-cycle follow-up.
   registry:
     - name: "time"
       impl: "tether_service.tools.time_tool.TimeTool"
@@ -42,6 +53,7 @@ tools:
     - "weather"
     - "forecast"
     - "web_search"
+  disabled: []  # Discover-path opt-out list (effective only when `registry` is empty).
   # Tool execution behavior
   call_contract: "marker_json"  # "marker_json" (default) uses <<function_call>> {...}
   continue_after_tool: true     # Continue generation after tool execution

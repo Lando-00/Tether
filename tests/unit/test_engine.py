@@ -31,7 +31,15 @@ def _settings_dict(tmp_db: str) -> dict:
                 "args": {"dsn": f"sqlite:///{tmp_db}"},
             },
         },
-        "tools": {"registry": [], "enabled": []},
+        # Empty registry → discover path; disable every in-tree @tool so the
+        # engine boots with zero tools (the assertion below pins the dict).
+        # Phase 4 step 42 gave ToolsSettings the `disabled` field for exactly
+        # this kind of opt-out.
+        "tools": {
+            "registry": [],
+            "enabled": [],
+            "disabled": ["time", "weather", "forecast", "web_search"],
+        },
     }
 
 

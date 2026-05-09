@@ -1,5 +1,5 @@
 from abc import abstractmethod
-from typing import Any, Dict, List, Literal, Optional, get_args, get_origin
+from typing import Any, ClassVar, Dict, List, Literal, Optional, get_args, get_origin
 from tether_service.core.interfaces import Tool
 
 # =============================
@@ -32,7 +32,23 @@ from tether_service.core.interfaces import Tool
 # - Use only JSON-serializable types for arguments and return values.
 
 class BaseTool(Tool):
-    
+
+    REQUIRED: ClassVar[bool] = False
+    """Whether the tool MUST be available for the engine to start.
+
+    * ``REQUIRED = False`` (default): if :meth:`startup` raises, the tool is
+      logged as a warning and dropped from the registry; the engine continues.
+      This is the right policy for any tool whose absence merely degrades
+      capability (e.g., ``WebSearchTool`` without ``BRAVE_API_KEY``).
+    * ``REQUIRED = True``: a startup failure aborts engine startup
+      (``Engine.__aenter__`` raises ``RuntimeError``). Reserved for tools
+      whose absence makes the system meaningfully broken — none of the
+      Phase 4 in-tree tools opt in. Future opt-in candidates: any
+      authentication tool that the system prompt assumes is present.
+
+    Synthesis §4 Phase 4 step 41 + §13.2 R5.
+    """
+
     def __init__(self):
         self._registry_name: str | None = None
 
@@ -42,6 +58,41 @@ class BaseTool(Tool):
         The orchestrator always calls tool.invoke(args); concrete tool authors
         always write a typed run(**kwargs) signature."""
         return await self.run(**args)
+
+    async def startup(self) -> None:
+        """Open shared resources (httpx clients, DB connections, ...).
+
+        Default no-op. Subclasses override when they own a resource that
+        outlives a single ``invoke()`` call. Called once per
+        ``Engine.__aenter__`` via
+        :func:`tether_service.tools.lifecycle.startup_all`.
+
+        If this method raises:
+
+        * For a tool with ``REQUIRED = True``, ``startup_all`` re-raises
+          (after the concurrent gather completes — synthesis §13.2 R5),
+          which propagates out of ``Engine.__aenter__`` as
+          ``RuntimeError``.
+        * For ``REQUIRED = False`` (default), the failure is logged and
+          the tool is dropped from the registry; the engine continues
+          without it.
+
+        Synthesis §4 Phase 4 step 41.
+        """
+        return None
+
+    async def shutdown(self) -> None:
+        """Close shared resources opened by :meth:`startup`.
+
+        Default no-op. Called best-effort during ``Engine.aclose`` —
+        before the hardware watchdog teardown so that tools can still
+        depend on the provider during their own cleanup. Failures here
+        are logged but never raised; partial cleanup is preferable to a
+        crash that obscures the real shutdown reason.
+
+        Synthesis §4 Phase 4 step 41.
+        """
+        return None
 
     @staticmethod
     def _extract_param_descriptions(docstring: str) -> dict:

@@ -10,6 +10,7 @@ import logging
 from typing import Any, Dict, Optional
 from tether_service.tools.base import BaseTool
 from tether_service.tools.brave_client import BraveSearchClient
+from tether_service.tools.registration import tool
 
 
 logger = logging.getLogger(__name__)
@@ -68,6 +69,7 @@ def _validate_count(count: int, max_count: int = 20) -> int:
     return count
 
 
+@tool(name="web_search")
 class WebSearchTool(BaseTool):
     """
     Search the web using Brave Search API.
