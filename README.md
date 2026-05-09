@@ -420,7 +420,7 @@ The `Accept` request header selects the response format and vocabulary:
 All responses include `X-Tether-Protocol-Version: 1.0`. v0 responses
 additionally include `Warning: 299 - "..."` per RFC 9110 §5.6.7.
 
-The v0 NDJSON vocabulary will be removed in a future Tether release.
+The v0 NDJSON vocabulary will be removed in Phase 8.
 Migrate to v2 (no header changes needed) at your earliest convenience.
 
 > **Legacy v0 wire format (opt-in; deprecated)**: Send
