@@ -74,32 +74,49 @@ class _NullStore(SessionStore):
 
 
 class _PassthroughParser(StreamParser):
-    """Emits every chunk as a TEXT event with the chunk as delta."""
+    """Emits every chunk as a typed PText event with the chunk as delta.
+
+    Phase 5 ``p5-parser-typed-events``: returns typed ParserEvent values
+    rather than dicts so the orchestrator's typed-event branching
+    actually fires.
+    """
 
     def feed(self, chunk: str):
-        return [{"type": "text", "data": {"delta": chunk}}]
+        from tether_service.protocol.parsers.events import PText
+
+        return [PText(text=chunk)]
 
     def finalize(self):
         return []
 
 
 class _ToolCallParser(StreamParser):
-    """On the second call to feed(), emits a TOOL_COMPLETE event."""
+    """On the second call to feed(), emits a typed PToolCallParsed event
+    that triggers tool dispatch in the orchestrator. Earlier calls emit
+    PText.
+    """
 
     def __init__(self):
         self._count = 0
 
     def feed(self, chunk: str):
+        from tether_service.protocol.parsers.events import (
+            PText,
+            PToolCallDetected,
+            PToolCallParsed,
+        )
+
         self._count += 1
         if self._count == 2:
             return [
-                {"type": "tool_started", "data": {}},
-                {
-                    "type": "tool_complete",
-                    "data": {"tool_name": "time", "tool_args": {}},
-                },
+                PToolCallDetected(),
+                PToolCallParsed(
+                    tool_call_id="call-test",
+                    name="time",
+                    arguments={},
+                ),
             ]
-        return [{"type": "text", "data": {"delta": chunk}}]
+        return [PText(text=chunk)]
 
     def finalize(self):
         return []

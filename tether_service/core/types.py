@@ -4,6 +4,11 @@ from dataclasses import dataclass
 from enum import StrEnum
 from typing import TYPE_CHECKING, TypedDict, Dict, Any, Optional
 
+from tether_service.protocol.orchestration.policies import (
+    LoopLimitPolicy,
+    ToolErrorPolicy,
+)
+
 if TYPE_CHECKING:
     from tether_service.config.settings import Settings
 
@@ -38,6 +43,12 @@ class OrchestratorConfig:
     auto_reload_on_fatal_error: bool
     save_thinking: bool
     include_thinking_in_history: bool
+    # Phase 5 step 52 (synthesis §3.5): policy fields. Defaulted on the
+    # dataclass so direct constructors (tests, GenerationService alias)
+    # keep working without specifying them; ``from_settings`` reads the
+    # explicit YAML / env values.
+    loop_limit_policy: LoopLimitPolicy = LoopLimitPolicy.EMIT_LIMIT_EVENT
+    tool_error_policy: ToolErrorPolicy = ToolErrorPolicy.FEED_BACK_TO_MODEL
 
     @classmethod
     def from_settings(cls, settings: "Settings") -> "OrchestratorConfig":
@@ -46,6 +57,8 @@ class OrchestratorConfig:
             auto_reload_on_fatal_error=settings.limits.auto_reload_on_fatal_error,
             save_thinking=settings.context.save_thinking,
             include_thinking_in_history=settings.context.include_thinking_in_history,
+            loop_limit_policy=LoopLimitPolicy(settings.limits.loop_limit_policy),
+            tool_error_policy=ToolErrorPolicy(settings.limits.tool_error_policy),
         )
 
 

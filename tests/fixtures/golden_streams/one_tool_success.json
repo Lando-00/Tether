@@ -7,11 +7,6 @@
     }
   },
   {
-    "type": "tool_marker_detected",
-    "session_id": "<sid>",
-    "data": {}
-  },
-  {
     "type": "tool_started",
     "session_id": "<sid>",
     "data": {

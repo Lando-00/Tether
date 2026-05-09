@@ -115,6 +115,18 @@ class LimitsSettings(StrictModel):
     tool_timeout_sec: int = Field(default=15, ge=1)
     max_tool_loops: int = Field(default=5, ge=1, le=50)
     auto_reload_on_fatal_error: bool = True
+    # Phase 5 step 52 (synthesis §3.5): policy fields. Stored as plain
+    # strings here so the YAML schema stays a flat key-value mapping;
+    # ``OrchestratorConfig.from_settings`` coerces to the typed enums.
+    # User-ratified defaults: emit_limit_event + feed_back_to_model.
+    loop_limit_policy: Literal["raise", "emit_limit_event"] = Field(
+        default="emit_limit_event",
+        description="LoopLimitPolicy enum value.",
+    )
+    tool_error_policy: Literal["break_loop", "feed_back_to_model"] = Field(
+        default="feed_back_to_model",
+        description="ToolErrorPolicy enum value.",
+    )
 
 
 class ContextSettings(StrictModel):
