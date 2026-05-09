@@ -6,6 +6,12 @@ This module provides an async HTTP client for the Brave Search API with:
 - Exponential backoff retry logic (429, 5xx only)
 - Response normalization to structured format
 - Security: No API keys or full responses in logs
+- Long-lived shared ``httpx.AsyncClient`` (synthesis §6 row 17): the
+  client is opened once via :meth:`aopen` and reused across every
+  :meth:`search` call so the TLS handshake + connection pool warm-up
+  (~150-300 ms) is paid once instead of per request. The previous
+  per-call ``async with httpx.AsyncClient(...)`` pattern was replaced
+  in the p4-brave-client-lifecycle PR (synthesis §4 Phase 4 step 44).
 """
 
 import asyncio
@@ -20,8 +26,13 @@ logger = logging.getLogger(__name__)
 class BraveSearchClient:
     """
     Async HTTP client for Brave Search API.
-    
+
     Implements timeout management, retry logic, and response normalization.
+
+    Lifecycle: call :meth:`aopen` before the first :meth:`search` call (or
+    use the client as an ``async with`` context manager). :meth:`search`
+    reuses a single :class:`httpx.AsyncClient` across calls — see
+    synthesis §6 row 17 for the cold-TLS bug this fixes.
     """
     
     BASE_URL = "https://api.search.brave.com/res/v1/web/search"
@@ -63,6 +74,45 @@ class BraveSearchClient:
             write=5.0,
             pool=5.0
         )
+
+        # Shared httpx.AsyncClient — populated by :meth:`aopen`. Keeping
+        # the connection pool open across calls eliminates the per-call
+        # TLS handshake (synthesis §6 row 17).
+        self._client: Optional[httpx.AsyncClient] = None
+        self._opened: bool = False
+
+    async def aopen(self) -> None:
+        """Open the long-lived :class:`httpx.AsyncClient`. Idempotent.
+
+        Calling twice is a no-op. Per synthesis §6 row 17, the same
+        client instance is reused across every :meth:`search` call so
+        the TLS handshake + connection pool warm-up cost is paid once
+        per process rather than once per query.
+        """
+        if self._opened:
+            return
+        self._client = httpx.AsyncClient(timeout=self.timeout)
+        self._opened = True
+
+    async def aclose(self) -> None:
+        """Close the underlying client. Idempotent.
+
+        Safe to call when :meth:`aopen` was never invoked or when
+        :meth:`aclose` was already called — both are no-ops.
+        """
+        if self._client is not None:
+            await self._client.aclose()
+            self._client = None
+        self._opened = False
+
+    async def __aenter__(self) -> "BraveSearchClient":
+        """Async context-manager entry — calls :meth:`aopen`."""
+        await self.aopen()
+        return self
+
+    async def __aexit__(self, exc_type, exc, tb) -> None:
+        """Async context-manager exit — calls :meth:`aclose`."""
+        await self.aclose()
     
     async def search(
         self,
@@ -93,9 +143,17 @@ class BraveSearchClient:
             }
         
         Raises:
+            RuntimeError: If :meth:`aopen` has not been called.
             httpx.HTTPStatusError: For non-retryable errors (4xx except 429)
             asyncio.TimeoutError: If total timeout exceeded
         """
+        if not self._opened or self._client is None:
+            raise RuntimeError(
+                "BraveSearchClient.search called before aopen() — open the "
+                "client via 'async with BraveSearchClient(...)' or call "
+                "aopen() explicitly. Synthesis §6 row 17."
+            )
+
         import time
         start_time = time.time()
         
@@ -140,77 +198,81 @@ class BraveSearchClient:
             )
             
             try:
-                async with httpx.AsyncClient(timeout=attempt_timeout) as client:
-                    response = await client.get(
-                        self.BASE_URL,
-                        headers=headers,
-                        params=params
-                    )
-                    
-                    # Log response metadata (NO full response or API key)
-                    logger.info(
-                        f"Brave API response: status={response.status_code}, "
-                        f"latency={int((time.time() - start_time) * 1000)}ms, "
-                        f"attempt={attempt + 1}"
-                    )
-                    
-                    # Check for errors
-                    if response.status_code == 200:
-                        # Success - normalize and return
-                        return self._normalize_response(response.json(), q, time.time() - start_time)
-                    
-                    elif response.status_code == 429:
-                        # Rate limit - retry with backoff
-                        retry_after = response.headers.get("Retry-After")
-                        if retry_after:
-                            try:
-                                delay = float(retry_after)
-                            except ValueError:
-                                delay = self.backoff_base * (2 ** attempt)
-                        else:
+                # Reuse the shared self._client across retries — no
+                # per-call AsyncClient construction (synthesis §6 row 17).
+                # Per-attempt timeout shrinks the read budget toward the
+                # remaining total_timeout so retries cannot overrun.
+                response = await self._client.get(
+                    self.BASE_URL,
+                    headers=headers,
+                    params=params,
+                    timeout=attempt_timeout,
+                )
+
+                # Log response metadata (NO full response or API key)
+                logger.info(
+                    f"Brave API response: status={response.status_code}, "
+                    f"latency={int((time.time() - start_time) * 1000)}ms, "
+                    f"attempt={attempt + 1}"
+                )
+
+                # Check for errors
+                if response.status_code == 200:
+                    # Success - normalize and return
+                    return self._normalize_response(response.json(), q, time.time() - start_time)
+
+                elif response.status_code == 429:
+                    # Rate limit - retry with backoff
+                    retry_after = response.headers.get("Retry-After")
+                    if retry_after:
+                        try:
+                            delay = float(retry_after)
+                        except ValueError:
                             delay = self.backoff_base * (2 ** attempt)
-                        
-                        logger.warning(
-                            f"Rate limit (429) - attempt {attempt + 1}/{self.max_retries + 1}, "
-                            f"retrying in {delay:.1f}s"
-                        )
-                        
-                        if attempt < self.max_retries:
-                            await asyncio.sleep(delay)
-                            attempt += 1
-                            continue
-                        else:
-                            # Max retries exceeded
-                            response.raise_for_status()
-                    
-                    elif response.status_code >= 500:
-                        # Server error - retry with backoff
-                        delay = self.backoff_base * (2 ** attempt)
-                        logger.warning(
-                            f"Server error ({response.status_code}) - attempt {attempt + 1}/{self.max_retries + 1}, "
-                            f"retrying in {delay:.1f}s"
-                        )
-                        
-                        if attempt < self.max_retries:
-                            await asyncio.sleep(delay)
-                            attempt += 1
-                            continue
-                        else:
-                            # Max retries exceeded
-                            response.raise_for_status()
-                    
-                    elif response.status_code in (403, 422):
-                        # Auth failure (403) or invalid token (422) - do not retry, provide friendly error
-                        logger.error(f"Authentication failed ({response.status_code}) - check BRAVE_API_KEY")
-                        raise ValueError(
-                            "Brave API authentication failed. Please verify your BRAVE_API_KEY "
-                            "is correct and active at https://api-dashboard.search.brave.com/"
-                        )
-                    
                     else:
-                        # Other 4xx errors - do not retry
-                        logger.error(f"Client error ({response.status_code}): {response.text[:100]}")
+                        delay = self.backoff_base * (2 ** attempt)
+
+                    logger.warning(
+                        f"Rate limit (429) - attempt {attempt + 1}/{self.max_retries + 1}, "
+                        f"retrying in {delay:.1f}s"
+                    )
+
+                    if attempt < self.max_retries:
+                        await asyncio.sleep(delay)
+                        attempt += 1
+                        continue
+                    else:
+                        # Max retries exceeded
                         response.raise_for_status()
+
+                elif response.status_code >= 500:
+                    # Server error - retry with backoff
+                    delay = self.backoff_base * (2 ** attempt)
+                    logger.warning(
+                        f"Server error ({response.status_code}) - attempt {attempt + 1}/{self.max_retries + 1}, "
+                        f"retrying in {delay:.1f}s"
+                    )
+
+                    if attempt < self.max_retries:
+                        await asyncio.sleep(delay)
+                        attempt += 1
+                        continue
+                    else:
+                        # Max retries exceeded
+                        response.raise_for_status()
+
+                elif response.status_code in (403, 422):
+                    # Auth failure (403) or invalid token (422) - do not retry, provide friendly error
+                    logger.error(f"Authentication failed ({response.status_code}) - check BRAVE_API_KEY")
+                    raise ValueError(
+                        "Brave API authentication failed. Please verify your BRAVE_API_KEY "
+                        "is correct and active at https://api-dashboard.search.brave.com/"
+                    )
+
+                else:
+                    # Other 4xx errors - do not retry
+                    logger.error(f"Client error ({response.status_code}): {response.text[:100]}")
+                    response.raise_for_status()
             
             except (httpx.TimeoutException, asyncio.TimeoutError) as e:
                 logger.warning(f"Timeout on attempt {attempt + 1}/{self.max_retries + 1}")
