@@ -13,6 +13,12 @@ from tether_service.core.interfaces import SessionStore
 class MemoryStore(SessionStore):
     def __init__(self):
         self.sessions: Dict[str, List[Dict[str, Any]]] = {}
+        # v2 parallel state — mirrors turns/tool_calls/raw_events tables.
+        # Not consumed by get_history(); exists for ABC parity + contract tests.
+        # Synthesis §3.6 + b1-persistence.md v2 table design.
+        self.turns: Dict[str, Dict[str, Any]] = {}
+        self.tool_calls: Dict[str, Dict[str, Any]] = {}
+        self.raw_events: List[Dict[str, Any]] = []
 
     # ------------------------------------------------------------------
     # Session lifecycle (required by SessionStore ABC)
@@ -39,7 +45,14 @@ class MemoryStore(SessionStore):
     # Message writes
     # ------------------------------------------------------------------
 
-    async def add_user(self, session_id: str, text: str) -> None:
+    async def add_user(
+        self,
+        session_id: str,
+        text: str,
+        *,
+        turn_id: Optional[str] = None,
+        seq_start: Optional[int] = None,
+    ) -> None:
         self.sessions.setdefault(session_id, []).append(
             {"role": "user", "content": text}
         )
@@ -50,6 +63,9 @@ class MemoryStore(SessionStore):
         text: str,
         thinking_text: Optional[str] = None,
         save_thinking: bool = True,
+        *,
+        turn_id: Optional[str] = None,
+        seq_start: Optional[int] = None,
     ) -> None:
         entry: Dict[str, Any] = {"role": "assistant", "content": text}
         if save_thinking and thinking_text:
@@ -57,18 +73,49 @@ class MemoryStore(SessionStore):
         self.sessions.setdefault(session_id, []).append(entry)
 
     async def add_assistant_toolcall(
-        self, session_id: str, tool_name: str, args: Dict[str, Any]
+        self,
+        session_id: str,
+        tool_name: str,
+        args: Dict[str, Any],
+        *,
+        turn_id: Optional[str] = None,
+        tool_call_id: Optional[str] = None,
+        seq_start: Optional[int] = None,
     ) -> None:
         self.sessions.setdefault(session_id, []).append(
             {"role": "tool", "tool": tool_name, "args": args}
         )
+        if tool_call_id is not None:
+            self.tool_calls[tool_call_id] = {
+                "tool_call_id": tool_call_id,
+                "turn_id": turn_id,
+                "session_id": session_id,
+                "name": tool_name,
+                "arguments": args,
+                "status": "running",
+                "call_seq": seq_start,
+            }
 
     async def add_tool_result(
-        self, session_id: str, tool_name: str, result: Any
+        self,
+        session_id: str,
+        tool_name: str,
+        result: Any,
+        *,
+        turn_id: Optional[str] = None,
+        tool_call_id: Optional[str] = None,
+        seq_start: Optional[int] = None,
+        status: str = "ok",
+        error: Optional[str] = None,
+        duration_ms: Optional[int] = None,
     ) -> None:
         self.sessions.setdefault(session_id, []).append(
             {"role": "tool_result", "tool": tool_name, "result": result}
         )
+        if tool_call_id is not None and tool_call_id in self.tool_calls:
+            self.tool_calls[tool_call_id].update(
+                status=status, result=result, error=error, duration_ms=duration_ms
+            )
 
     # ------------------------------------------------------------------
     # History reconstruction — canonical model-facing shape.
@@ -128,3 +175,57 @@ class MemoryStore(SessionStore):
             self.sessions.setdefault(session_id, []).insert(
                 0, {"role": "system", "content": prompt}
             )
+
+    # ------------------------------------------------------------------
+    # v2 turn lifecycle — in-memory parity with SqliteSessionStore.
+    # Not consumed by get_history(); for ABC contract compliance + tests.
+    # Synthesis §3.6 + b1-persistence.md v2 table design.
+    # ------------------------------------------------------------------
+
+    async def start_turn(
+        self,
+        session_id: str,
+        turn_id: str,
+        *,
+        model_name: Optional[str] = None,
+    ) -> None:
+        self.turns[turn_id] = {
+            "turn_id": turn_id,
+            "session_id": session_id,
+            "model_name": model_name,
+            "status": "running",
+            "stop_reason": None,
+            "error_json": None,
+        }
+
+    async def complete_turn(
+        self,
+        turn_id: str,
+        *,
+        status: str = "completed",
+        stop_reason: Optional[str] = None,
+        error_json: Optional[str] = None,
+    ) -> None:
+        if turn_id in self.turns:
+            self.turns[turn_id].update(
+                status=status, stop_reason=stop_reason, error_json=error_json
+            )
+
+    async def record_raw_event(
+        self,
+        session_id: str,
+        turn_id: str,
+        seq: int,
+        event_type: str,
+        payload: Dict[str, Any],
+        *,
+        tool_call_id: Optional[str] = None,
+    ) -> None:
+        self.raw_events.append({
+            "session_id": session_id,
+            "turn_id": turn_id,
+            "seq": seq,
+            "type": event_type,
+            "payload": payload,
+            "tool_call_id": tool_call_id,
+        })

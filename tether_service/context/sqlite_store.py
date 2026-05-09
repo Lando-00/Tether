@@ -3,11 +3,14 @@ from __future__ import annotations
 
 import datetime
 import json
+import logging
 import sqlite3
 from pathlib import Path
 from typing import Any, Dict, List, Optional
 
 from tether_service.core.interfaces import SessionStore
+
+logger = logging.getLogger(__name__)
 
 
 class SqliteSessionStore(SessionStore):
@@ -94,7 +97,14 @@ class SqliteSessionStore(SessionStore):
         )
         self.conn.commit()
 
-    async def add_user(self, session_id: str, text: str) -> None:
+    async def add_user(
+        self,
+        session_id: str,
+        text: str,
+        *,
+        turn_id: Optional[str] = None,
+        seq_start: Optional[int] = None,
+    ) -> None:
         await self._ensure_session(session_id)
         ts = datetime.datetime.now(datetime.timezone.utc).isoformat()
         self.conn.execute(
@@ -102,6 +112,13 @@ class SqliteSessionStore(SessionStore):
             (session_id, "user", text, ts),
         )
         self.conn.commit()
+        # turn_id/seq_start accepted for future step-63 reshape; not yet written
+        # to v2 tables (messages.turn_id column not yet added). Synthesis §3.6.
+        if turn_id is not None:
+            logger.debug(
+                "add_user: turn_id=%s seq_start=%s (v2 write deferred to step 63)",
+                turn_id, seq_start,
+            )
 
     async def add_assistant_text(
         self,
@@ -109,6 +126,9 @@ class SqliteSessionStore(SessionStore):
         text: str,
         thinking_text: Optional[str] = None,
         save_thinking: bool = True,
+        *,
+        turn_id: Optional[str] = None,
+        seq_start: Optional[int] = None,
     ) -> None:
         await self._ensure_session(session_id)
         ts = datetime.datetime.now(datetime.timezone.utc).isoformat()
@@ -118,27 +138,76 @@ class SqliteSessionStore(SessionStore):
             (session_id, "assistant", text, thinking_value, ts),
         )
         self.conn.commit()
+        # turn_id/seq_start accepted for future step-63 reshape. Synthesis §3.6.
+        if turn_id is not None:
+            logger.debug(
+                "add_assistant_text: turn_id=%s seq_start=%s (v2 write deferred to step 63)",
+                turn_id, seq_start,
+            )
 
     async def add_assistant_toolcall(
-        self, session_id: str, tool_name: str, args: Dict[str, Any]
+        self,
+        session_id: str,
+        tool_name: str,
+        args: Dict[str, Any],
+        *,
+        turn_id: Optional[str] = None,
+        tool_call_id: Optional[str] = None,
+        seq_start: Optional[int] = None,
     ) -> None:
         await self._ensure_session(session_id)
         ts = datetime.datetime.now(datetime.timezone.utc).isoformat()
+        # v1 messages row (unchanged shape — synthesis §3.6 anti-scope)
         self.conn.execute(
             "INSERT INTO messages(session_id, role, tool_name, args, ts) VALUES (?, ?, ?, ?, ?)",
             (session_id, "tool", tool_name, json.dumps(args or {}), ts),
         )
+        # v2 tool_calls row when turn_id + tool_call_id are provided
+        if turn_id is not None and tool_call_id is not None:
+            self.conn.execute(
+                "INSERT OR IGNORE INTO tool_calls"
+                "(tool_call_id, session_id, turn_id, name, arguments_json, status, call_seq)"
+                " VALUES (?, ?, ?, ?, ?, ?, ?)",
+                (
+                    tool_call_id, session_id, turn_id, tool_name,
+                    json.dumps(args or {}), "running", seq_start,
+                ),
+            )
         self.conn.commit()
 
     async def add_tool_result(
-        self, session_id: str, tool_name: str, result: Any
+        self,
+        session_id: str,
+        tool_name: str,
+        result: Any,
+        *,
+        turn_id: Optional[str] = None,
+        tool_call_id: Optional[str] = None,
+        seq_start: Optional[int] = None,
+        status: str = "ok",
+        error: Optional[str] = None,
+        duration_ms: Optional[int] = None,
     ) -> None:
         await self._ensure_session(session_id)
         ts = datetime.datetime.now(datetime.timezone.utc).isoformat()
+        # v1 messages row (unchanged shape — synthesis §3.6 anti-scope)
         self.conn.execute(
             "INSERT INTO messages(session_id, role, tool_name, result, ts) VALUES (?, ?, ?, ?, ?)",
             (session_id, "tool_result", tool_name, json.dumps(result), ts),
         )
+        # v2 tool_calls UPDATE when turn_id + tool_call_id are provided
+        if turn_id is not None and tool_call_id is not None:
+            completed_at = datetime.datetime.now(datetime.timezone.utc).isoformat()
+            self.conn.execute(
+                "UPDATE tool_calls SET status=?, result_json=?, error_json=?,"
+                " result_seq=?, completed_at=?, duration_ms=?"
+                " WHERE tool_call_id=?",
+                (
+                    status, json.dumps(result), error,
+                    seq_start, completed_at, duration_ms,
+                    tool_call_id,
+                ),
+            )
         self.conn.commit()
 
     async def get_history(
@@ -187,3 +256,80 @@ class SqliteSessionStore(SessionStore):
                 (session_id, "system", prompt, ts),
             )
             self.conn.commit()
+
+    # ------------------------------------------------------------------
+    # v2 turn lifecycle (synthesis §3.6 + b1-persistence.md)
+    # ------------------------------------------------------------------
+
+    async def start_turn(
+        self,
+        session_id: str,
+        turn_id: str,
+        *,
+        model_name: Optional[str] = None,
+    ) -> None:
+        """Insert a turns row in 'running' state.
+
+        _ensure_session guarantees a parent sessions row even when the
+        orchestrator calls this before the first message write.
+        Synthesis §3.6.
+        """
+        await self._ensure_session(session_id)
+        self.conn.execute(
+            "INSERT OR IGNORE INTO turns(turn_id, session_id, model_name, status)"
+            " VALUES (?, ?, ?, ?)",
+            (turn_id, session_id, model_name, "running"),
+        )
+        self.conn.commit()
+
+    async def complete_turn(
+        self,
+        turn_id: str,
+        *,
+        status: str = "completed",
+        stop_reason: Optional[str] = None,
+        error_json: Optional[str] = None,
+    ) -> None:
+        """Stamp the turns row with completed_at + final status.
+
+        status must satisfy the CHECK constraint:
+          running | completed | failed | cancelled
+        Synthesis §3.6.
+        """
+        completed_at = datetime.datetime.now(datetime.timezone.utc).isoformat()
+        self.conn.execute(
+            "UPDATE turns SET status=?, stop_reason=?, completed_at=?, error_json=?"
+            " WHERE turn_id=?",
+            (status, stop_reason, completed_at, error_json, turn_id),
+        )
+        self.conn.commit()
+
+    async def record_raw_event(
+        self,
+        session_id: str,
+        turn_id: str,
+        seq: int,
+        event_type: str,
+        payload: Dict[str, Any],
+        *,
+        tool_call_id: Optional[str] = None,
+    ) -> None:
+        """Insert a raw_events row.
+
+        UNIQUE(turn_id, seq) violations are logged at WARNING and
+        swallowed; the replay log can tolerate sparse gaps.
+        Synthesis §3.6.
+        """
+        payload_json = json.dumps(payload, default=str)
+        try:
+            self.conn.execute(
+                "INSERT INTO raw_events"
+                "(session_id, turn_id, seq, type, tool_call_id, payload_json)"
+                " VALUES (?, ?, ?, ?, ?, ?)",
+                (session_id, turn_id, seq, event_type, tool_call_id, payload_json),
+            )
+            self.conn.commit()
+        except sqlite3.IntegrityError:
+            logger.warning(
+                "Duplicate raw_event skipped: turn_id=%s seq=%s", turn_id, seq
+            )
