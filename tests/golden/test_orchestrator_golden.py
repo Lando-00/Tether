@@ -14,7 +14,9 @@ from pathlib import Path
 
 import pytest
 
+from tether_service.core.types import OrchestratorConfig
 from tether_service.protocol.orchestration.orchestrator import orchestrate
+from tether_service.protocol.orchestration.tool_runner import ToolRunner
 from tether_service.protocol.parsers.sliding import SlidingParser
 from tether_service.tools.time_tool import TimeTool
 
@@ -67,6 +69,13 @@ async def _run_orchestrator() -> list[dict]:
         store=store,
         tools=tools,
         system_prompt="You are a helpful assistant.",
+        config=OrchestratorConfig(
+            max_tool_loops=5,
+            auto_reload_on_fatal_error=False,
+            save_thinking=True,
+            include_thinking_in_history=False,
+        ),
+        tool_runner=ToolRunner(tools, timeout_sec=15),
     ):
         line = raw_bytes.decode("utf-8").strip()
         if line:

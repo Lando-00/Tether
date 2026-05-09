@@ -30,8 +30,8 @@ class OrchestratorConfig:
 
     Built once (typically by ``Engine.from_settings``) and passed to
     ``orchestrate()`` via dependency injection. Frozen so the orchestrator
-    cannot mutate it. Per _synthesis.md §4 Phase 2 step 23 (kill
-    ``load_settings_legacy()`` from business logic).
+    cannot mutate it. Per _synthesis.md §4 Phase 2 step 23 (kill legacy
+    config dict reads from business logic).
     """
 
     max_tool_loops: int
