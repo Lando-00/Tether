@@ -63,6 +63,9 @@ limits:
   max_tool_loops: 5
   # Model error recovery
   auto_reload_on_fatal_error: true  # Experimental: auto-reload model on fatal OpenCL/TVM errors
+context:
+  save_thinking: true
+  include_thinking_in_history: false
 stream:
   parser:
     strict_balancing: true      # Enforce balanced JSON braces

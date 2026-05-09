@@ -53,6 +53,7 @@ class SqliteSessionStore(SessionStore):
                 session_id TEXT NOT NULL,
                 role TEXT NOT NULL,
                 content TEXT,
+                thinking_text TEXT,
                 tool_name TEXT,
                 args TEXT,
                 result TEXT,
@@ -61,6 +62,16 @@ class SqliteSessionStore(SessionStore):
             )
             """
         )
+        # Ensure new columns exist when migrating from prior schema versions
+        cur.execute("PRAGMA table_info(messages)")
+        existing_columns = {row["name"] for row in cur.fetchall()}
+        if "thinking_text" not in existing_columns:
+            cur.execute("ALTER TABLE messages ADD COLUMN thinking_text TEXT")
+        if "args" not in existing_columns:
+            cur.execute("ALTER TABLE messages ADD COLUMN args TEXT")
+        if "result" not in existing_columns:
+            cur.execute("ALTER TABLE messages ADD COLUMN result TEXT")
+
         cur.execute(
             "CREATE INDEX IF NOT EXISTS idx_session_ts ON messages(session_id, ts)"
         )
@@ -127,12 +138,19 @@ class SqliteSessionStore(SessionStore):
         )
         self.conn.commit()
 
-    async def add_assistant_text(self, session_id: str, text: str) -> None:
+    async def add_assistant_text(
+        self,
+        session_id: str,
+        text: str,
+        thinking_text: Optional[str] = None,
+        save_thinking: bool = True,
+    ) -> None:
         await self._ensure_session(session_id)
         ts = datetime.datetime.utcnow().isoformat()
+        thinking_value = thinking_text if (save_thinking and thinking_text) else None
         self.conn.execute(
-            "INSERT INTO messages(session_id, role, content, ts) VALUES (?, ?, ?, ?)",
-            (session_id, "assistant", text, ts),
+            "INSERT INTO messages(session_id, role, content, thinking_text, ts) VALUES (?, ?, ?, ?, ?)",
+            (session_id, "assistant", text, thinking_value, ts),
         )
         self.conn.commit()
 
@@ -158,16 +176,23 @@ class SqliteSessionStore(SessionStore):
         )
         self.conn.commit()
 
-    async def get_history(self, session_id: str) -> List[Dict[str, Any]]:
+    async def get_history(
+        self, session_id: str, include_thinking: bool = False
+    ) -> List[Dict[str, Any]]:
         rows = self.conn.execute(
-            "SELECT role, content, tool_name, args, result FROM messages WHERE session_id = ? ORDER BY ts ASC",
+            "SELECT role, content, thinking_text, tool_name, args, result FROM messages WHERE session_id = ? ORDER BY ts ASC",
             (session_id,),
         ).fetchall()
         history: List[Dict[str, Any]] = []
         for r in rows:
             role = r["role"]
             if role in ("user", "assistant", "system"):
-                history.append({"role": role, "content": r["content"] or ""})
+                content = r["content"] or ""
+                if role == "assistant" and include_thinking:
+                    thinking = r["thinking_text"] or ""
+                    if thinking:
+                        content = f"{thinking}{content}"
+                history.append({"role": role, "content": content})
             elif role == "tool":
                 # Assistant made a tool call - format as assistant message with function_call syntax
                 tool_name = r["tool_name"]
