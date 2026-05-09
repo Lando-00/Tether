@@ -33,7 +33,6 @@ class TestWebSearchToolRealAPI:
     async def test_basic_search_with_real_api(self):
         """Test basic web search with real API."""
         tool = WebSearchTool()
-        tool._registry_name = "web_search"
         
         result = await tool.invoke({"query": "Python programming", "count": 3})
         
@@ -59,7 +58,6 @@ class TestWebSearchToolRealAPI:
     async def test_search_with_all_parameters(self):
         """Test search with all available parameters."""
         tool = WebSearchTool()
-        tool._registry_name = "web_search"
         
         await asyncio.sleep(1)
         
@@ -81,7 +79,6 @@ class TestWebSearchToolRealAPI:
         rather than silently clamping. Synthesis §4 Phase 4 step 43."""
         from pydantic import ValidationError
         tool = WebSearchTool()
-        tool._registry_name = "web_search"
 
         await asyncio.sleep(1)
 
@@ -93,7 +90,6 @@ class TestWebSearchToolRealAPI:
     async def test_unicode_query_with_real_api(self):
         """Test Unicode characters in query."""
         tool = WebSearchTool()
-        tool._registry_name = "web_search"
         
         await asyncio.sleep(1)
         
@@ -109,7 +105,6 @@ class TestWebSearchToolRealAPI:
     async def test_special_characters_with_real_api(self):
         """Test special characters in query."""
         tool = WebSearchTool()
-        tool._registry_name = "web_search"
         
         await asyncio.sleep(1)
         
@@ -125,7 +120,6 @@ class TestWebSearchToolRealAPI:
     async def test_country_filter_with_real_api(self):
         """Test country filter with real API."""
         tool = WebSearchTool()
-        tool._registry_name = "web_search"
         
         await asyncio.sleep(1)
         
@@ -144,7 +138,6 @@ class TestWebSearchToolRealAPI:
     async def test_freshness_filter_with_real_api(self):
         """Test time-based freshness filter."""
         tool = WebSearchTool()
-        tool._registry_name = "web_search"
         
         await asyncio.sleep(1)
         
@@ -163,7 +156,6 @@ class TestWebSearchToolRealAPI:
     async def test_schema_matches_execution(self):
         """Test that tool schema matches actual execution."""
         tool = WebSearchTool()
-        tool._registry_name = "web_search"
         
         # Get schema
         schema = tool.auto_schema
@@ -195,7 +187,6 @@ class TestWebSearchToolRealAPI:
     async def test_response_format_contract_with_real_api(self):
         """Test that real API responses match expected contract."""
         tool = WebSearchTool()
-        tool._registry_name = "web_search"
         
         await asyncio.sleep(1)
         
@@ -230,7 +221,6 @@ class TestWebSearchToolRealAPI:
     async def test_execution_timing_with_real_api(self):
         """Test that tool execution completes in reasonable time."""
         tool = WebSearchTool()
-        tool._registry_name = "web_search"
         
         await asyncio.sleep(1)
         
@@ -316,7 +306,6 @@ class TestWebSearchToolRealAPIOrchestration:
     async def test_multiple_sequential_searches(self):
         """Test multiple searches in sequence (simulating conversation)."""
         tool = WebSearchTool()
-        tool._registry_name = "web_search"
         
         # First search
         result1 = await tool.invoke({"query": "Python", "count": 2})
@@ -336,7 +325,6 @@ class TestWebSearchToolRealAPIOrchestration:
     async def test_search_result_as_context(self):
         """Test that search results could be used as context in conversation."""
         tool = WebSearchTool()
-        tool._registry_name = "web_search"
         
         await asyncio.sleep(1)
         
@@ -361,7 +349,6 @@ class TestWebSearchToolRealAPIOrchestration:
     async def test_tool_kwargs_format(self):
         """Test that tool works with kwargs dict (as orchestrator passes)."""
         tool = WebSearchTool()
-        tool._registry_name = "web_search"
         
         await asyncio.sleep(1)
         
@@ -387,7 +374,6 @@ class TestWebSearchToolRealAPIBackwardCompatibility:
     async def test_articles_format_stability(self):
         """Test that deprecated 'articles' format remains stable."""
         tool = WebSearchTool()
-        tool._registry_name = "web_search"
         
         await asyncio.sleep(1)
         
@@ -411,7 +397,6 @@ class TestWebSearchToolRealAPIBackwardCompatibility:
     async def test_transition_period_compatibility(self):
         """Test that both old and new consumers can use the response."""
         tool = WebSearchTool()
-        tool._registry_name = "web_search"
         
         await asyncio.sleep(1)
         

@@ -103,7 +103,6 @@ class TestWebSearchWithMockedServer:
         
         # Create tool
         tool = WebSearchTool()
-        tool._registry_name = "web_search"
         
         # Mock BraveSearchClient
         mock_client = AsyncMock()
@@ -184,7 +183,6 @@ class TestWebSearchErrorHandling:
         import httpx
         
         tool = WebSearchTool()
-        tool._registry_name = "web_search"
         
         # Mock client that raises 429 error
         mock_client = AsyncMock()
@@ -215,7 +213,6 @@ class TestWebSearchErrorHandling:
         import asyncio
         
         tool = WebSearchTool()
-        tool._registry_name = "web_search"
         
         # Mock client that times out
         mock_client = AsyncMock()

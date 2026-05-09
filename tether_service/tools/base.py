@@ -89,7 +89,12 @@ class BaseTool(Tool):
     """
 
     def __init__(self):
-        self._registry_name: str | None = None
+        # No-op constructor preserved for subclasses that call ``super().__init__()``.
+        # ``_registry_name`` post-hoc injection was retired in Phase 4 step 43;
+        # the ``@tool(name=...)`` decorator now sets the registry name at class
+        # definition time via the ``_tether_tool_registered_name`` marker
+        # consumed by :attr:`name`.
+        pass
 
     async def invoke(
         self,
@@ -452,23 +457,19 @@ class BaseTool(Tool):
 
     @property
     def name(self) -> str:
-        """Registry name as set by the :func:`@tool` decorator or by the
-        legacy ``_registry_name`` attribute (Phase 4 transition).
+        """Registry name set by the :func:`@tool` decorator.
 
-        Reads in this order:
+        Reads the class-level marker attribute
+        (``_tether_tool_registered_name``) installed by
+        :func:`tether_service.tools.registration.tool` at class
+        definition time. Falls back to the bare class name when an
+        undecorated :class:`BaseTool` subclass is used directly (test
+        fixtures).
 
-        1. ``self._registry_name`` if non-empty (legacy ToolRegistry sets
-           this; tests still set it directly — kept for one cycle until
-           commit 4 of this phase removes the plumbing).
-        2. The class-level marker attribute set by
-           :func:`tether_service.tools.registration.tool` (the decorator).
-        3. The bare class name (test fixtures with no decoration).
-
-        Synthesis §4 Phase 4 step 42 + step 43.
+        Walks the MRO so the marker is found on whichever class in the
+        chain was decorated, preferring the most-derived class's own
+        marker. Synthesis §4 Phase 4 step 42 + step 43.
         """
-        rn = getattr(self, "_registry_name", None)
-        if rn:
-            return rn
         cls = type(self)
         for klass in cls.__mro__:
             if "_tether_tool_registered_name" in klass.__dict__:

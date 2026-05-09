@@ -90,13 +90,30 @@ def test_tool_registry_discover_path():
     assert isinstance(reg.get("b"), _GoodB)
 
 
-def test_tool_registry_discover_sets_registry_name():
-    """Discovered tools get ``_registry_name`` set so BaseTool.name reports
-    the registered name."""
-    reg = ToolRegistry(discovered={"alpha": _GoodA})
+def test_tool_registry_discover_uses_decorator_name():
+    """Discovered + @tool-decorated tools report the registry name via
+    :attr:`BaseTool.name` (the marker installed by ``@tool(name=...)``).
+
+    Phase 4 step 43: ``ToolRegistry`` no longer post-hoc injects
+    ``_registry_name`` on the instance — the decorator already set the
+    class-level marker at definition time.
+    """
+    @tool(name="alpha")
+    class _Alpha(BaseTool):
+        @property
+        def schema(self):
+            return {}
+
+        async def run(self):
+            return {}
+
+    reg = ToolRegistry(discovered={"alpha": _Alpha})
     inst = reg.get("alpha")
-    assert inst._registry_name == "alpha"
     assert inst.name == "alpha"
+    assert not hasattr(inst, "_registry_name"), (
+        "Phase 4 step 43 retired the _registry_name post-hoc injection; "
+        "the decorator's class-level marker is now the only naming surface."
+    )
 
 
 def test_tool_registry_disabled_filters():

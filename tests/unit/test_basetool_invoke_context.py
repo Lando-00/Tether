@@ -37,7 +37,6 @@ class _CtxAwareTool(BaseTool):
 
     def __init__(self):
         super().__init__()
-        self._registry_name = "ctx_aware"
 
     @property
     def schema(self) -> Dict[str, Any]:
@@ -76,7 +75,6 @@ class TestExistingToolsIgnoreContext:
         """TimeTool's run signature has no ``context`` param — invoke must
         accept ``context=None`` (and omitted) without breaking."""
         tool = TimeTool()
-        tool._registry_name = "time"
 
         # Both forms must succeed
         r1 = await tool.invoke({"timezone": "UTC"})
@@ -91,7 +89,6 @@ class TestExistingToolsIgnoreContext:
         """When ``run`` doesn't declare ``context``, the dispatcher MUST NOT
         pass it through (TypeError would otherwise leak)."""
         tool = TimeTool()
-        tool._registry_name = "time"
         ctx = ToolExecutionContext(session_id="s", turn_id="t")
         # Just must not raise
         result = await tool.invoke({"timezone": "UTC"}, context=ctx)

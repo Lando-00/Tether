@@ -24,7 +24,6 @@ class _ListStrTool(BaseTool):
 
     def __init__(self):
         super().__init__()
-        self._registry_name = "list_str_tool"
 
     @property
     def schema(self) -> Dict[str, Any]:
@@ -39,7 +38,6 @@ class _OptionalStrTool(BaseTool):
 
     def __init__(self):
         super().__init__()
-        self._registry_name = "opt_str_tool"
 
     @property
     def schema(self) -> Dict[str, Any]:
@@ -54,7 +52,6 @@ class _LiteralTool(BaseTool):
 
     def __init__(self):
         super().__init__()
-        self._registry_name = "literal_tool"
 
     @property
     def schema(self) -> Dict[str, Any]:
@@ -69,7 +66,6 @@ class _DefaultIntTool(BaseTool):
 
     def __init__(self):
         super().__init__()
-        self._registry_name = "default_int_tool"
 
     @property
     def schema(self) -> Dict[str, Any]:
@@ -84,7 +80,6 @@ class _VarArgsTool(BaseTool):
 
     def __init__(self):
         super().__init__()
-        self._registry_name = "varargs_tool"
 
     @property
     def schema(self) -> Dict[str, Any]:
@@ -99,7 +94,6 @@ class _ListIntTool(BaseTool):
 
     def __init__(self):
         super().__init__()
-        self._registry_name = "list_int_tool"
 
     @property
     def schema(self) -> Dict[str, Any]:
@@ -114,7 +108,6 @@ class _OptionalLiteralTool(BaseTool):
 
     def __init__(self):
         super().__init__()
-        self._registry_name = "opt_literal_tool"
 
     @property
     def schema(self) -> Dict[str, Any]:
@@ -129,7 +122,6 @@ class _DictTool(BaseTool):
 
     def __init__(self):
         super().__init__()
-        self._registry_name = "dict_tool"
 
     @property
     def schema(self) -> Dict[str, Any]:
@@ -269,7 +261,6 @@ class TestTimeToolSchema:
 
     def setup_method(self):
         self.tool = TimeTool()
-        self.tool._registry_name = "time_tool"
         self.schema = self.tool.auto_schema
         self.props = self.schema["function"]["parameters"]["properties"]
         self.req = self.schema["function"]["parameters"]["required"]

@@ -56,7 +56,6 @@ async def _run_orchestrator() -> list[dict]:
 
     # Build a minimal tools dict with just TimeTool, name injected manually
     tool = TimeTool()
-    tool._registry_name = "time_tool"
     tools = {"time_tool": tool}
 
     events = []
