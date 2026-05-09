@@ -69,9 +69,9 @@ class ToolRegistry:
 
         Both paths construct each tool and raise :class:`RuntimeError`
         chained from the original failure when a tool's ``__init__``
-        raises. Phase 4 step 43: ``_registry_name`` post-hoc injection
-        is retired — the ``@tool(name=...)`` decorator sets the
-        registry name at class definition time via the
+        raises. Phase 4 step 43: the legacy per-instance registry-name
+        injection is retired — the ``@tool(name=...)`` decorator sets
+        the registry name at class definition time via the
         ``_tether_tool_registered_name`` class attribute consumed by
         :attr:`BaseTool.name`. Legacy dotted-path tools that aren't
         decorated still get registered under their YAML ``name``; the
@@ -174,7 +174,7 @@ class ToolRegistry:
     # ------------------------------------------------------------------
 
     def _register(self, name: str, instance: Any) -> None:
-        # Phase 4 step 43: no more ``_registry_name`` post-hoc injection.
+        # Phase 4 step 43: no more per-instance registry-name injection.
         # The ``@tool(name=...)`` decorator sets the class-level
         # ``_tether_tool_registered_name`` marker at definition time;
         # ``BaseTool.name`` reads from it. For undecorated legacy

@@ -90,10 +90,10 @@ class BaseTool(Tool):
 
     def __init__(self):
         # No-op constructor preserved for subclasses that call ``super().__init__()``.
-        # ``_registry_name`` post-hoc injection was retired in Phase 4 step 43;
-        # the ``@tool(name=...)`` decorator now sets the registry name at class
-        # definition time via the ``_tether_tool_registered_name`` marker
-        # consumed by :attr:`name`.
+        # The legacy per-instance ``registry-name`` injection was retired in
+        # Phase 4 step 43; the ``@tool(name=...)`` decorator now sets the
+        # registry name at class definition time via the
+        # ``_tether_tool_registered_name`` marker consumed by :attr:`name`.
         pass
 
     async def invoke(
