@@ -456,6 +456,118 @@ class MLCProvider(ModelProvider):
         """
         return self.hw_shutdown_budget_sec / 4
 
+    # ------------------------------------------------------------------
+    # Provider v2 contract (Phase 3 step 39).
+    # Synthesis §4 Phase 3 step 39, §11.3 R21, §6 bug #12 (typed path
+    # emits ProviderToolCall instead of dropping native tool_calls).
+    # ------------------------------------------------------------------
+
+    @property
+    def kind(self) -> str:
+        return "mlc"
+
+    @property
+    def capabilities(self):
+        # Lazy-import to keep ``providers/types`` off the import-time path
+        # of any code that just touches MLCProvider's class object.
+        from tether_service.providers.types import ProviderCapabilities
+        return ProviderCapabilities(
+            streaming=True,
+            tools_native=True,         # MLC supports OpenAI tools API.
+            tools_marker=True,         # Tether also supports <<function_call>>.
+            thinking_channel=False,    # MLC has no separate thinking channel.
+            cancel_inflight=True,      # engine._abort(request_id) supported.
+            multi_model=True,          # engine cache holds multiple.
+            warm_up_required=True,     # _ensure_engine takes seconds first time.
+        )
+
+    async def warm_up(self, model_name: str) -> None:
+        """Pre-create the engine for ``model_name``.
+
+        Validates path-traversal first (security R-pathtraversal) and
+        then triggers the cold-start path so the next inference is fast.
+        Synthesis §4 Phase 3 step 39.
+        """
+        self._validate_model_name(model_name)
+        await self._ensure_engine(model_name)
+
+    async def aclose(self) -> None:
+        """Provider-level shutdown — calls :meth:`shutdown_all`.
+
+        :class:`HardwareWatchdog` wraps this from outside in
+        ``Engine.aclose`` (Phase 3 step 35) when the provider implements
+        :class:`HardwareLifecycle`. The wrapping watchdog applies the
+        daemon-thread + GC-disable invariant (R5); this method itself
+        just delegates to the existing parallel teardown
+        (Phase 3 step 38).
+        """
+        self.shutdown_all()
+
+    async def stream_typed(
+        self,
+        *,
+        model_name: str,
+        messages: List[Dict[str, Any]],
+        tools: Optional[List[Dict[str, Any]]] = None,
+        request_id: Optional[str] = None,
+        max_output_tokens: Optional[int] = None,
+        cancel_token: Optional[Any] = None,
+    ):
+        """v2 typed stream — adapts from the legacy :meth:`stream` chunks.
+
+        Native MLC ``delta.tool_calls`` (when the legacy ``stream()``
+        yields a list-of-dicts) become :class:`ProviderToolCall` events
+        instead of being silently dropped. Synthesis §6 bug #12.
+
+        This PR does NOT migrate the orchestrator. Phase 5 step 52 will.
+        For now, this method is reachable only by tests and any library
+        user who calls it directly.
+
+        The kwargs ``request_id``, ``max_output_tokens``, and
+        ``cancel_token`` are accepted for forward compatibility (the v2
+        contract documents them) but are not threaded through to the
+        legacy ``stream()`` yet — Phase 5 will add the wiring.
+        """
+        from tether_service.providers.types import (
+            ProviderText,
+            ProviderToolCall,
+        )
+
+        # Adapt the existing legacy stream's chunks to typed events. The
+        # legacy generator already handles abort/cancel/error classification
+        # (synthesis §4 Phase 3 step 34); we just translate its output.
+        async for chunk in self.stream(
+            model_name=model_name, messages=messages, tools=tools
+        ):
+            if isinstance(chunk, str):
+                yield ProviderText(text=chunk)
+            elif isinstance(chunk, list):
+                # Legacy native-tool_calls path: list of dicts (each tc
+                # is ``delta.tool_calls[i].model_dump()``). Adapt to
+                # ProviderToolCall events. Synthesis §6 bug #12.
+                for tc in chunk:
+                    func = tc.get("function", {}) if isinstance(tc, dict) else {}
+                    args = func.get("arguments")
+                    # MLC sometimes returns ``arguments`` as a JSON string;
+                    # normalize to a dict so consumers don't re-parse.
+                    if isinstance(args, str):
+                        try:
+                            args = json.loads(args)
+                        except json.JSONDecodeError:
+                            args = {"_raw": args}
+                    if not isinstance(args, dict):
+                        args = {}
+                    yield ProviderToolCall(
+                        tool_call_id=(tc.get("id") if isinstance(tc, dict) else None)
+                            or f"tc-{id(tc):x}",
+                        name=(func.get("name") or ""),
+                        arguments=args,
+                    )
+            else:
+                # Unknown chunk type — surface as text for safety so the
+                # consumer doesn't silently lose data.
+                yield ProviderText(text=str(chunk))
+
     def get_context_window(self, model_name: str) -> int:
         """
         Get the context window size for a specific model from its config.
