@@ -25,6 +25,7 @@ dependencies = [
     "requests",
     "sqlalchemy",
     "yoyo-migrations>=8.2,<9",
+    "platformdirs>=4.0,<5",
 ]
 
 [project.optional-dependencies]
