@@ -1,9 +1,7 @@
 from contextlib import asynccontextmanager
-from typing import cast
 import asyncio
 import os
 import signal
-import sys
 import threading
 
 from fastapi import APIRouter, FastAPI
@@ -12,9 +10,9 @@ from tether_service.app.http.routers.chat import router as chat_router
 from tether_service.app.http.routers.health import router as health_router
 from tether_service.app.http.routers.models import router as models_router
 from tether_service.app.http.routers.sessions import router as sessions_router
-from tether_service.core.interfaces import ModelProvider
-from tether_service.core.interfaces import StreamParser, SessionStore
+from tether_service.config.settings import load_settings
 from tether_service.core.logging import logger
+from tether_service.engine import Engine
 
 
 # Global flag to track if we're in shutdown
@@ -190,49 +188,17 @@ async def lifespan(app: FastAPI):
 
 
 def create_app():
-    """Create and configure the FastAPI application with DI"""
-    from tether_service.core.config import load_settings_legacy
-    from tether_service.core.factory import load
-    from tether_service.protocol.service.generation_service import GenerationService
-    from tether_service.config.settings import load_settings as load_settings_v2
-    from tether_service.engine import Engine
+    """Create and configure the FastAPI application.
 
-    settings = load_settings_legacy()
-    # NOTE: legacy dict-based provider/parser/store/tool_registry construction
-    # below is preserved for one cycle for diff readability and to avoid mixing
-    # this PR's scope with p2-cleanup. It is no longer referenced after the
-    # Engine.from_settings call further down. p2-cleanup will delete this block.
-    # instantiate model provider
-    model_cfg = settings.get('providers', {}).get('model', {})
-    provider = cast(ModelProvider, load(model_cfg.get('impl', ''), **model_cfg.get('args', {}) or {}))
-    # instantiate parser (could be function)
-    parser_cfg = settings.get('providers', {}).get('parser', {})
-    parser = cast(StreamParser, load(parser_cfg.get('impl', ''), **parser_cfg.get('args', {}) or {}))
-    # instantiate session store
-    store_cfg = settings.get('providers', {}).get('session_store', {})
-    session_store = cast(SessionStore, load(store_cfg.get('impl', ''), **store_cfg.get('args', {}) or {}))
-    # build tools registry
-    from tether_service.core.tool_registry import ToolRegistry
-    tools_cfg = settings.get('tools', {})
-    registry_cfg = tools_cfg.get('registry', [])
-    enabled_tools = tools_cfg.get('enabled', [])
-    tool_registry = ToolRegistry(registry_cfg, enabled_tools)
-    tools = tool_registry.all()
-
-    # Get system prompt
-    system_prompt = settings.get("system", {}).get("prompt", "")
-
-    # Phase 2 (p2-engine-class): build the Engine from typed Settings. The
-    # Engine class has the same method surface as the old GenerationService,
-    # so existing routers (chat.py, sessions.py, models.py, health.py) work
-    # unchanged. Per _synthesis.md §4 Phase 2 step 22.
-    settings_v2 = load_settings_v2()
+    Phase 2 cleanup: typed Settings + ``Engine.from_settings`` are the sole
+    composition path. The legacy dict-based provider/parser/store/tool wiring
+    has been deleted (per _synthesis.md §4 Phase 2 step 24).
+    """
+    settings_v2 = load_settings()
     gen_service = Engine.from_settings(settings_v2)
+
     app = FastAPI(lifespan=lifespan)
-    # store service on app state
     app.state.gen_svc = gen_service
-    # Phase 2 (p2-settings): also expose typed Settings on app.state. Existing
-    # dict-based wiring above is unchanged; p2-cleanup migrates consumers.
     app.state.settings = settings_v2
 
     # Create a new APIRouter for versioning
