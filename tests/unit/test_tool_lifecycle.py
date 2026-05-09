@@ -220,3 +220,144 @@ async def test_shutdown_all_empty_tools():
     """Empty mapping → empty failure dict, no error."""
     failures = await shutdown_all({})
     assert failures == {}
+
+
+# ---------------------------------------------------------------------------
+# F2: Engine integration (commit 7)
+#
+# These tests exercise the engine's __aenter__ / aclose wiring against
+# the helpers above. They live here (rather than in test_engine.py)
+# because the integration is the entire point of the Phase 4 step 41
+# work — the tests read more naturally beside the helpers they exercise.
+# ---------------------------------------------------------------------------
+
+from typing import AsyncGenerator, List, Optional  # noqa: E402
+from unittest.mock import MagicMock  # noqa: E402
+
+from tether_service.core.interfaces import ModelProvider  # noqa: E402
+
+
+class _NoOpProvider(ModelProvider):
+    """Minimal ModelProvider for engine tests (no HW lifecycle)."""
+
+    async def stream(
+        self,
+        model_name: str,
+        messages: List[Dict[str, Any]],
+        tools: Optional[List[Dict[str, Any]]] = None,
+    ) -> AsyncGenerator[str, None]:
+        yield "ok"
+
+    def list_models(self) -> List[str]:
+        return []
+
+    def unload_model(self, model_name: str) -> bool:
+        return True
+
+    def get_context_window(self, model_name: str) -> int:
+        return 4096
+
+
+def _make_engine(tools: Dict[str, BaseTool]):
+    """Build a minimal Engine (direct constructor) for lifecycle tests."""
+    from tether_service.engine import Engine
+
+    return Engine(
+        provider=_NoOpProvider(),
+        parser=MagicMock(),
+        session_store=MagicMock(),
+        tools=tools,
+        system_prompt="",
+    )
+
+
+@pytest.mark.anyio
+async def test_engine_aenter_startup_then_aexit_shutdown():
+    """async with engine: startup runs once per tool; aclose runs shutdown
+    once per tool."""
+    a = _FakeOptionalTool()
+    b = _FakeOptionalTool()
+    eng = _make_engine({"a": a, "b": b})
+
+    async with eng:
+        assert a.started is True
+        assert b.started is True
+        assert a.stopped is False
+        assert b.stopped is False
+
+    assert a.stopped is True
+    assert b.stopped is True
+
+
+@pytest.mark.anyio
+async def test_engine_aenter_drops_optional_failures():
+    """Optional tool failure → dropped from engine.tools AND
+    tool_runner.tools; engine still works."""
+    good = _FakeOptionalTool()
+    bad = _FakeOptionalTool(raise_on_startup=True)
+    eng = _make_engine({"good": good, "bad": bad})
+
+    async with eng:
+        assert "good" in eng.tools
+        assert "bad" not in eng.tools
+        assert "bad" not in eng.tool_runner.tools
+        assert "good" in eng.tool_runner.tools
+
+    # Good tool received shutdown; bad was dropped before shutdown ran.
+    assert good.stopped is True
+    assert bad.stopped is False
+
+
+@pytest.mark.anyio
+async def test_engine_aenter_required_failure_raises():
+    """Required tool failure → __aenter__ raises; aclose still cleans up
+    surviving tools."""
+    good = _FakeOptionalTool()
+    must_have = _FakeRequiredTool(raise_on_startup=True)
+    eng = _make_engine({"good": good, "must_have": must_have})
+
+    with pytest.raises(RuntimeError):
+        async with eng:
+            pass
+
+    # The good tool was started before the required-tool failure surfaced
+    # (gather waits for everyone). aclose() runs from __aexit__ even on
+    # error; the _closed flag is its tell.
+    assert good.started is True
+    assert eng._closed is True
+
+
+@pytest.mark.anyio
+async def test_engine_aclose_runs_tool_shutdown_before_watchdog():
+    """Order check: tool shutdown completes before watchdog teardown."""
+    from tether_service.runtime.hw_watchdog import HardwareWatchdog
+
+    order: List[str] = []
+
+    class _OrderTrackingTool(BaseTool):
+        @property
+        def schema(self):
+            return {}
+
+        async def run(self):
+            return {}
+
+        async def shutdown(self):
+            order.append("tool_shutdown")
+
+    fake_watchdog = MagicMock(spec=HardwareWatchdog)
+    fake_watchdog.shutdown_all = MagicMock(
+        side_effect=lambda: order.append("watchdog_shutdown")
+    )
+
+    from tether_service.engine import Engine
+    eng = Engine(
+        provider=_NoOpProvider(),
+        parser=MagicMock(),
+        session_store=MagicMock(),
+        tools={"t": _OrderTrackingTool()},
+        system_prompt="",
+        hw_watchdog=fake_watchdog,
+    )
+    await eng.aclose()
+    assert order == ["tool_shutdown", "watchdog_shutdown"]

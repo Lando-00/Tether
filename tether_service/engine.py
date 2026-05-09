@@ -201,6 +201,42 @@ class Engine:
     # --- Lifecycle ---
 
     async def __aenter__(self) -> "Engine":
+        """Phase 4 step 41: run startup() on every tool concurrently.
+
+        Required-tool failures propagate as :class:`RuntimeError` (the
+        engine refuses to start). Optional-tool failures are logged and
+        the failing tool is dropped from both ``self.tools`` and
+        ``self.tool_runner.tools`` so the registry stays consistent
+        with what the model can actually call.
+
+        If a required tool fails, ``aclose`` runs explicitly here (not
+        via ``__aexit__`` — Python's async-context protocol does NOT
+        call ``__aexit__`` when ``__aenter__`` raises). This guarantees
+        any tools that DID start get a ``shutdown()`` call before the
+        ``RuntimeError`` surfaces.
+
+        See :func:`tether_service.tools.lifecycle.startup_all` for the
+        gather semantics (synthesis §13.2 R5).
+        """
+        if self.tools:
+            from tether_service.tools.lifecycle import startup_all
+
+            try:
+                failures = await startup_all(
+                    self.tools, fail_fast_required=True
+                )
+            except Exception:
+                # Required failure surfaced after gather completed.
+                # Clean up tools that successfully started before re-raising.
+                await self.aclose()
+                raise
+            for name in failures:
+                # Required failures already raised inside startup_all; only
+                # optional failures reach here. Drop them from BOTH the engine's
+                # tool dict and the tool_runner's so the orchestrator can't
+                # accidentally invoke a half-initialized tool.
+                self.tools.pop(name, None)
+                self.tool_runner.tools.pop(name, None)
         return self
 
     async def __aexit__(self, exc_type, exc, tb) -> None:
@@ -209,26 +245,39 @@ class Engine:
     async def aclose(self) -> None:
         """Phase 3: bounded shutdown via :class:`HardwareWatchdog` when present.
 
-        Routes through ``self.hw_watchdog.shutdown_all()`` for any provider
-        implementing :class:`HardwareLifecycle` — that path uses
-        :func:`tether_service.runtime.daemon_call.daemon_thread_call` (M1)
-        so GC stays disabled in the daemon thread (R5) and native cleanup
-        is bounded by per-provider budgets. Production / SERVER-mode usage
-        always reaches this branch because ``from_settings`` always builds
-        a watchdog.
+        Phase 4 (step 41): tool ``shutdown()`` runs FIRST, before the
+        hardware-watchdog teardown. Tools may legitimately depend on
+        the provider during their own cleanup (e.g., a tool that wraps
+        a provider call to flush state); reversing the order would
+        risk hitting an already-closed provider. Tool shutdown is
+        best-effort — failures are logged but never raised.
 
-        Falls back to ``provider.shutdown_all()`` when ``hw_watchdog`` is
-        ``None`` — only direct constructor / test paths produce that
-        (e.g., the deprecated ``GenerationService`` alias and ad-hoc
-        Engine assemblies in unit tests). Library users who go through
-        ``from_settings`` always get the safe path.
+        Routes through ``self.hw_watchdog.shutdown_all()`` for any
+        provider implementing :class:`HardwareLifecycle` — that path
+        uses :func:`tether_service.runtime.daemon_call.daemon_thread_call`
+        (M1) so GC stays disabled in the daemon thread (R5) and native
+        cleanup is bounded by per-provider budgets. Production /
+        SERVER-mode usage always reaches this branch because
+        ``from_settings`` always builds a watchdog.
 
-        Synthesis §4 Phase 3 step 35; supersedes the §11.3 R22 placeholder.
+        Falls back to ``provider.shutdown_all()`` when ``hw_watchdog``
+        is ``None`` — only direct constructor / test paths produce
+        that.
+
+        Synthesis §4 Phase 3 step 35 + §4 Phase 4 step 41; supersedes
+        the §11.3 R22 placeholder.
         """
         if self._closed:
             return
         self._closed = True
 
+        # Tools first (they may still need the provider during shutdown).
+        if self.tools:
+            from tether_service.tools.lifecycle import shutdown_all
+
+            await shutdown_all(self.tools)
+
+        # Then provider via watchdog.
         if self.hw_watchdog is not None:
             self.hw_watchdog.shutdown_all()
         elif hasattr(self.provider, "shutdown_all"):
