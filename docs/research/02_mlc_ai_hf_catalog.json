@@ -1,0 +1,5541 @@
+[
+  {
+    "repo_id": "mlc-ai/Qwen3.5-0.8B-q0f16-MLC",
+    "family": "Qwen3.5",
+    "params_b": 0.8,
+    "quant": "q0f16",
+    "total_bin_bytes": 1504786048,
+    "n_bin_files": 41,
+    "likes": 1,
+    "downloads": 0,
+    "last_modified": "2026-04-22T18:43:48.000Z",
+    "tags": [
+      "region:us"
+    ],
+    "error": null
+  },
+  {
+    "repo_id": "mlc-ai/web-sd",
+    "family": "web-sd",
+    "params_b": null,
+    "quant": null,
+    "total_bin_bytes": 4955682878,
+    "n_bin_files": 160,
+    "likes": 7,
+    "downloads": 0,
+    "last_modified": "2024-01-11T13:47:41.000Z",
+    "tags": [
+      "license:creativeml-openrail-m",
+      "region:us"
+    ],
+    "error": null
+  },
+  {
+    "repo_id": "mlc-ai/mlc-chat-stanford-crfm-music-medium-800k-q0f32",
+    "family": "mlc-chat-stanford-crfm-music-medium-800k",
+    "params_b": null,
+    "quant": "q0f32",
+    "total_bin_bytes": 1664229376,
+    "n_bin_files": 65,
+    "likes": 0,
+    "downloads": 0,
+    "last_modified": "2025-09-07T18:49:44.000Z",
+    "tags": [
+      "region:us"
+    ],
+    "error": null
+  },
+  {
+    "repo_id": "mlc-ai/mlc-chat-stanford-crfm-music-small-800k-q0f32",
+    "family": "mlc-chat-stanford-crfm-music-small-800k",
+    "params_b": null,
+    "quant": "q0f32",
+    "total_bin_bytes": 681461760,
+    "n_bin_files": 14,
+    "likes": 0,
+    "downloads": 0,
+    "last_modified": "2025-09-07T18:50:13.000Z",
+    "tags": [
+      "region:us"
+    ],
+    "error": null
+  },
+  {
+    "repo_id": "mlc-ai/mlc-chat-stanford-crfm-music-small-800k-q0f16",
+    "family": "mlc-chat-stanford-crfm-music-small-800k",
+    "params_b": null,
+    "quant": "q0f16",
+    "total_bin_bytes": 340730880,
+    "n_bin_files": 8,
+    "likes": 0,
+    "downloads": 0,
+    "last_modified": "2025-09-07T18:50:14.000Z",
+    "tags": [
+      "region:us"
+    ],
+    "error": null
+  },
+  {
+    "repo_id": "mlc-ai/mlc-chat-stanford-crfm-music-medium-800k-q0f16",
+    "family": "mlc-chat-stanford-crfm-music-medium-800k",
+    "params_b": null,
+    "quant": "q0f16",
+    "total_bin_bytes": 832114688,
+    "n_bin_files": 25,
+    "likes": 0,
+    "downloads": 0,
+    "last_modified": "2025-09-07T18:50:16.000Z",
+    "tags": [
+      "region:us"
+    ],
+    "error": null
+  },
+  {
+    "repo_id": "mlc-ai/Llama-2-7b-chat-hf-q4f16_1-MLC",
+    "family": "Llama-2",
+    "params_b": 7.0,
+    "quant": "q4f16_1",
+    "total_bin_bytes": 3790741504,
+    "n_bin_files": 115,
+    "likes": 9,
+    "downloads": 2717,
+    "last_modified": "2025-09-07T18:50:20.000Z",
+    "tags": [
+      "mlc-llm",
+      "web-llm",
+      "base_model:meta-llama/Llama-2-7b-chat-hf",
+      "base_model:quantized:meta-llama/Llama-2-7b-chat-hf",
+      "region:us"
+    ],
+    "error": null
+  },
+  {
+    "repo_id": "mlc-ai/Llama-2-7b-chat-hf-q4f32_1-MLC",
+    "family": "Llama-2",
+    "params_b": 7.0,
+    "quant": "q4f32_1",
+    "total_bin_bytes": 4212408320,
+    "n_bin_files": 132,
+    "likes": 2,
+    "downloads": 52,
+    "last_modified": "2025-09-07T18:50:21.000Z",
+    "tags": [
+      "mlc-llm",
+      "web-llm",
+      "base_model:meta-llama/Llama-2-7b-chat-hf",
+      "base_model:quantized:meta-llama/Llama-2-7b-chat-hf",
+      "region:us"
+    ],
+    "error": null
+  },
+  {
+    "repo_id": "mlc-ai/Mistral-7B-Instruct-v0.2-q4f16_1-MLC",
+    "family": "Mistral",
+    "params_b": 7.0,
+    "quant": "q4f16_1",
+    "total_bin_bytes": 4073857024,
+    "n_bin_files": 106,
+    "likes": 4,
+    "downloads": 2916,
+    "last_modified": "2025-09-07T18:50:22.000Z",
+    "tags": [
+      "mlc-llm",
+      "web-llm",
+      "base_model:mistralai/Mistral-7B-Instruct-v0.2",
+      "base_model:quantized:mistralai/Mistral-7B-Instruct-v0.2",
+      "region:us"
+    ],
+    "error": null
+  },
+  {
+    "repo_id": "mlc-ai/Llama-2-13b-chat-hf-q4f16_1-MLC",
+    "family": "Llama-2",
+    "params_b": 13.0,
+    "quant": "q4f16_1",
+    "total_bin_bytes": 7322019840,
+    "n_bin_files": 164,
+    "likes": 1,
+    "downloads": 105,
+    "last_modified": "2025-09-07T18:50:23.000Z",
+    "tags": [
+      "mlc-llm",
+      "web-llm",
+      "base_model:meta-llama/Llama-2-13b-chat-hf",
+      "base_model:quantized:meta-llama/Llama-2-13b-chat-hf",
+      "region:us"
+    ],
+    "error": null
+  },
+  {
+    "repo_id": "mlc-ai/Llama-2-70b-chat-hf-q4f16_1-MLC",
+    "family": "Llama-2",
+    "params_b": 70.0,
+    "quant": "q4f16_1",
+    "total_bin_bytes": 0,
+    "n_bin_files": 0,
+    "likes": 2,
+    "downloads": 7,
+    "last_modified": "2024-07-11T15:31:54.000Z",
+    "tags": [
+      "mlc-llm",
+      "web-llm",
+      "base_model:meta-llama/Llama-2-70b-chat-hf",
+      "base_model:quantized:meta-llama/Llama-2-70b-chat-hf",
+      "region:us"
+    ],
+    "error": null
+  },
+  {
+    "repo_id": "mlc-ai/OpenHermes-2.5-Mistral-7B-q4f16_1-MLC",
+    "family": "OpenHermes-2.5-Mistral",
+    "params_b": 7.0,
+    "quant": "q4f16_1",
+    "total_bin_bytes": 4073866240,
+    "n_bin_files": 107,
+    "likes": 1,
+    "downloads": 32,
+    "last_modified": "2025-09-07T18:50:24.000Z",
+    "tags": [
+      "mlc-llm",
+      "web-llm",
+      "base_model:teknium/OpenHermes-2.5-Mistral-7B",
+      "base_model:quantized:teknium/OpenHermes-2.5-Mistral-7B",
+      "region:us"
+    ],
+    "error": null
+  },
+  {
+    "repo_id": "mlc-ai/NeuralHermes-2.5-Mistral-7B-q4f16_1-MLC",
+    "family": "NeuralHermes-2.5-Mistral",
+    "params_b": 7.0,
+    "quant": "q4f16_1",
+    "total_bin_bytes": 4073866240,
+    "n_bin_files": 106,
+    "likes": 2,
+    "downloads": 46,
+    "last_modified": "2025-09-07T18:50:25.000Z",
+    "tags": [
+      "mlc-llm",
+      "web-llm",
+      "base_model:mlabonne/NeuralHermes-2.5-Mistral-7B",
+      "base_model:quantized:mlabonne/NeuralHermes-2.5-Mistral-7B",
+      "region:us"
+    ],
+    "error": null
+  },
+  {
+    "repo_id": "mlc-ai/WizardMath-7B-V1.0-q4f16_1-MLC",
+    "family": "WizardMath",
+    "params_b": 7.0,
+    "quant": "q4f16_1",
+    "total_bin_bytes": 3790746112,
+    "n_bin_files": 114,
+    "likes": 0,
+    "downloads": 6,
+    "last_modified": "2025-09-07T18:50:24.000Z",
+    "tags": [
+      "mlc-llm",
+      "web-llm",
+      "base_model:WizardLMTeam/WizardMath-7B-V1.0",
+      "base_model:quantized:WizardLMTeam/WizardMath-7B-V1.0",
+      "region:us"
+    ],
+    "error": null
+  },
+  {
+    "repo_id": "mlc-ai/WizardMath-13B-V1.0-q4f16_1-MLC",
+    "family": "WizardMath",
+    "params_b": 13.0,
+    "quant": "q4f16_1",
+    "total_bin_bytes": 7322025600,
+    "n_bin_files": 164,
+    "likes": 0,
+    "downloads": 11,
+    "last_modified": "2025-09-07T18:50:27.000Z",
+    "tags": [
+      "mlc-llm",
+      "web-llm",
+      "region:us"
+    ],
+    "error": null
+  },
+  {
+    "repo_id": "mlc-ai/RedPajama-INCITE-Chat-3B-v1-q4f16_1-MLC",
+    "family": "RedPajama-INCITE",
+    "params_b": 3.0,
+    "quant": "q4f16_1",
+    "total_bin_bytes": 1563781120,
+    "n_bin_files": 51,
+    "likes": 3,
+    "downloads": 2789,
+    "last_modified": "2025-09-07T18:50:28.000Z",
+    "tags": [
+      "mlc-llm",
+      "web-llm",
+      "base_model:togethercomputer/RedPajama-INCITE-Chat-3B-v1",
+      "base_model:quantized:togethercomputer/RedPajama-INCITE-Chat-3B-v1",
+      "region:us"
+    ],
+    "error": null
+  },
+  {
+    "repo_id": "mlc-ai/RedPajama-INCITE-Chat-3B-v1-q4f32_1-MLC",
+    "family": "RedPajama-INCITE",
+    "params_b": 3.0,
+    "quant": "q4f32_1",
+    "total_bin_bytes": 1738526720,
+    "n_bin_files": 51,
+    "likes": 2,
+    "downloads": 45,
+    "last_modified": "2025-09-07T18:50:31.000Z",
+    "tags": [
+      "mlc-llm",
+      "web-llm",
+      "base_model:togethercomputer/RedPajama-INCITE-Chat-3B-v1",
+      "base_model:quantized:togethercomputer/RedPajama-INCITE-Chat-3B-v1",
+      "region:us"
+    ],
+    "error": null
+  },
+  {
+    "repo_id": "mlc-ai/WizardMath-7B-V1.1-q4f16_1-MLC",
+    "family": "WizardMath",
+    "params_b": 7.0,
+    "quant": "q4f16_1",
+    "total_bin_bytes": 4073857024,
+    "n_bin_files": 107,
+    "likes": 0,
+    "downloads": 67,
+    "last_modified": "2025-09-07T18:50:31.000Z",
+    "tags": [
+      "mlc-llm",
+      "web-llm",
+      "base_model:WizardLMTeam/WizardMath-7B-V1.1",
+      "base_model:quantized:WizardLMTeam/WizardMath-7B-V1.1",
+      "region:us"
+    ],
+    "error": null
+  },
+  {
+    "repo_id": "mlc-ai/phi-2-q0f16-MLC",
+    "family": "phi-2",
+    "params_b": null,
+    "quant": "q0f16",
+    "total_bin_bytes": 5559367680,
+    "n_bin_files": 114,
+    "likes": 1,
+    "downloads": 8,
+    "last_modified": "2025-09-07T18:50:33.000Z",
+    "tags": [
+      "mlc-llm",
+      "web-llm",
+      "base_model:microsoft/phi-2",
+      "base_model:quantized:microsoft/phi-2",
+      "region:us"
+    ],
+    "error": null
+  },
+  {
+    "repo_id": "mlc-ai/phi-2-q4f16_1-MLC",
+    "family": "phi-2",
+    "params_b": null,
+    "quant": "q4f16_1",
+    "total_bin_bytes": 1564948480,
+    "n_bin_files": 51,
+    "likes": 2,
+    "downloads": 2737,
+    "last_modified": "2025-09-07T18:50:32.000Z",
+    "tags": [
+      "mlc-llm",
+      "web-llm",
+      "base_model:microsoft/phi-2",
+      "base_model:quantized:microsoft/phi-2",
+      "region:us"
+    ],
+    "error": null
+  },
+  {
+    "repo_id": "mlc-ai/phi-1_5-q0f16-MLC",
+    "family": "phi-1_5",
+    "params_b": null,
+    "quant": "q0f16",
+    "total_bin_bytes": 2836541440,
+    "n_bin_files": 82,
+    "likes": 0,
+    "downloads": 6,
+    "last_modified": "2025-09-07T18:50:35.000Z",
+    "tags": [
+      "mlc-llm",
+      "web-llm",
+      "base_model:microsoft/phi-1_5",
+      "base_model:quantized:microsoft/phi-1_5",
+      "region:us"
+    ],
+    "error": null
+  },
+  {
+    "repo_id": "mlc-ai/phi-1_5-q4f16_1-MLC",
+    "family": "phi-1_5",
+    "params_b": null,
+    "quant": "q4f16_1",
+    "total_bin_bytes": 798633984,
+    "n_bin_files": 27,
+    "likes": 0,
+    "downloads": 93,
+    "last_modified": "2025-09-07T18:50:37.000Z",
+    "tags": [
+      "mlc-llm",
+      "web-llm",
+      "base_model:microsoft/phi-1_5",
+      "base_model:quantized:microsoft/phi-1_5",
+      "region:us"
+    ],
+    "error": null
+  },
+  {
+    "repo_id": "mlc-ai/gpt2-q0f16-MLC",
+    "family": "gpt2",
+    "params_b": null,
+    "quant": "q0f16",
+    "total_bin_bytes": 326074368,
+    "n_bin_files": 8,
+    "likes": 1,
+    "downloads": 6,
+    "last_modified": "2025-09-07T18:50:36.000Z",
+    "tags": [
+      "mlc-llm",
+      "web-llm",
+      "base_model:openai-community/gpt2",
+      "base_model:quantized:openai-community/gpt2",
+      "region:us"
+    ],
+    "error": null
+  },
+  {
+    "repo_id": "mlc-ai/gpt2-medium-q0f16-MLC",
+    "family": "gpt2-medium",
+    "params_b": null,
+    "quant": "q0f16",
+    "total_bin_bytes": 812572672,
+    "n_bin_files": 26,
+    "likes": 1,
+    "downloads": 8,
+    "last_modified": "2025-09-07T18:50:39.000Z",
+    "tags": [
+      "mlc-llm",
+      "web-llm",
+      "base_model:openai-community/gpt2",
+      "base_model:quantized:openai-community/gpt2",
+      "region:us"
+    ],
+    "error": null
+  },
+  {
+    "repo_id": "mlc-ai/Mistral-7B-Instruct-v0.2-q3f16_1-MLC",
+    "family": "Mistral",
+    "params_b": 7.0,
+    "quant": "q3f16_1",
+    "total_bin_bytes": 3274746880,
+    "n_bin_files": 98,
+    "likes": 4,
+    "downloads": 11,
+    "last_modified": "2025-09-07T18:50:38.000Z",
+    "tags": [
+      "mlc-llm",
+      "web-llm",
+      "base_model:mistralai/Mistral-7B-Instruct-v0.2",
+      "base_model:quantized:mistralai/Mistral-7B-Instruct-v0.2",
+      "region:us"
+    ],
+    "error": null
+  },
+  {
+    "repo_id": "mlc-ai/TinyLlama-1.1B-Chat-v0.4-q4f16_1-MLC",
+    "family": "TinyLlama",
+    "params_b": 1.1,
+    "quant": "q4f16_1",
+    "total_bin_bytes": 618916608,
+    "n_bin_files": 24,
+    "likes": 1,
+    "downloads": 1627,
+    "last_modified": "2025-09-07T18:50:39.000Z",
+    "tags": [
+      "mlc-llm",
+      "web-llm",
+      "base_model:TinyLlama/TinyLlama-1.1B-Chat-v0.4",
+      "base_model:quantized:TinyLlama/TinyLlama-1.1B-Chat-v0.4",
+      "region:us"
+    ],
+    "error": null
+  },
+  {
+    "repo_id": "mlc-ai/TinyLlama-1.1B-Chat-v0.4-q4f32_1-MLC",
+    "family": "TinyLlama",
+    "params_b": 1.1,
+    "quant": "q4f32_1",
+    "total_bin_bytes": 618916608,
+    "n_bin_files": 24,
+    "likes": 1,
+    "downloads": 523,
+    "last_modified": "2025-09-07T18:50:41.000Z",
+    "tags": [
+      "mlc-llm",
+      "web-llm",
+      "base_model:TinyLlama/TinyLlama-1.1B-Chat-v0.4",
+      "base_model:quantized:TinyLlama/TinyLlama-1.1B-Chat-v0.4",
+      "region:us"
+    ],
+    "error": null
+  },
+  {
+    "repo_id": "mlc-ai/TinyLlama-1.1B-Chat-v0.4-q0f16-MLC",
+    "family": "TinyLlama",
+    "params_b": 1.1,
+    "quant": "q0f16",
+    "total_bin_bytes": 2200121344,
+    "n_bin_files": 57,
+    "likes": 0,
+    "downloads": 13,
+    "last_modified": "2025-09-07T18:50:40.000Z",
+    "tags": [
+      "mlc-llm",
+      "web-llm",
+      "base_model:TinyLlama/TinyLlama-1.1B-Chat-v0.4",
+      "base_model:quantized:TinyLlama/TinyLlama-1.1B-Chat-v0.4",
+      "region:us"
+    ],
+    "error": null
+  },
+  {
+    "repo_id": "mlc-ai/TinyLlama-1.1B-Chat-v0.4-q0f32-MLC",
+    "family": "TinyLlama",
+    "params_b": 1.1,
+    "quant": "q0f32",
+    "total_bin_bytes": 2200121344,
+    "n_bin_files": 57,
+    "likes": 0,
+    "downloads": 2,
+    "last_modified": "2025-09-07T18:50:42.000Z",
+    "tags": [
+      "mlc-llm",
+      "web-llm",
+      "base_model:TinyLlama/TinyLlama-1.1B-Chat-v0.4",
+      "base_model:quantized:TinyLlama/TinyLlama-1.1B-Chat-v0.4",
+      "region:us"
+    ],
+    "error": null
+  },
+  {
+    "repo_id": "mlc-ai/phi-1_5-q0f32-MLC",
+    "family": "phi-1_5",
+    "params_b": null,
+    "quant": "q0f32",
+    "total_bin_bytes": 2836541440,
+    "n_bin_files": 82,
+    "likes": 0,
+    "downloads": 9,
+    "last_modified": "2025-09-07T18:50:42.000Z",
+    "tags": [
+      "mlc-llm",
+      "web-llm",
+      "base_model:microsoft/phi-1_5",
+      "base_model:quantized:microsoft/phi-1_5",
+      "region:us"
+    ],
+    "error": null
+  },
+  {
+    "repo_id": "mlc-ai/phi-1_5-q4f32_1-MLC",
+    "family": "phi-1_5",
+    "params_b": null,
+    "quant": "q4f32_1",
+    "total_bin_bytes": 798633984,
+    "n_bin_files": 27,
+    "likes": 1,
+    "downloads": 34,
+    "last_modified": "2025-09-07T18:50:44.000Z",
+    "tags": [
+      "mlc-llm",
+      "web-llm",
+      "base_model:microsoft/phi-1_5",
+      "base_model:quantized:microsoft/phi-1_5",
+      "region:us"
+    ],
+    "error": null
+  },
+  {
+    "repo_id": "mlc-ai/phi-2-q0f32-MLC",
+    "family": "phi-2",
+    "params_b": null,
+    "quant": "q0f32",
+    "total_bin_bytes": 5559367680,
+    "n_bin_files": 114,
+    "likes": 0,
+    "downloads": 9,
+    "last_modified": "2025-09-07T18:50:43.000Z",
+    "tags": [
+      "mlc-llm",
+      "web-llm",
+      "base_model:microsoft/phi-2",
+      "base_model:quantized:microsoft/phi-2",
+      "region:us"
+    ],
+    "error": null
+  },
+  {
+    "repo_id": "mlc-ai/phi-2-q4f32_1-MLC",
+    "family": "phi-2",
+    "params_b": null,
+    "quant": "q4f32_1",
+    "total_bin_bytes": 1564948480,
+    "n_bin_files": 51,
+    "likes": 2,
+    "downloads": 19,
+    "last_modified": "2025-09-07T18:50:47.000Z",
+    "tags": [
+      "mlc-llm",
+      "web-llm",
+      "base_model:microsoft/phi-2",
+      "base_model:quantized:microsoft/phi-2",
+      "region:us"
+    ],
+    "error": null
+  },
+  {
+    "repo_id": "mlc-ai/NeuralHermes-2.5-Mistral-7B-q3f16_1-MLC",
+    "family": "NeuralHermes-2.5-Mistral",
+    "params_b": 7.0,
+    "quant": "q3f16_1",
+    "total_bin_bytes": 3274754296,
+    "n_bin_files": 98,
+    "likes": 0,
+    "downloads": 14,
+    "last_modified": "2025-09-07T18:50:46.000Z",
+    "tags": [
+      "mlc-llm",
+      "web-llm",
+      "base_model:mlabonne/NeuralHermes-2.5-Mistral-7B",
+      "base_model:quantized:mlabonne/NeuralHermes-2.5-Mistral-7B",
+      "region:us"
+    ],
+    "error": null
+  },
+  {
+    "repo_id": "mlc-ai/Qwen-7B-Chat-q4f16_1-MLC",
+    "family": "Qwen",
+    "params_b": 7.0,
+    "quant": "q4f16_1",
+    "total_bin_bytes": 4344193024,
+    "n_bin_files": 117,
+    "likes": 2,
+    "downloads": 8,
+    "last_modified": "2025-09-07T18:50:49.000Z",
+    "tags": [
+      "mlc-llm",
+      "web-llm",
+      "base_model:Qwen/Qwen-7B-Chat",
+      "base_model:quantized:Qwen/Qwen-7B-Chat",
+      "region:us"
+    ],
+    "error": null
+  },
+  {
+    "repo_id": "mlc-ai/Qwen-7B-Chat-q4f32_1-MLC",
+    "family": "Qwen",
+    "params_b": 7.0,
+    "quant": "q4f32_1",
+    "total_bin_bytes": 4344193024,
+    "n_bin_files": 117,
+    "likes": 0,
+    "downloads": 5,
+    "last_modified": "2025-09-07T18:50:47.000Z",
+    "tags": [
+      "mlc-llm",
+      "web-llm",
+      "base_model:Qwen/Qwen-7B-Chat",
+      "base_model:quantized:Qwen/Qwen-7B-Chat",
+      "region:us"
+    ],
+    "error": null
+  },
+  {
+    "repo_id": "mlc-ai/Qwen-1_8B-Chat-q4f16_1-MLC",
+    "family": "Qwen-1",
+    "params_b": 8.0,
+    "quant": "q4f16_1",
+    "total_bin_bytes": 1033572352,
+    "n_bin_files": 28,
+    "likes": 1,
+    "downloads": 10,
+    "last_modified": "2025-09-07T18:50:50.000Z",
+    "tags": [
+      "mlc-llm",
+      "web-llm",
+      "base_model:Qwen/Qwen-1_8B-Chat",
+      "base_model:quantized:Qwen/Qwen-1_8B-Chat",
+      "region:us"
+    ],
+    "error": null
+  },
+  {
+    "repo_id": "mlc-ai/Qwen-1_8B-Chat-q4f32_1-MLC",
+    "family": "Qwen-1",
+    "params_b": 8.0,
+    "quant": "q4f32_1",
+    "total_bin_bytes": 1033572352,
+    "n_bin_files": 28,
+    "likes": 1,
+    "downloads": 10,
+    "last_modified": "2025-09-07T18:50:53.000Z",
+    "tags": [
+      "mlc-llm",
+      "web-llm",
+      "base_model:Qwen/Qwen-1_8B-Chat",
+      "base_model:quantized:Qwen/Qwen-1_8B-Chat",
+      "region:us"
+    ],
+    "error": null
+  },
+  {
+    "repo_id": "mlc-ai/Qwen-14B-Chat-q4f32_1-MLC",
+    "family": "Qwen",
+    "params_b": 14.0,
+    "quant": "q4f32_1",
+    "total_bin_bytes": 7970580480,
+    "n_bin_files": 164,
+    "likes": 0,
+    "downloads": 8,
+    "last_modified": "2025-09-07T18:50:51.000Z",
+    "tags": [
+      "mlc-llm",
+      "web-llm",
+      "base_model:Qwen/Qwen-14B-Chat",
+      "base_model:quantized:Qwen/Qwen-14B-Chat",
+      "region:us"
+    ],
+    "error": null
+  },
+  {
+    "repo_id": "mlc-ai/CodeLlama-7b-hf-q4f16_1-MLC",
+    "family": "CodeLlama",
+    "params_b": 7.0,
+    "quant": "q4f16_1",
+    "total_bin_bytes": 3790815232,
+    "n_bin_files": 114,
+    "likes": 0,
+    "downloads": 9,
+    "last_modified": "2025-09-07T18:50:55.000Z",
+    "tags": [
+      "mlc-llm",
+      "web-llm",
+      "base_model:codellama/CodeLlama-7b-hf",
+      "base_model:quantized:codellama/CodeLlama-7b-hf",
+      "region:us"
+    ],
+    "error": null
+  },
+  {
+    "repo_id": "mlc-ai/CodeLlama-7b-hf-q4f32_1-MLC",
+    "family": "CodeLlama",
+    "params_b": 7.0,
+    "quant": "q4f32_1",
+    "total_bin_bytes": 3790815232,
+    "n_bin_files": 114,
+    "likes": 0,
+    "downloads": 6,
+    "last_modified": "2025-09-07T18:50:54.000Z",
+    "tags": [
+      "mlc-llm",
+      "web-llm",
+      "base_model:codellama/CodeLlama-7b-hf",
+      "base_model:quantized:codellama/CodeLlama-7b-hf",
+      "region:us"
+    ],
+    "error": null
+  },
+  {
+    "repo_id": "mlc-ai/CodeLlama-13b-hf-q4f16_1-MLC",
+    "family": "CodeLlama",
+    "params_b": 13.0,
+    "quant": "q4f16_1",
+    "total_bin_bytes": 7322112000,
+    "n_bin_files": 163,
+    "likes": 0,
+    "downloads": 6,
+    "last_modified": "2025-09-07T18:50:56.000Z",
+    "tags": [
+      "mlc-llm",
+      "web-llm",
+      "base_model:codellama/CodeLlama-13b-hf",
+      "base_model:quantized:codellama/CodeLlama-13b-hf",
+      "region:us"
+    ],
+    "error": null
+  },
+  {
+    "repo_id": "mlc-ai/CodeLlama-13b-hf-q4f32_1-MLC",
+    "family": "CodeLlama",
+    "params_b": 13.0,
+    "quant": "q4f32_1",
+    "total_bin_bytes": 7322112000,
+    "n_bin_files": 163,
+    "likes": 0,
+    "downloads": 2,
+    "last_modified": "2025-09-07T18:50:57.000Z",
+    "tags": [
+      "mlc-llm",
+      "web-llm",
+      "base_model:codellama/CodeLlama-13b-hf",
+      "base_model:quantized:codellama/CodeLlama-13b-hf",
+      "region:us"
+    ],
+    "error": null
+  },
+  {
+    "repo_id": "mlc-ai/CodeLlama-7b-Instruct-hf-q4f16_1-MLC",
+    "family": "CodeLlama",
+    "params_b": 7.0,
+    "quant": "q4f16_1",
+    "total_bin_bytes": 3790815232,
+    "n_bin_files": 114,
+    "likes": 0,
+    "downloads": 6,
+    "last_modified": "2025-09-07T18:51:02.000Z",
+    "tags": [
+      "mlc-llm",
+      "web-llm",
+      "base_model:codellama/CodeLlama-7b-Instruct-hf",
+      "base_model:quantized:codellama/CodeLlama-7b-Instruct-hf",
+      "region:us"
+    ],
+    "error": null
+  },
+  {
+    "repo_id": "mlc-ai/CodeLlama-7b-Instruct-hf-q4f32_1-MLC",
+    "family": "CodeLlama",
+    "params_b": 7.0,
+    "quant": "q4f32_1",
+    "total_bin_bytes": 3790815232,
+    "n_bin_files": 114,
+    "likes": 0,
+    "downloads": 4,
+    "last_modified": "2025-09-07T18:51:01.000Z",
+    "tags": [
+      "mlc-llm",
+      "web-llm",
+      "base_model:codellama/CodeLlama-7b-Instruct-hf",
+      "base_model:quantized:codellama/CodeLlama-7b-Instruct-hf",
+      "region:us"
+    ],
+    "error": null
+  },
+  {
+    "repo_id": "mlc-ai/CodeLlama-13b-Instruct-hf-q4f16_1-MLC",
+    "family": "CodeLlama",
+    "params_b": 13.0,
+    "quant": "q4f16_1",
+    "total_bin_bytes": 7322112000,
+    "n_bin_files": 163,
+    "likes": 0,
+    "downloads": 6,
+    "last_modified": "2025-09-07T18:51:04.000Z",
+    "tags": [
+      "mlc-llm",
+      "web-llm",
+      "base_model:codellama/CodeLlama-13b-Instruct-hf",
+      "base_model:quantized:codellama/CodeLlama-13b-Instruct-hf",
+      "region:us"
+    ],
+    "error": null
+  },
+  {
+    "repo_id": "mlc-ai/CodeLlama-13b-Instruct-hf-q4f32_1-MLC",
+    "family": "CodeLlama",
+    "params_b": 13.0,
+    "quant": "q4f32_1",
+    "total_bin_bytes": 7322112000,
+    "n_bin_files": 163,
+    "likes": 0,
+    "downloads": 5,
+    "last_modified": "2025-09-07T18:51:03.000Z",
+    "tags": [
+      "mlc-llm",
+      "web-llm",
+      "base_model:codellama/CodeLlama-13b-Instruct-hf",
+      "base_model:quantized:codellama/CodeLlama-13b-Instruct-hf",
+      "region:us"
+    ],
+    "error": null
+  },
+  {
+    "repo_id": "mlc-ai/CodeLlama-7b-Python-hf-q4f16_1-MLC",
+    "family": "CodeLlama",
+    "params_b": 7.0,
+    "quant": "q4f16_1",
+    "total_bin_bytes": 3790741504,
+    "n_bin_files": 114,
+    "likes": 0,
+    "downloads": 2,
+    "last_modified": "2025-09-07T18:51:05.000Z",
+    "tags": [
+      "mlc-llm",
+      "web-llm",
+      "base_model:codellama/CodeLlama-7b-Python-hf",
+      "base_model:quantized:codellama/CodeLlama-7b-Python-hf",
+      "region:us"
+    ],
+    "error": null
+  },
+  {
+    "repo_id": "mlc-ai/CodeLlama-7b-Python-hf-q4f32_1-MLC",
+    "family": "CodeLlama",
+    "params_b": 7.0,
+    "quant": "q4f32_1",
+    "total_bin_bytes": 3790741504,
+    "n_bin_files": 114,
+    "likes": 0,
+    "downloads": 10,
+    "last_modified": "2025-09-07T18:51:07.000Z",
+    "tags": [
+      "mlc-llm",
+      "web-llm",
+      "base_model:codellama/CodeLlama-7b-Python-hf",
+      "base_model:quantized:codellama/CodeLlama-7b-Python-hf",
+      "region:us"
+    ],
+    "error": null
+  },
+  {
+    "repo_id": "mlc-ai/CodeLlama-13b-Python-hf-q4f16_1-MLC",
+    "family": "CodeLlama",
+    "params_b": 13.0,
+    "quant": "q4f16_1",
+    "total_bin_bytes": 7322019840,
+    "n_bin_files": 163,
+    "likes": 0,
+    "downloads": 5,
+    "last_modified": "2025-09-07T18:51:09.000Z",
+    "tags": [
+      "mlc-llm",
+      "web-llm",
+      "base_model:codellama/CodeLlama-13b-Python-hf",
+      "base_model:quantized:codellama/CodeLlama-13b-Python-hf",
+      "region:us"
+    ],
+    "error": null
+  },
+  {
+    "repo_id": "mlc-ai/CodeLlama-13b-Python-hf-q4f32_1-MLC",
+    "family": "CodeLlama",
+    "params_b": 13.0,
+    "quant": "q4f32_1",
+    "total_bin_bytes": 7322019840,
+    "n_bin_files": 163,
+    "likes": 0,
+    "downloads": 5,
+    "last_modified": "2025-09-07T18:51:08.000Z",
+    "tags": [
+      "mlc-llm",
+      "web-llm",
+      "base_model:codellama/CodeLlama-13b-Python-hf",
+      "base_model:quantized:codellama/CodeLlama-13b-Python-hf",
+      "region:us"
+    ],
+    "error": null
+  },
+  {
+    "repo_id": "mlc-ai/stablelm-2-zephyr-1_6b-q0f16_1-MLC",
+    "family": "stablelm-2-zephyr-1",
+    "params_b": 6.0,
+    "quant": null,
+    "total_bin_bytes": 0,
+    "n_bin_files": 0,
+    "likes": 0,
+    "downloads": 0,
+    "last_modified": "2024-07-11T15:32:35.000Z",
+    "tags": [
+      "mlc-llm",
+      "web-llm",
+      "base_model:stabilityai/stablelm-2-zephyr-1_6b",
+      "base_model:quantized:stabilityai/stablelm-2-zephyr-1_6b",
+      "region:us"
+    ],
+    "error": null
+  },
+  {
+    "repo_id": "mlc-ai/stablelm-zephyr-3b-q0f16-MLC",
+    "family": "stablelm-zephyr",
+    "params_b": 3.0,
+    "quant": "q0f16",
+    "total_bin_bytes": 5590886400,
+    "n_bin_files": 114,
+    "likes": 0,
+    "downloads": 6,
+    "last_modified": "2025-09-07T18:51:27.000Z",
+    "tags": [
+      "mlc-llm",
+      "web-llm",
+      "base_model:stabilityai/stablelm-zephyr-3b",
+      "base_model:quantized:stabilityai/stablelm-zephyr-3b",
+      "region:us"
+    ],
+    "error": null
+  },
+  {
+    "repo_id": "mlc-ai/stablelm-zephyr-3b-q0f32-MLC",
+    "family": "stablelm-zephyr",
+    "params_b": 3.0,
+    "quant": "q0f32",
+    "total_bin_bytes": 5590886400,
+    "n_bin_files": 114,
+    "likes": 0,
+    "downloads": 8,
+    "last_modified": "2025-09-07T18:51:27.000Z",
+    "tags": [
+      "mlc-llm",
+      "web-llm",
+      "base_model:stabilityai/stablelm-zephyr-3b",
+      "base_model:quantized:stabilityai/stablelm-zephyr-3b",
+      "region:us"
+    ],
+    "error": null
+  },
+  {
+    "repo_id": "mlc-ai/stablelm-zephyr-3b-q4f16_1-MLC",
+    "family": "stablelm-zephyr",
+    "params_b": 3.0,
+    "quant": "q4f16_1",
+    "total_bin_bytes": 1572915200,
+    "n_bin_files": 67,
+    "likes": 0,
+    "downloads": 12,
+    "last_modified": "2025-09-07T18:51:30.000Z",
+    "tags": [
+      "mlc-llm",
+      "web-llm",
+      "base_model:stabilityai/stablelm-zephyr-3b",
+      "base_model:quantized:stabilityai/stablelm-zephyr-3b",
+      "region:us"
+    ],
+    "error": null
+  },
+  {
+    "repo_id": "mlc-ai/stablelm-zephyr-3b-q4f32_1-MLC",
+    "family": "stablelm-zephyr",
+    "params_b": 3.0,
+    "quant": "q4f32_1",
+    "total_bin_bytes": 1572915200,
+    "n_bin_files": 67,
+    "likes": 1,
+    "downloads": 5,
+    "last_modified": "2025-09-07T18:51:30.000Z",
+    "tags": [
+      "mlc-llm",
+      "web-llm",
+      "base_model:stabilityai/stablelm-zephyr-3b",
+      "base_model:quantized:stabilityai/stablelm-zephyr-3b",
+      "region:us"
+    ],
+    "error": null
+  },
+  {
+    "repo_id": "mlc-ai/gemma-2b-it-q4f16_1-MLC",
+    "family": "gemma",
+    "params_b": 2.0,
+    "quant": "q4f16_1",
+    "total_bin_bytes": 1409830912,
+    "n_bin_files": 38,
+    "likes": 6,
+    "downloads": 3735,
+    "last_modified": "2025-09-07T18:52:26.000Z",
+    "tags": [
+      "mlc-llm",
+      "web-llm",
+      "base_model:google/gemma-2b-it",
+      "base_model:quantized:google/gemma-2b-it",
+      "region:us"
+    ],
+    "error": null
+  },
+  {
+    "repo_id": "mlc-ai/gemma-2b-it-q4f32_1-MLC",
+    "family": "gemma",
+    "params_b": 2.0,
+    "quant": "q4f32_1",
+    "total_bin_bytes": 1409830912,
+    "n_bin_files": 38,
+    "likes": 2,
+    "downloads": 588,
+    "last_modified": "2025-09-07T18:52:25.000Z",
+    "tags": [
+      "mlc-llm",
+      "web-llm",
+      "base_model:google/gemma-2b-it",
+      "base_model:quantized:google/gemma-2b-it",
+      "region:us"
+    ],
+    "error": null
+  },
+  {
+    "repo_id": "mlc-ai/gemma-2b-it-q0f16-MLC",
+    "family": "gemma",
+    "params_b": 2.0,
+    "quant": "q0f16",
+    "total_bin_bytes": 5012344832,
+    "n_bin_files": 49,
+    "likes": 0,
+    "downloads": 6,
+    "last_modified": "2025-09-07T18:52:24.000Z",
+    "tags": [
+      "mlc-llm",
+      "web-llm",
+      "base_model:google/gemma-2b-it",
+      "base_model:quantized:google/gemma-2b-it",
+      "region:us"
+    ],
+    "error": null
+  },
+  {
+    "repo_id": "mlc-ai/gemma-2b-it-q0f32-MLC",
+    "family": "gemma",
+    "params_b": 2.0,
+    "quant": "q0f32",
+    "total_bin_bytes": 5012344832,
+    "n_bin_files": 49,
+    "likes": 0,
+    "downloads": 3,
+    "last_modified": "2025-09-07T18:52:22.000Z",
+    "tags": [
+      "mlc-llm",
+      "web-llm",
+      "base_model:google/gemma-2b-it",
+      "base_model:quantized:google/gemma-2b-it",
+      "region:us"
+    ],
+    "error": null
+  },
+  {
+    "repo_id": "mlc-ai/gemma-7b-it-q4f16_2-MLC",
+    "family": "gemma",
+    "params_b": 7.0,
+    "quant": null,
+    "total_bin_bytes": 5933193216,
+    "n_bin_files": 101,
+    "likes": 1,
+    "downloads": 4,
+    "last_modified": "2025-09-07T18:51:32.000Z",
+    "tags": [
+      "mlc-llm",
+      "web-llm",
+      "base_model:google/gemma-7b-it",
+      "base_model:quantized:google/gemma-7b-it",
+      "region:us"
+    ],
+    "error": null
+  },
+  {
+    "repo_id": "mlc-ai/gorilla-openfunctions-v1-q4f16_1-MLC",
+    "family": "gorilla-openfunctions-v1",
+    "params_b": null,
+    "quant": "q4f16_1",
+    "total_bin_bytes": 3790741504,
+    "n_bin_files": 115,
+    "likes": 0,
+    "downloads": 7,
+    "last_modified": "2025-09-07T18:51:34.000Z",
+    "tags": [
+      "mlc-llm",
+      "web-llm",
+      "base_model:gorilla-llm/gorilla-openfunctions-v1",
+      "base_model:quantized:gorilla-llm/gorilla-openfunctions-v1",
+      "region:us"
+    ],
+    "error": null
+  },
+  {
+    "repo_id": "mlc-ai/gorilla-openfunctions-v2-q4f16_1-MLC",
+    "family": "gorilla-openfunctions-v2",
+    "params_b": null,
+    "quant": "q4f16_1",
+    "total_bin_bytes": 3887439872,
+    "n_bin_files": 109,
+    "likes": 2,
+    "downloads": 5,
+    "last_modified": "2025-09-07T18:51:33.000Z",
+    "tags": [
+      "mlc-llm",
+      "web-llm",
+      "base_model:gorilla-llm/gorilla-openfunctions-v2",
+      "base_model:quantized:gorilla-llm/gorilla-openfunctions-v2",
+      "region:us"
+    ],
+    "error": null
+  },
+  {
+    "repo_id": "mlc-ai/gorilla-openfunctions-v2-q4f32_1-MLC",
+    "family": "gorilla-openfunctions-v2",
+    "params_b": null,
+    "quant": "q4f32_1",
+    "total_bin_bytes": 3887439872,
+    "n_bin_files": 109,
+    "likes": 0,
+    "downloads": 6,
+    "last_modified": "2025-09-07T18:51:35.000Z",
+    "tags": [
+      "mlc-llm",
+      "web-llm",
+      "base_model:gorilla-llm/gorilla-openfunctions-v2",
+      "base_model:quantized:gorilla-llm/gorilla-openfunctions-v2",
+      "region:us"
+    ],
+    "error": null
+  },
+  {
+    "repo_id": "mlc-ai/gemma-2b-it-q4f16_0-MLC",
+    "family": "gemma",
+    "params_b": 2.0,
+    "quant": "q4f16_0",
+    "total_bin_bytes": 1409830912,
+    "n_bin_files": 38,
+    "likes": 0,
+    "downloads": 2,
+    "last_modified": "2025-09-07T18:52:21.000Z",
+    "tags": [
+      "mlc-llm",
+      "web-llm",
+      "base_model:google/gemma-2b-it",
+      "base_model:quantized:google/gemma-2b-it",
+      "region:us"
+    ],
+    "error": null
+  },
+  {
+    "repo_id": "mlc-ai/mlc-chat-stanford-crfm-music-medium-800k-q0f32-MLC",
+    "family": "mlc-chat-stanford-crfm-music-medium-800k",
+    "params_b": null,
+    "quant": "q0f32",
+    "total_bin_bytes": 832114688,
+    "n_bin_files": 25,
+    "likes": 0,
+    "downloads": 0,
+    "last_modified": "2025-09-07T18:50:16.000Z",
+    "tags": [
+      "region:us"
+    ],
+    "error": null
+  },
+  {
+    "repo_id": "mlc-ai/Qwen1.5-MoE-A2.7B-Chat-q4f16_1-MLC",
+    "family": "Qwen1.5-MoE-A",
+    "params_b": 2.7,
+    "quant": "q4f16_1",
+    "total_bin_bytes": 8057294848,
+    "n_bin_files": 101,
+    "likes": 3,
+    "downloads": 2,
+    "last_modified": "2025-09-07T18:51:36.000Z",
+    "tags": [
+      "mlc-llm",
+      "web-llm",
+      "base_model:Qwen/Qwen1.5-MoE-A2.7B-Chat",
+      "base_model:quantized:Qwen/Qwen1.5-MoE-A2.7B-Chat",
+      "region:us"
+    ],
+    "error": null
+  },
+  {
+    "repo_id": "mlc-ai/mlc-chat-stanford-crfm-music-small-800k-q0f32-MLC",
+    "family": "mlc-chat-stanford-crfm-music-small-800k",
+    "params_b": null,
+    "quant": "q0f32",
+    "total_bin_bytes": 340730880,
+    "n_bin_files": 8,
+    "likes": 0,
+    "downloads": 0,
+    "last_modified": "2025-09-07T18:50:17.000Z",
+    "tags": [
+      "region:us"
+    ],
+    "error": null
+  },
+  {
+    "repo_id": "mlc-ai/Llama-3-8B-Instruct-q3f16_2-MLC",
+    "family": "Llama-3",
+    "params_b": 8.0,
+    "quant": null,
+    "total_bin_bytes": 3457691648,
+    "n_bin_files": 89,
+    "likes": 2,
+    "downloads": 3,
+    "last_modified": "2025-09-07T18:51:39.000Z",
+    "tags": [
+      "mlc-llm",
+      "web-llm",
+      "base_model:meta-llama/Meta-Llama-3-8B-Instruct",
+      "base_model:quantized:meta-llama/Meta-Llama-3-8B-Instruct",
+      "region:us"
+    ],
+    "error": null
+  },
+  {
+    "repo_id": "mlc-ai/Hermes-2-Pro-Mistral-7B-q4f16_1-MLC",
+    "family": "Hermes-2-Pro-Mistral",
+    "params_b": 7.0,
+    "quant": "q4f16_1",
+    "total_bin_bytes": 4074004480,
+    "n_bin_files": 106,
+    "likes": 3,
+    "downloads": 257,
+    "last_modified": "2025-09-07T18:52:42.000Z",
+    "tags": [
+      "mlc-llm",
+      "web-llm",
+      "base_model:NousResearch/Hermes-2-Pro-Mistral-7B",
+      "base_model:quantized:NousResearch/Hermes-2-Pro-Mistral-7B",
+      "region:us"
+    ],
+    "error": null
+  },
+  {
+    "repo_id": "mlc-ai/Phi-3-mini-4k-instruct-q0f32-MLC",
+    "family": "Phi-3-mini-4k",
+    "params_b": null,
+    "quant": "q0f32",
+    "total_bin_bytes": 7642159104,
+    "n_bin_files": 130,
+    "likes": 1,
+    "downloads": 6,
+    "last_modified": "2025-09-07T18:55:20.000Z",
+    "tags": [
+      "mlc-llm",
+      "web-llm",
+      "base_model:microsoft/Phi-3-mini-4k-instruct",
+      "base_model:quantized:microsoft/Phi-3-mini-4k-instruct",
+      "region:us"
+    ],
+    "error": null
+  },
+  {
+    "repo_id": "mlc-ai/Phi-3-mini-4k-instruct-q0f16-MLC",
+    "family": "Phi-3-mini-4k",
+    "params_b": null,
+    "quant": "q0f16",
+    "total_bin_bytes": 7642159104,
+    "n_bin_files": 130,
+    "likes": 0,
+    "downloads": 4,
+    "last_modified": "2025-09-07T18:55:18.000Z",
+    "tags": [
+      "mlc-llm",
+      "web-llm",
+      "base_model:microsoft/Phi-3-mini-4k-instruct",
+      "base_model:quantized:microsoft/Phi-3-mini-4k-instruct",
+      "region:us"
+    ],
+    "error": null
+  },
+  {
+    "repo_id": "mlc-ai/Phi-3-mini-4k-instruct-q4f16_1-MLC",
+    "family": "Phi-3-mini-4k",
+    "params_b": null,
+    "quant": "q4f16_1",
+    "total_bin_bytes": 2149644288,
+    "n_bin_files": 83,
+    "likes": 0,
+    "downloads": 24417,
+    "last_modified": "2025-09-07T18:55:16.000Z",
+    "tags": [
+      "mlc-llm",
+      "web-llm",
+      "base_model:microsoft/Phi-3-mini-4k-instruct",
+      "base_model:quantized:microsoft/Phi-3-mini-4k-instruct",
+      "region:us"
+    ],
+    "error": null
+  },
+  {
+    "repo_id": "mlc-ai/Phi-3-mini-4k-instruct-q4f16_2-MLC",
+    "family": "Phi-3-mini-4k-instruct-q4f16_2-MLC",
+    "params_b": null,
+    "quant": null,
+    "total_bin_bytes": 2432833536,
+    "n_bin_files": 82,
+    "likes": 0,
+    "downloads": 8,
+    "last_modified": "2025-09-07T18:55:21.000Z",
+    "tags": [
+      "mlc-llm",
+      "web-llm",
+      "base_model:microsoft/Phi-3-mini-4k-instruct",
+      "base_model:quantized:microsoft/Phi-3-mini-4k-instruct",
+      "region:us"
+    ],
+    "error": null
+  },
+  {
+    "repo_id": "mlc-ai/Phi-3-mini-128k-instruct-q0f32-MLC",
+    "family": "Phi-3-mini-128k",
+    "params_b": null,
+    "quant": "q0f32",
+    "total_bin_bytes": 7642159104,
+    "n_bin_files": 130,
+    "likes": 0,
+    "downloads": 8,
+    "last_modified": "2025-09-07T18:55:23.000Z",
+    "tags": [
+      "mlc-llm",
+      "web-llm",
+      "base_model:microsoft/Phi-3-mini-128k-instruct",
+      "base_model:quantized:microsoft/Phi-3-mini-128k-instruct",
+      "region:us"
+    ],
+    "error": null
+  },
+  {
+    "repo_id": "mlc-ai/Phi-3-mini-128k-instruct-q4f16_2-MLC",
+    "family": "Phi-3-mini-128k-instruct-q4f16_2-MLC",
+    "params_b": null,
+    "quant": null,
+    "total_bin_bytes": 2432833536,
+    "n_bin_files": 82,
+    "likes": 0,
+    "downloads": 5,
+    "last_modified": "2025-09-07T18:55:22.000Z",
+    "tags": [
+      "mlc-llm",
+      "web-llm",
+      "base_model:microsoft/Phi-3-mini-128k-instruct",
+      "base_model:quantized:microsoft/Phi-3-mini-128k-instruct",
+      "region:us"
+    ],
+    "error": null
+  },
+  {
+    "repo_id": "mlc-ai/stablelm-2-zephyr-1_6b-q0f16-MLC",
+    "family": "stablelm-2-zephyr-1",
+    "params_b": 6.0,
+    "quant": "q0f16",
+    "total_bin_bytes": 3289030656,
+    "n_bin_files": 75,
+    "likes": 0,
+    "downloads": 2,
+    "last_modified": "2025-09-07T18:51:44.000Z",
+    "tags": [
+      "mlc-llm",
+      "web-llm",
+      "base_model:stabilityai/stablelm-2-zephyr-1_6b",
+      "base_model:quantized:stabilityai/stablelm-2-zephyr-1_6b",
+      "region:us"
+    ],
+    "error": null
+  },
+  {
+    "repo_id": "mlc-ai/stablelm-2-zephyr-1_6b-q0f32-MLC",
+    "family": "stablelm-2-zephyr-1",
+    "params_b": 6.0,
+    "quant": "q0f32",
+    "total_bin_bytes": 3289030656,
+    "n_bin_files": 75,
+    "likes": 0,
+    "downloads": 2,
+    "last_modified": "2025-09-07T18:51:43.000Z",
+    "tags": [
+      "mlc-llm",
+      "web-llm",
+      "base_model:stabilityai/stablelm-2-zephyr-1_6b",
+      "base_model:quantized:stabilityai/stablelm-2-zephyr-1_6b",
+      "region:us"
+    ],
+    "error": null
+  },
+  {
+    "repo_id": "mlc-ai/stablelm-2-zephyr-1_6b-q4f32_1-MLC",
+    "family": "stablelm-2-zephyr-1",
+    "params_b": 6.0,
+    "quant": "q4f32_1",
+    "total_bin_bytes": 925540352,
+    "n_bin_files": 27,
+    "likes": 0,
+    "downloads": 19,
+    "last_modified": "2025-09-07T18:51:45.000Z",
+    "tags": [
+      "mlc-llm",
+      "web-llm",
+      "base_model:stabilityai/stablelm-2-zephyr-1_6b",
+      "base_model:quantized:stabilityai/stablelm-2-zephyr-1_6b",
+      "region:us"
+    ],
+    "error": null
+  },
+  {
+    "repo_id": "mlc-ai/stablelm-2-zephyr-1_6b-q4f16_1-MLC",
+    "family": "stablelm-2-zephyr-1",
+    "params_b": 6.0,
+    "quant": "q4f16_1",
+    "total_bin_bytes": 925540352,
+    "n_bin_files": 27,
+    "likes": 0,
+    "downloads": 109,
+    "last_modified": "2025-09-07T18:51:44.000Z",
+    "tags": [
+      "mlc-llm",
+      "web-llm",
+      "base_model:stabilityai/stablelm-2-zephyr-1_6b",
+      "base_model:quantized:stabilityai/stablelm-2-zephyr-1_6b",
+      "region:us"
+    ],
+    "error": null
+  },
+  {
+    "repo_id": "mlc-ai/Qwen1.5-0.5B-Chat-q3f16_1-MLC",
+    "family": "Qwen1.5",
+    "params_b": 0.5,
+    "quant": "q3f16_1",
+    "total_bin_bytes": 283132928,
+    "n_bin_files": 7,
+    "likes": 0,
+    "downloads": 1,
+    "last_modified": "2025-09-07T18:51:46.000Z",
+    "tags": [
+      "mlc-llm",
+      "web-llm",
+      "base_model:Qwen/Qwen1.5-0.5B-Chat",
+      "base_model:quantized:Qwen/Qwen1.5-0.5B-Chat",
+      "region:us"
+    ],
+    "error": null
+  },
+  {
+    "repo_id": "mlc-ai/Phi-3-mini-4k-instruct-q4f32_1-MLC",
+    "family": "Phi-3-mini-4k",
+    "params_b": null,
+    "quant": "q4f32_1",
+    "total_bin_bytes": 2149644288,
+    "n_bin_files": 83,
+    "likes": 0,
+    "downloads": 217,
+    "last_modified": "2025-09-07T18:55:17.000Z",
+    "tags": [
+      "mlc-llm",
+      "web-llm",
+      "base_model:microsoft/Phi-3-mini-4k-instruct",
+      "base_model:quantized:microsoft/Phi-3-mini-4k-instruct",
+      "region:us"
+    ],
+    "error": null
+  },
+  {
+    "repo_id": "mlc-ai/Phi-3-mini-128k-instruct-q0f16-MLC",
+    "family": "Phi-3-mini-128k",
+    "params_b": null,
+    "quant": "q0f16",
+    "total_bin_bytes": 7642159104,
+    "n_bin_files": 130,
+    "likes": 1,
+    "downloads": 3,
+    "last_modified": "2025-09-07T18:55:25.000Z",
+    "tags": [
+      "mlc-llm",
+      "web-llm",
+      "base_model:microsoft/Phi-3-mini-128k-instruct",
+      "base_model:quantized:microsoft/Phi-3-mini-128k-instruct",
+      "region:us"
+    ],
+    "error": null
+  },
+  {
+    "repo_id": "mlc-ai/Mistral-7B-Instruct-v0.3-q4f16_1-MLC",
+    "family": "Mistral",
+    "params_b": 7.0,
+    "quant": "q4f16_1",
+    "total_bin_bytes": 4077395968,
+    "n_bin_files": 106,
+    "likes": 0,
+    "downloads": 8268,
+    "last_modified": "2025-09-07T18:51:49.000Z",
+    "tags": [
+      "mlc-llm",
+      "web-llm",
+      "base_model:mistralai/Mistral-7B-Instruct-v0.3",
+      "base_model:quantized:mistralai/Mistral-7B-Instruct-v0.3",
+      "region:us"
+    ],
+    "error": null
+  },
+  {
+    "repo_id": "mlc-ai/Mistral-7B-Instruct-v0.3-q4f32_1-MLC",
+    "family": "Mistral",
+    "params_b": 7.0,
+    "quant": "q4f32_1",
+    "total_bin_bytes": 4077395968,
+    "n_bin_files": 106,
+    "likes": 0,
+    "downloads": 49,
+    "last_modified": "2025-09-07T18:51:48.000Z",
+    "tags": [
+      "mlc-llm",
+      "web-llm",
+      "base_model:mistralai/Mistral-7B-Instruct-v0.3",
+      "base_model:quantized:mistralai/Mistral-7B-Instruct-v0.3",
+      "region:us"
+    ],
+    "error": null
+  },
+  {
+    "repo_id": "mlc-ai/Phi-3-mini-128k-instruct-q4f16_1-MLC",
+    "family": "Phi-3-mini-128k",
+    "params_b": null,
+    "quant": "q4f16_1",
+    "total_bin_bytes": 2149644288,
+    "n_bin_files": 83,
+    "likes": 1,
+    "downloads": 5,
+    "last_modified": "2025-09-07T18:55:24.000Z",
+    "tags": [
+      "mlc-llm",
+      "web-llm",
+      "base_model:microsoft/Phi-3-mini-128k-instruct",
+      "base_model:quantized:microsoft/Phi-3-mini-128k-instruct",
+      "region:us"
+    ],
+    "error": null
+  },
+  {
+    "repo_id": "mlc-ai/Phi-3-mini-128k-instruct-q4f32_1-MLC",
+    "family": "Phi-3-mini-128k",
+    "params_b": null,
+    "quant": "q4f32_1",
+    "total_bin_bytes": 2149644288,
+    "n_bin_files": 83,
+    "likes": 0,
+    "downloads": 6,
+    "last_modified": "2025-09-07T18:55:24.000Z",
+    "tags": [
+      "mlc-llm",
+      "web-llm",
+      "base_model:microsoft/Phi-3-mini-128k-instruct",
+      "base_model:quantized:microsoft/Phi-3-mini-128k-instruct",
+      "region:us"
+    ],
+    "error": null
+  },
+  {
+    "repo_id": "mlc-ai/Llama-3-8B-Instruct-q4f32_1-MLC",
+    "family": "Llama-3",
+    "params_b": 8.0,
+    "quant": "q4f32_1",
+    "total_bin_bytes": 4517404672,
+    "n_bin_files": 108,
+    "likes": 1,
+    "downloads": 805,
+    "last_modified": "2025-09-07T18:53:40.000Z",
+    "tags": [
+      "mlc-llm",
+      "web-llm",
+      "base_model:meta-llama/Meta-Llama-3-8B-Instruct",
+      "base_model:quantized:meta-llama/Meta-Llama-3-8B-Instruct",
+      "region:us"
+    ],
+    "error": null
+  },
+  {
+    "repo_id": "mlc-ai/Llama-3-8B-Instruct-q4f16_1-MLC",
+    "family": "Llama-3",
+    "params_b": 8.0,
+    "quant": "q4f16_1",
+    "total_bin_bytes": 4517404672,
+    "n_bin_files": 108,
+    "likes": 6,
+    "downloads": 590,
+    "last_modified": "2025-09-07T18:53:39.000Z",
+    "tags": [
+      "mlc-llm",
+      "web-llm",
+      "base_model:meta-llama/Meta-Llama-3-8B-Instruct",
+      "base_model:quantized:meta-llama/Meta-Llama-3-8B-Instruct",
+      "region:us"
+    ],
+    "error": null
+  },
+  {
+    "repo_id": "mlc-ai/Llama-3-8B-Instruct-q3f16_1-MLC",
+    "family": "Llama-3",
+    "params_b": 8.0,
+    "quant": "q3f16_1",
+    "total_bin_bytes": 3631664128,
+    "n_bin_files": 100,
+    "likes": 1,
+    "downloads": 639,
+    "last_modified": "2025-09-07T18:53:37.000Z",
+    "tags": [
+      "mlc-llm",
+      "web-llm",
+      "base_model:meta-llama/Meta-Llama-3-8B-Instruct",
+      "base_model:quantized:meta-llama/Meta-Llama-3-8B-Instruct",
+      "region:us"
+    ],
+    "error": null
+  },
+  {
+    "repo_id": "mlc-ai/Qwen1.5-0.5B-Chat-q4f32_1-MLC",
+    "family": "Qwen1.5",
+    "params_b": 0.5,
+    "quant": "q4f32_1",
+    "total_bin_bytes": 348686336,
+    "n_bin_files": 8,
+    "likes": 0,
+    "downloads": 14,
+    "last_modified": "2025-09-07T18:52:43.000Z",
+    "tags": [
+      "mlc-llm",
+      "web-llm",
+      "base_model:Qwen/Qwen1.5-0.5B-Chat",
+      "base_model:quantized:Qwen/Qwen1.5-0.5B-Chat",
+      "region:us"
+    ],
+    "error": null
+  },
+  {
+    "repo_id": "mlc-ai/Qwen1.5-0.5B-Chat-q4f16_1-MLC",
+    "family": "Qwen1.5",
+    "params_b": 0.5,
+    "quant": "q4f16_1",
+    "total_bin_bytes": 348686336,
+    "n_bin_files": 8,
+    "likes": 0,
+    "downloads": 607,
+    "last_modified": "2025-09-07T18:52:43.000Z",
+    "tags": [
+      "mlc-llm",
+      "web-llm",
+      "base_model:Qwen/Qwen1.5-0.5B-Chat",
+      "base_model:quantized:Qwen/Qwen1.5-0.5B-Chat",
+      "region:us"
+    ],
+    "error": null
+  },
+  {
+    "repo_id": "mlc-ai/Qwen1.5-0.5B-Chat-q0f16-MLC",
+    "family": "Qwen1.5",
+    "params_b": 0.5,
+    "quant": "q0f16",
+    "total_bin_bytes": 1239140352,
+    "n_bin_files": 26,
+    "likes": 0,
+    "downloads": 5,
+    "last_modified": "2025-09-07T18:52:44.000Z",
+    "tags": [
+      "mlc-llm",
+      "web-llm",
+      "base_model:Qwen/Qwen1.5-0.5B-Chat",
+      "base_model:quantized:Qwen/Qwen1.5-0.5B-Chat",
+      "region:us"
+    ],
+    "error": null
+  },
+  {
+    "repo_id": "mlc-ai/Qwen1.5-1.8B-Chat-q4f32_1-MLC",
+    "family": "Qwen1.5",
+    "params_b": 1.8,
+    "quant": "q4f32_1",
+    "total_bin_bytes": 1033572352,
+    "n_bin_files": 28,
+    "likes": 0,
+    "downloads": 3,
+    "last_modified": "2025-09-07T18:52:46.000Z",
+    "tags": [
+      "mlc-llm",
+      "web-llm",
+      "base_model:Qwen/Qwen1.5-1.8B-Chat",
+      "base_model:quantized:Qwen/Qwen1.5-1.8B-Chat",
+      "region:us"
+    ],
+    "error": null
+  },
+  {
+    "repo_id": "mlc-ai/Qwen1.5-1.8B-Chat-q4f16_1-MLC",
+    "family": "Qwen1.5",
+    "params_b": 1.8,
+    "quant": "q4f16_1",
+    "total_bin_bytes": 1033572352,
+    "n_bin_files": 28,
+    "likes": 0,
+    "downloads": 15,
+    "last_modified": "2025-09-07T18:52:45.000Z",
+    "tags": [
+      "mlc-llm",
+      "web-llm",
+      "base_model:Qwen/Qwen1.5-1.8B-Chat",
+      "base_model:quantized:Qwen/Qwen1.5-1.8B-Chat",
+      "region:us"
+    ],
+    "error": null
+  },
+  {
+    "repo_id": "mlc-ai/Qwen1.5-1.8B-Chat-q0f16-MLC",
+    "family": "Qwen1.5",
+    "params_b": 1.8,
+    "quant": "q0f16",
+    "total_bin_bytes": 3673657344,
+    "n_bin_files": 75,
+    "likes": 0,
+    "downloads": 3,
+    "last_modified": "2025-09-07T18:52:47.000Z",
+    "tags": [
+      "mlc-llm",
+      "web-llm",
+      "base_model:Qwen/Qwen1.5-1.8B-Chat",
+      "base_model:quantized:Qwen/Qwen1.5-1.8B-Chat",
+      "region:us"
+    ],
+    "error": null
+  },
+  {
+    "repo_id": "mlc-ai/TinyLlama-1.1B-Chat-v1.0-q4f32_1-MLC",
+    "family": "TinyLlama",
+    "params_b": 1.1,
+    "quant": "q4f32_1",
+    "total_bin_bytes": 618909696,
+    "n_bin_files": 24,
+    "likes": 0,
+    "downloads": 288,
+    "last_modified": "2025-09-07T18:51:51.000Z",
+    "tags": [
+      "mlc-llm",
+      "web-llm",
+      "base_model:TinyLlama/TinyLlama-1.1B-Chat-v1.0",
+      "base_model:quantized:TinyLlama/TinyLlama-1.1B-Chat-v1.0",
+      "region:us"
+    ],
+    "error": null
+  },
+  {
+    "repo_id": "mlc-ai/TinyLlama-1.1B-Chat-v1.0-q0f16-MLC",
+    "family": "TinyLlama",
+    "params_b": 1.1,
+    "quant": "q0f16",
+    "total_bin_bytes": 2200096768,
+    "n_bin_files": 58,
+    "likes": 0,
+    "downloads": 2,
+    "last_modified": "2025-09-07T18:51:50.000Z",
+    "tags": [
+      "mlc-llm",
+      "web-llm",
+      "base_model:TinyLlama/TinyLlama-1.1B-Chat-v1.0",
+      "base_model:quantized:TinyLlama/TinyLlama-1.1B-Chat-v1.0",
+      "region:us"
+    ],
+    "error": null
+  },
+  {
+    "repo_id": "mlc-ai/Mistral-7B-Instruct-v0.3-q3f16_1-MLC",
+    "family": "Mistral",
+    "params_b": 7.0,
+    "quant": "q3f16_1",
+    "total_bin_bytes": 3277594624,
+    "n_bin_files": 98,
+    "likes": 0,
+    "downloads": 4750,
+    "last_modified": "2025-09-07T18:51:52.000Z",
+    "tags": [
+      "mlc-llm",
+      "web-llm",
+      "base_model:mistralai/Mistral-7B-Instruct-v0.3",
+      "base_model:quantized:mistralai/Mistral-7B-Instruct-v0.3",
+      "region:us"
+    ],
+    "error": null
+  },
+  {
+    "repo_id": "mlc-ai/Mixtral-8x7B-Instruct-v0.1-q4f32_1-MLC",
+    "family": "Mixtral-8x",
+    "params_b": 7.0,
+    "quant": "q4f32_1",
+    "total_bin_bytes": 858259456,
+    "n_bin_files": 5,
+    "likes": 0,
+    "downloads": 0,
+    "last_modified": "2024-07-11T15:33:08.000Z",
+    "tags": [
+      "mlc-llm",
+      "web-llm",
+      "base_model:mistralai/Mixtral-8x7B-Instruct-v0.1",
+      "base_model:quantized:mistralai/Mixtral-8x7B-Instruct-v0.1",
+      "region:us"
+    ],
+    "error": null
+  },
+  {
+    "repo_id": "mlc-ai/Hermes-2-Pro-Llama-3-8B-q4f32_1-MLC",
+    "family": "Hermes-2-Pro-Llama-3",
+    "params_b": 8.0,
+    "quant": "q4f32_1",
+    "total_bin_bytes": 4517552128,
+    "n_bin_files": 108,
+    "likes": 0,
+    "downloads": 83,
+    "last_modified": "2025-09-07T18:52:38.000Z",
+    "tags": [
+      "mlc-llm",
+      "web-llm",
+      "base_model:NousResearch/Hermes-2-Pro-Llama-3-8B",
+      "base_model:quantized:NousResearch/Hermes-2-Pro-Llama-3-8B",
+      "region:us"
+    ],
+    "error": null
+  },
+  {
+    "repo_id": "mlc-ai/Hermes-2-Pro-Llama-3-8B-q4f16_1-MLC",
+    "family": "Hermes-2-Pro-Llama-3",
+    "params_b": 8.0,
+    "quant": "q4f16_1",
+    "total_bin_bytes": 4517552128,
+    "n_bin_files": 108,
+    "likes": 0,
+    "downloads": 987,
+    "last_modified": "2025-09-07T18:52:37.000Z",
+    "tags": [
+      "mlc-llm",
+      "web-llm",
+      "base_model:NousResearch/Hermes-2-Pro-Llama-3-8B",
+      "base_model:quantized:NousResearch/Hermes-2-Pro-Llama-3-8B",
+      "region:us"
+    ],
+    "error": null
+  },
+  {
+    "repo_id": "mlc-ai/Hermes-2-Pro-Llama-3-8B-q3f16_1-MLC",
+    "family": "Hermes-2-Pro-Llama-3",
+    "params_b": 8.0,
+    "quant": "q3f16_1",
+    "total_bin_bytes": 3631782784,
+    "n_bin_files": 100,
+    "likes": 0,
+    "downloads": 5,
+    "last_modified": "2025-09-07T18:52:41.000Z",
+    "tags": [
+      "mlc-llm",
+      "web-llm",
+      "base_model:NousResearch/Hermes-2-Pro-Llama-3-8B",
+      "base_model:quantized:NousResearch/Hermes-2-Pro-Llama-3-8B",
+      "region:us"
+    ],
+    "error": null
+  },
+  {
+    "repo_id": "mlc-ai/TinyLlama-1.1B-Chat-v1.0-q4f16_1-MLC",
+    "family": "TinyLlama",
+    "params_b": 1.1,
+    "quant": "q4f16_1",
+    "total_bin_bytes": 618909696,
+    "n_bin_files": 24,
+    "likes": 0,
+    "downloads": 1038,
+    "last_modified": "2025-09-07T18:51:55.000Z",
+    "tags": [
+      "mlc-llm",
+      "web-llm",
+      "base_model:TinyLlama/TinyLlama-1.1B-Chat-v1.0",
+      "base_model:quantized:TinyLlama/TinyLlama-1.1B-Chat-v1.0",
+      "region:us"
+    ],
+    "error": null
+  },
+  {
+    "repo_id": "mlc-ai/Qwen2-7B-Instruct-q4f16_1-MLC",
+    "family": "Qwen2",
+    "params_b": 7.0,
+    "quant": "q4f16_1",
+    "total_bin_bytes": 4284263424,
+    "n_bin_files": 88,
+    "likes": 0,
+    "downloads": 81,
+    "last_modified": "2025-09-07T18:52:54.000Z",
+    "tags": [
+      "mlc-llm",
+      "web-llm",
+      "base_model:Qwen/Qwen2-7B-Instruct",
+      "base_model:quantized:Qwen/Qwen2-7B-Instruct",
+      "region:us"
+    ],
+    "error": null
+  },
+  {
+    "repo_id": "mlc-ai/Qwen2-7B-Instruct-q4f32_1-MLC",
+    "family": "Qwen2",
+    "params_b": 7.0,
+    "quant": "q4f32_1",
+    "total_bin_bytes": 4284263424,
+    "n_bin_files": 88,
+    "likes": 0,
+    "downloads": 25,
+    "last_modified": "2025-09-07T18:52:55.000Z",
+    "tags": [
+      "mlc-llm",
+      "web-llm",
+      "base_model:Qwen/Qwen2-7B-Instruct",
+      "base_model:quantized:Qwen/Qwen2-7B-Instruct",
+      "region:us"
+    ],
+    "error": null
+  },
+  {
+    "repo_id": "mlc-ai/Qwen2-0.5B-Instruct-q0f32-MLC",
+    "family": "Qwen2",
+    "params_b": 0.5,
+    "quant": "q0f32",
+    "total_bin_bytes": 988065536,
+    "n_bin_files": 25,
+    "likes": 0,
+    "downloads": 21,
+    "last_modified": "2025-09-07T18:52:49.000Z",
+    "tags": [
+      "mlc-llm",
+      "web-llm",
+      "base_model:Qwen/Qwen2-0.5B-Instruct",
+      "base_model:quantized:Qwen/Qwen2-0.5B-Instruct",
+      "region:us"
+    ],
+    "error": null
+  },
+  {
+    "repo_id": "mlc-ai/Qwen2-0.5B-Instruct-q4f16_1-MLC",
+    "family": "Qwen2",
+    "params_b": 0.5,
+    "quant": "q4f16_1",
+    "total_bin_bytes": 277996288,
+    "n_bin_files": 8,
+    "likes": 1,
+    "downloads": 857,
+    "last_modified": "2025-09-07T18:52:48.000Z",
+    "tags": [
+      "mlc-llm",
+      "web-llm",
+      "base_model:Qwen/Qwen2-0.5B-Instruct",
+      "base_model:quantized:Qwen/Qwen2-0.5B-Instruct",
+      "region:us"
+    ],
+    "error": null
+  },
+  {
+    "repo_id": "mlc-ai/Qwen2-0.5B-Instruct-q0f16-MLC",
+    "family": "Qwen2",
+    "params_b": 0.5,
+    "quant": "q0f16",
+    "total_bin_bytes": 988065536,
+    "n_bin_files": 25,
+    "likes": 0,
+    "downloads": 63,
+    "last_modified": "2025-09-07T18:52:50.000Z",
+    "tags": [
+      "mlc-llm",
+      "web-llm",
+      "base_model:Qwen/Qwen2-0.5B-Instruct",
+      "base_model:quantized:Qwen/Qwen2-0.5B-Instruct",
+      "region:us"
+    ],
+    "error": null
+  },
+  {
+    "repo_id": "mlc-ai/Qwen2-0.5B-Instruct-q4f32_1-MLC",
+    "family": "Qwen2",
+    "params_b": 0.5,
+    "quant": "q4f32_1",
+    "total_bin_bytes": 277996288,
+    "n_bin_files": 8,
+    "likes": 1,
+    "downloads": 13,
+    "last_modified": "2025-09-07T18:52:50.000Z",
+    "tags": [
+      "mlc-llm",
+      "web-llm",
+      "base_model:Qwen/Qwen2-0.5B-Instruct",
+      "base_model:quantized:Qwen/Qwen2-0.5B-Instruct",
+      "region:us"
+    ],
+    "error": null
+  },
+  {
+    "repo_id": "mlc-ai/Qwen2-1.5B-Instruct-q4f16_1-MLC",
+    "family": "Qwen2",
+    "params_b": 1.5,
+    "quant": "q4f16_1",
+    "total_bin_bytes": 868547584,
+    "n_bin_files": 30,
+    "likes": 1,
+    "downloads": 384,
+    "last_modified": "2025-09-07T18:52:51.000Z",
+    "tags": [
+      "mlc-llm",
+      "web-llm",
+      "base_model:Qwen/Qwen2-1.5B-Instruct",
+      "base_model:quantized:Qwen/Qwen2-1.5B-Instruct",
+      "region:us"
+    ],
+    "error": null
+  },
+  {
+    "repo_id": "mlc-ai/Qwen2-1.5B-Instruct-q0f16-MLC",
+    "family": "Qwen2",
+    "params_b": 1.5,
+    "quant": "q0f16",
+    "total_bin_bytes": 3087428608,
+    "n_bin_files": 67,
+    "likes": 0,
+    "downloads": 4,
+    "last_modified": "2025-09-07T18:52:53.000Z",
+    "tags": [
+      "mlc-llm",
+      "web-llm",
+      "base_model:Qwen/Qwen2-1.5B-Instruct",
+      "base_model:quantized:Qwen/Qwen2-1.5B-Instruct",
+      "region:us"
+    ],
+    "error": null
+  },
+  {
+    "repo_id": "mlc-ai/Qwen2-1.5B-Instruct-q4f32_1-MLC",
+    "family": "Qwen2",
+    "params_b": 1.5,
+    "quant": "q4f32_1",
+    "total_bin_bytes": 868547584,
+    "n_bin_files": 30,
+    "likes": 0,
+    "downloads": 232,
+    "last_modified": "2025-09-07T18:52:52.000Z",
+    "tags": [
+      "mlc-llm",
+      "web-llm",
+      "base_model:Qwen/Qwen2-1.5B-Instruct",
+      "base_model:quantized:Qwen/Qwen2-1.5B-Instruct",
+      "region:us"
+    ],
+    "error": null
+  },
+  {
+    "repo_id": "mlc-ai/Hermes-2-Theta-Llama-3-8B-q3f16_1-MLC",
+    "family": "Hermes-2-Theta-Llama-3",
+    "params_b": 8.0,
+    "quant": "q3f16_1",
+    "total_bin_bytes": 3631664128,
+    "n_bin_files": 100,
+    "likes": 0,
+    "downloads": 4,
+    "last_modified": "2025-09-07T18:52:33.000Z",
+    "tags": [
+      "mlc-llm",
+      "web-llm",
+      "base_model:NousResearch/Hermes-2-Theta-Llama-3-8B",
+      "base_model:quantized:NousResearch/Hermes-2-Theta-Llama-3-8B",
+      "region:us"
+    ],
+    "error": null
+  },
+  {
+    "repo_id": "mlc-ai/Hermes-2-Theta-Llama-3-8B-q4f32_1-MLC",
+    "family": "Hermes-2-Theta-Llama-3",
+    "params_b": 8.0,
+    "quant": "q4f32_1",
+    "total_bin_bytes": 4517404672,
+    "n_bin_files": 108,
+    "likes": 0,
+    "downloads": 7,
+    "last_modified": "2025-09-07T18:52:36.000Z",
+    "tags": [
+      "mlc-llm",
+      "web-llm",
+      "base_model:NousResearch/Hermes-2-Theta-Llama-3-8B",
+      "base_model:quantized:NousResearch/Hermes-2-Theta-Llama-3-8B",
+      "region:us"
+    ],
+    "error": null
+  },
+  {
+    "repo_id": "mlc-ai/Hermes-2-Theta-Llama-3-8B-q4f16_1-MLC",
+    "family": "Hermes-2-Theta-Llama-3",
+    "params_b": 8.0,
+    "quant": "q4f16_1",
+    "total_bin_bytes": 4517404672,
+    "n_bin_files": 108,
+    "likes": 0,
+    "downloads": 10,
+    "last_modified": "2025-09-07T18:52:35.000Z",
+    "tags": [
+      "mlc-llm",
+      "web-llm",
+      "base_model:NousResearch/Hermes-2-Theta-Llama-3-8B",
+      "base_model:quantized:NousResearch/Hermes-2-Theta-Llama-3-8B",
+      "region:us"
+    ],
+    "error": null
+  },
+  {
+    "repo_id": "mlc-ai/SmolLM-1.7B-Instruct-q4f32_1-MLC",
+    "family": "SmolLM",
+    "params_b": 1.7,
+    "quant": "q4f32_1",
+    "total_bin_bytes": 962793472,
+    "n_bin_files": 37,
+    "likes": 1,
+    "downloads": 4,
+    "last_modified": "2025-09-07T18:51:56.000Z",
+    "tags": [
+      "mlc-llm",
+      "web-llm",
+      "base_model:HuggingFaceTB/SmolLM-1.7B-Instruct",
+      "base_model:quantized:HuggingFaceTB/SmolLM-1.7B-Instruct",
+      "region:us"
+    ],
+    "error": null
+  },
+  {
+    "repo_id": "mlc-ai/SmolLM-1.7B-Instruct-q4f16_1-MLC",
+    "family": "SmolLM",
+    "params_b": 1.7,
+    "quant": "q4f16_1",
+    "total_bin_bytes": 962793472,
+    "n_bin_files": 37,
+    "likes": 0,
+    "downloads": 2,
+    "last_modified": "2025-09-07T18:51:57.000Z",
+    "tags": [
+      "mlc-llm",
+      "web-llm",
+      "base_model:HuggingFaceTB/SmolLM-1.7B-Instruct",
+      "base_model:quantized:HuggingFaceTB/SmolLM-1.7B-Instruct",
+      "region:us"
+    ],
+    "error": null
+  },
+  {
+    "repo_id": "mlc-ai/SmolLM-1.7B-Instruct-q0f32-MLC",
+    "family": "SmolLM",
+    "params_b": 1.7,
+    "quant": "q0f32",
+    "total_bin_bytes": 3422752768,
+    "n_bin_files": 81,
+    "likes": 0,
+    "downloads": 3,
+    "last_modified": "2025-09-07T18:52:00.000Z",
+    "tags": [
+      "mlc-llm",
+      "web-llm",
+      "base_model:HuggingFaceTB/SmolLM-1.7B-Instruct",
+      "base_model:quantized:HuggingFaceTB/SmolLM-1.7B-Instruct",
+      "region:us"
+    ],
+    "error": null
+  },
+  {
+    "repo_id": "mlc-ai/SmolLM-1.7B-Instruct-q0f16-MLC",
+    "family": "SmolLM",
+    "params_b": 1.7,
+    "quant": "q0f16",
+    "total_bin_bytes": 3422752768,
+    "n_bin_files": 81,
+    "likes": 0,
+    "downloads": 3,
+    "last_modified": "2025-09-07T18:51:59.000Z",
+    "tags": [
+      "mlc-llm",
+      "web-llm",
+      "base_model:HuggingFaceTB/SmolLM-1.7B-Instruct",
+      "base_model:quantized:HuggingFaceTB/SmolLM-1.7B-Instruct",
+      "region:us"
+    ],
+    "error": null
+  },
+  {
+    "repo_id": "mlc-ai/SmolLM-360M-Instruct-q4f32_1-MLC",
+    "family": "SmolLM-360M",
+    "params_b": null,
+    "quant": "q4f32_1",
+    "total_bin_bytes": 203614080,
+    "n_bin_files": 7,
+    "likes": 0,
+    "downloads": 2,
+    "last_modified": "2025-09-07T18:52:02.000Z",
+    "tags": [
+      "mlc-llm",
+      "web-llm",
+      "base_model:HuggingFaceTB/SmolLM-360M-Instruct",
+      "base_model:quantized:HuggingFaceTB/SmolLM-360M-Instruct",
+      "region:us"
+    ],
+    "error": null
+  },
+  {
+    "repo_id": "mlc-ai/SmolLM-360M-Instruct-q4f16_1-MLC",
+    "family": "SmolLM-360M",
+    "params_b": null,
+    "quant": "q4f16_1",
+    "total_bin_bytes": 203614080,
+    "n_bin_files": 7,
+    "likes": 2,
+    "downloads": 5,
+    "last_modified": "2025-09-07T18:52:04.000Z",
+    "tags": [
+      "mlc-llm",
+      "web-llm",
+      "base_model:HuggingFaceTB/SmolLM-360M-Instruct",
+      "base_model:quantized:HuggingFaceTB/SmolLM-360M-Instruct",
+      "region:us"
+    ],
+    "error": null
+  },
+  {
+    "repo_id": "mlc-ai/SmolLM-360M-Instruct-q0f32-MLC",
+    "family": "SmolLM-360M",
+    "params_b": null,
+    "quant": "q0f32",
+    "total_bin_bytes": 723642240,
+    "n_bin_files": 23,
+    "likes": 0,
+    "downloads": 5,
+    "last_modified": "2025-09-07T18:52:03.000Z",
+    "tags": [
+      "mlc-llm",
+      "web-llm",
+      "base_model:HuggingFaceTB/SmolLM-360M-Instruct",
+      "base_model:quantized:HuggingFaceTB/SmolLM-360M-Instruct",
+      "region:us"
+    ],
+    "error": null
+  },
+  {
+    "repo_id": "mlc-ai/SmolLM-360M-Instruct-q0f16-MLC",
+    "family": "SmolLM-360M",
+    "params_b": null,
+    "quant": "q0f16",
+    "total_bin_bytes": 723642240,
+    "n_bin_files": 23,
+    "likes": 0,
+    "downloads": 4,
+    "last_modified": "2025-09-07T18:52:06.000Z",
+    "tags": [
+      "mlc-llm",
+      "web-llm",
+      "base_model:HuggingFaceTB/SmolLM-360M-Instruct",
+      "base_model:quantized:HuggingFaceTB/SmolLM-360M-Instruct",
+      "region:us"
+    ],
+    "error": null
+  },
+  {
+    "repo_id": "mlc-ai/SmolLM-135M-Instruct-q4f32_1-MLC",
+    "family": "SmolLM-135M",
+    "params_b": null,
+    "quant": "q4f32_1",
+    "total_bin_bytes": 75715200,
+    "n_bin_files": 3,
+    "likes": 1,
+    "downloads": 4,
+    "last_modified": "2025-09-07T18:52:05.000Z",
+    "tags": [
+      "mlc-llm",
+      "web-llm",
+      "base_model:HuggingFaceTB/SmolLM-135M-Instruct",
+      "base_model:quantized:HuggingFaceTB/SmolLM-135M-Instruct",
+      "region:us"
+    ],
+    "error": null
+  },
+  {
+    "repo_id": "mlc-ai/SmolLM-135M-Instruct-q4f16_1-MLC",
+    "family": "SmolLM-135M",
+    "params_b": null,
+    "quant": "q4f16_1",
+    "total_bin_bytes": 75715200,
+    "n_bin_files": 3,
+    "likes": 2,
+    "downloads": 9,
+    "last_modified": "2025-09-07T18:52:07.000Z",
+    "tags": [
+      "mlc-llm",
+      "web-llm",
+      "base_model:HuggingFaceTB/SmolLM-135M-Instruct",
+      "base_model:quantized:HuggingFaceTB/SmolLM-135M-Instruct",
+      "region:us"
+    ],
+    "error": null
+  },
+  {
+    "repo_id": "mlc-ai/SmolLM-135M-Instruct-q0f32-MLC",
+    "family": "SmolLM-135M",
+    "params_b": null,
+    "quant": "q0f32",
+    "total_bin_bytes": 269030016,
+    "n_bin_files": 8,
+    "likes": 0,
+    "downloads": 2,
+    "last_modified": "2025-09-07T18:52:06.000Z",
+    "tags": [
+      "mlc-llm",
+      "web-llm",
+      "base_model:HuggingFaceTB/SmolLM-135M-Instruct",
+      "base_model:quantized:HuggingFaceTB/SmolLM-135M-Instruct",
+      "region:us"
+    ],
+    "error": null
+  },
+  {
+    "repo_id": "mlc-ai/SmolLM-135M-Instruct-q0f16-MLC",
+    "family": "SmolLM-135M",
+    "params_b": null,
+    "quant": "q0f16",
+    "total_bin_bytes": 269030016,
+    "n_bin_files": 8,
+    "likes": 1,
+    "downloads": 2,
+    "last_modified": "2025-09-07T18:52:08.000Z",
+    "tags": [
+      "mlc-llm",
+      "web-llm",
+      "base_model:HuggingFaceTB/SmolLM-135M-Instruct",
+      "base_model:quantized:HuggingFaceTB/SmolLM-135M-Instruct",
+      "region:us"
+    ],
+    "error": null
+  },
+  {
+    "repo_id": "mlc-ai/Llama-3.1-8B-Instruct-q3f16_1-MLC",
+    "family": "Llama-3.1",
+    "params_b": 8.0,
+    "quant": "q3f16_1",
+    "total_bin_bytes": 3631664128,
+    "n_bin_files": 100,
+    "likes": 0,
+    "downloads": 88,
+    "last_modified": "2025-09-07T18:53:37.000Z",
+    "tags": [
+      "mlc-llm",
+      "web-llm",
+      "base_model:meta-llama/Llama-3.1-8B-Instruct",
+      "base_model:quantized:meta-llama/Llama-3.1-8B-Instruct",
+      "region:us"
+    ],
+    "error": null
+  },
+  {
+    "repo_id": "mlc-ai/Llama-3.1-8B-Instruct-q4f32_1-MLC",
+    "family": "Llama-3.1",
+    "params_b": 8.0,
+    "quant": "q4f32_1",
+    "total_bin_bytes": 4517404672,
+    "n_bin_files": 108,
+    "likes": 3,
+    "downloads": 831,
+    "last_modified": "2025-09-07T18:53:34.000Z",
+    "tags": [
+      "mlc-llm",
+      "web-llm",
+      "base_model:meta-llama/Llama-3.1-8B-Instruct",
+      "base_model:quantized:meta-llama/Llama-3.1-8B-Instruct",
+      "region:us"
+    ],
+    "error": null
+  },
+  {
+    "repo_id": "mlc-ai/Llama-3.1-8B-Instruct-q4f16_1-MLC",
+    "family": "Llama-3.1",
+    "params_b": 8.0,
+    "quant": "q4f16_1",
+    "total_bin_bytes": 4517404672,
+    "n_bin_files": 108,
+    "likes": 4,
+    "downloads": 1017,
+    "last_modified": "2025-09-07T18:53:35.000Z",
+    "tags": [
+      "mlc-llm",
+      "web-llm",
+      "base_model:meta-llama/Llama-3.1-8B-Instruct",
+      "base_model:quantized:meta-llama/Llama-3.1-8B-Instruct",
+      "region:us"
+    ],
+    "error": null
+  },
+  {
+    "repo_id": "mlc-ai/gemma-2-2b-it-q0f32-MLC",
+    "family": "gemma-2",
+    "params_b": 2.0,
+    "quant": "q0f32",
+    "total_bin_bytes": 5228683776,
+    "n_bin_files": 80,
+    "likes": 0,
+    "downloads": 3,
+    "last_modified": "2025-09-07T18:52:09.000Z",
+    "tags": [
+      "mlc-llm",
+      "web-llm",
+      "base_model:google/gemma-2-2b-it",
+      "base_model:quantized:google/gemma-2-2b-it",
+      "region:us"
+    ],
+    "error": null
+  },
+  {
+    "repo_id": "mlc-ai/gemma-2-2b-it-q4f16_1-MLC",
+    "family": "gemma-2",
+    "params_b": 2.0,
+    "quant": "q4f16_1",
+    "total_bin_bytes": 1470915072,
+    "n_bin_files": 42,
+    "likes": 8,
+    "downloads": 15793,
+    "last_modified": "2025-09-07T18:52:12.000Z",
+    "tags": [
+      "mlc-llm",
+      "web-llm",
+      "base_model:google/gemma-2-2b-it",
+      "base_model:quantized:google/gemma-2-2b-it",
+      "region:us"
+    ],
+    "error": null
+  },
+  {
+    "repo_id": "mlc-ai/gemma-2-2b-it-q4f32_1-MLC",
+    "family": "gemma-2",
+    "params_b": 2.0,
+    "quant": "q4f32_1",
+    "total_bin_bytes": 1470915072,
+    "n_bin_files": 42,
+    "likes": 0,
+    "downloads": 588,
+    "last_modified": "2025-09-07T18:52:10.000Z",
+    "tags": [
+      "mlc-llm",
+      "web-llm",
+      "base_model:google/gemma-2-2b-it",
+      "base_model:quantized:google/gemma-2-2b-it",
+      "region:us"
+    ],
+    "error": null
+  },
+  {
+    "repo_id": "mlc-ai/gemma-2-2b-it-q0f16-MLC",
+    "family": "gemma-2",
+    "params_b": 2.0,
+    "quant": "q0f16",
+    "total_bin_bytes": 5228683776,
+    "n_bin_files": 80,
+    "likes": 0,
+    "downloads": 3,
+    "last_modified": "2025-09-07T18:52:20.000Z",
+    "tags": [
+      "mlc-llm",
+      "web-llm",
+      "base_model:google/gemma-2-2b-it",
+      "base_model:quantized:google/gemma-2-2b-it",
+      "region:us"
+    ],
+    "error": null
+  },
+  {
+    "repo_id": "mlc-ai/gemma-2-9b-it-q3f16_1-MLC",
+    "family": "gemma-2",
+    "params_b": 9.0,
+    "quant": "q3f16_1",
+    "total_bin_bytes": 4175948800,
+    "n_bin_files": 127,
+    "likes": 1,
+    "downloads": 4,
+    "last_modified": "2025-09-07T18:52:19.000Z",
+    "tags": [
+      "mlc-llm",
+      "web-llm",
+      "base_model:google/gemma-2-9b-it",
+      "base_model:quantized:google/gemma-2-9b-it",
+      "region:us"
+    ],
+    "error": null
+  },
+  {
+    "repo_id": "mlc-ai/gemma-2-9b-it-q4f32_1-MLC",
+    "family": "gemma-2",
+    "params_b": 9.0,
+    "quant": "q4f32_1",
+    "total_bin_bytes": 5199330304,
+    "n_bin_files": 128,
+    "likes": 0,
+    "downloads": 177,
+    "last_modified": "2025-09-07T18:52:17.000Z",
+    "tags": [
+      "mlc-llm",
+      "web-llm",
+      "base_model:google/gemma-2-9b-it",
+      "base_model:quantized:google/gemma-2-9b-it",
+      "region:us"
+    ],
+    "error": null
+  },
+  {
+    "repo_id": "mlc-ai/gemma-2-9b-it-q4f16_1-MLC",
+    "family": "gemma-2",
+    "params_b": 9.0,
+    "quant": "q4f16_1",
+    "total_bin_bytes": 5199330304,
+    "n_bin_files": 128,
+    "likes": 0,
+    "downloads": 426,
+    "last_modified": "2025-09-07T18:52:16.000Z",
+    "tags": [
+      "mlc-llm",
+      "web-llm",
+      "base_model:google/gemma-2-9b-it",
+      "base_model:quantized:google/gemma-2-9b-it",
+      "region:us"
+    ],
+    "error": null
+  },
+  {
+    "repo_id": "mlc-ai/Llama-3.1-8B-q4f32_1-MLC",
+    "family": "Llama-3.1",
+    "params_b": 8.0,
+    "quant": "q4f32_1",
+    "total_bin_bytes": 4517404672,
+    "n_bin_files": 108,
+    "likes": 0,
+    "downloads": 4,
+    "last_modified": "2025-09-07T18:53:27.000Z",
+    "tags": [
+      "mlc-llm",
+      "web-llm",
+      "base_model:meta-llama/Llama-3.1-8B",
+      "base_model:quantized:meta-llama/Llama-3.1-8B",
+      "region:us"
+    ],
+    "error": null
+  },
+  {
+    "repo_id": "mlc-ai/Llama-3.1-8B-q4f16_1-MLC",
+    "family": "Llama-3.1",
+    "params_b": 8.0,
+    "quant": "q4f16_1",
+    "total_bin_bytes": 4517404672,
+    "n_bin_files": 108,
+    "likes": 0,
+    "downloads": 3,
+    "last_modified": "2025-09-07T18:53:26.000Z",
+    "tags": [
+      "mlc-llm",
+      "web-llm",
+      "base_model:meta-llama/Llama-3.1-8B",
+      "base_model:quantized:meta-llama/Llama-3.1-8B",
+      "region:us"
+    ],
+    "error": null
+  },
+  {
+    "repo_id": "mlc-ai/Qwen2-Math-1.5B-Instruct-q0f16-MLC",
+    "family": "Qwen2-Math",
+    "params_b": 1.5,
+    "quant": "q0f16",
+    "total_bin_bytes": 3087428608,
+    "n_bin_files": 67,
+    "likes": 0,
+    "downloads": 3,
+    "last_modified": "2025-09-07T18:53:02.000Z",
+    "tags": [
+      "mlc-llm",
+      "web-llm",
+      "base_model:Qwen/Qwen2-Math-1.5B-Instruct",
+      "base_model:quantized:Qwen/Qwen2-Math-1.5B-Instruct",
+      "region:us"
+    ],
+    "error": null
+  },
+  {
+    "repo_id": "mlc-ai/Qwen2-Math-1.5B-Instruct-q4f32_1-MLC",
+    "family": "Qwen2-Math",
+    "params_b": 1.5,
+    "quant": "q4f32_1",
+    "total_bin_bytes": 868547584,
+    "n_bin_files": 30,
+    "likes": 0,
+    "downloads": 10,
+    "last_modified": "2025-09-07T18:53:01.000Z",
+    "tags": [
+      "mlc-llm",
+      "web-llm",
+      "base_model:Qwen/Qwen2-Math-1.5B-Instruct",
+      "base_model:quantized:Qwen/Qwen2-Math-1.5B-Instruct",
+      "region:us"
+    ],
+    "error": null
+  },
+  {
+    "repo_id": "mlc-ai/Qwen2-Math-1.5B-Instruct-q4f16_1-MLC",
+    "family": "Qwen2-Math",
+    "params_b": 1.5,
+    "quant": "q4f16_1",
+    "total_bin_bytes": 868547584,
+    "n_bin_files": 30,
+    "likes": 0,
+    "downloads": 6,
+    "last_modified": "2025-09-07T18:53:01.000Z",
+    "tags": [
+      "mlc-llm",
+      "web-llm",
+      "base_model:Qwen/Qwen2-Math-1.5B-Instruct",
+      "base_model:quantized:Qwen/Qwen2-Math-1.5B-Instruct",
+      "region:us"
+    ],
+    "error": null
+  },
+  {
+    "repo_id": "mlc-ai/Qwen2-Math-7B-Instruct-q4f32_1-MLC",
+    "family": "Qwen2-Math",
+    "params_b": 7.0,
+    "quant": "q4f32_1",
+    "total_bin_bytes": 4284263424,
+    "n_bin_files": 88,
+    "likes": 0,
+    "downloads": 7,
+    "last_modified": "2025-09-07T18:53:04.000Z",
+    "tags": [
+      "mlc-llm",
+      "web-llm",
+      "base_model:Qwen/Qwen2-Math-7B-Instruct",
+      "base_model:quantized:Qwen/Qwen2-Math-7B-Instruct",
+      "region:us"
+    ],
+    "error": null
+  },
+  {
+    "repo_id": "mlc-ai/Qwen2-Math-7B-Instruct-q4f16_1-MLC",
+    "family": "Qwen2-Math",
+    "params_b": 7.0,
+    "quant": "q4f16_1",
+    "total_bin_bytes": 4284263424,
+    "n_bin_files": 88,
+    "likes": 0,
+    "downloads": 10,
+    "last_modified": "2025-09-07T18:53:03.000Z",
+    "tags": [
+      "mlc-llm",
+      "web-llm",
+      "base_model:Qwen/Qwen2-Math-7B-Instruct",
+      "base_model:quantized:Qwen/Qwen2-Math-7B-Instruct",
+      "region:us"
+    ],
+    "error": null
+  },
+  {
+    "repo_id": "mlc-ai/Qwen2-72B-Instruct-q4f32_1-MLC",
+    "family": "Qwen2",
+    "params_b": 72.0,
+    "quant": "q4f32_1",
+    "total_bin_bytes": 0,
+    "n_bin_files": 0,
+    "likes": 0,
+    "downloads": 3,
+    "last_modified": "2024-08-23T00:31:39.000Z",
+    "tags": [
+      "mlc-llm",
+      "web-llm",
+      "base_model:Qwen/Qwen2-72B-Instruct",
+      "base_model:quantized:Qwen/Qwen2-72B-Instruct",
+      "region:us"
+    ],
+    "error": null
+  },
+  {
+    "repo_id": "mlc-ai/snowflake-arctic-embed-s-q0f32-MLC",
+    "family": "snowflake-arctic-embed-s",
+    "params_b": null,
+    "quant": "q0f32",
+    "total_bin_bytes": 66424320,
+    "n_bin_files": 2,
+    "likes": 1,
+    "downloads": 173,
+    "last_modified": "2025-09-07T18:53:21.000Z",
+    "tags": [
+      "mlc-llm",
+      "web-llm",
+      "base_model:Snowflake/snowflake-arctic-embed-s",
+      "base_model:quantized:Snowflake/snowflake-arctic-embed-s",
+      "region:us"
+    ],
+    "error": null
+  },
+  {
+    "repo_id": "mlc-ai/snowflake-arctic-embed-m-q0f32-MLC",
+    "family": "snowflake-arctic-embed-m",
+    "params_b": null,
+    "quant": "q0f32",
+    "total_bin_bytes": 217783296,
+    "n_bin_files": 7,
+    "likes": 2,
+    "downloads": 229,
+    "last_modified": "2025-09-07T18:53:23.000Z",
+    "tags": [
+      "mlc-llm",
+      "web-llm",
+      "base_model:Snowflake/snowflake-arctic-embed-m",
+      "base_model:quantized:Snowflake/snowflake-arctic-embed-m",
+      "region:us"
+    ],
+    "error": null
+  },
+  {
+    "repo_id": "mlc-ai/Phi-3.5-mini-instruct-q4f32_1-MLC",
+    "family": "Phi-3.5-mini",
+    "params_b": null,
+    "quant": "q4f32_1",
+    "total_bin_bytes": 2149644288,
+    "n_bin_files": 83,
+    "likes": 0,
+    "downloads": 139,
+    "last_modified": "2025-09-07T18:53:14.000Z",
+    "tags": [
+      "mlc-llm",
+      "web-llm",
+      "base_model:microsoft/Phi-3.5-mini-instruct",
+      "base_model:quantized:microsoft/Phi-3.5-mini-instruct",
+      "region:us"
+    ],
+    "error": null
+  },
+  {
+    "repo_id": "mlc-ai/Phi-3.5-mini-instruct-q0f16-MLC",
+    "family": "Phi-3.5-mini",
+    "params_b": null,
+    "quant": "q0f16",
+    "total_bin_bytes": 7642159104,
+    "n_bin_files": 130,
+    "likes": 0,
+    "downloads": 4,
+    "last_modified": "2025-09-07T18:53:17.000Z",
+    "tags": [
+      "mlc-llm",
+      "web-llm",
+      "base_model:microsoft/Phi-3.5-mini-instruct",
+      "base_model:quantized:microsoft/Phi-3.5-mini-instruct",
+      "region:us"
+    ],
+    "error": null
+  },
+  {
+    "repo_id": "mlc-ai/Phi-3.5-mini-instruct-q4f16_1-MLC",
+    "family": "Phi-3.5-mini",
+    "params_b": null,
+    "quant": "q4f16_1",
+    "total_bin_bytes": 2149644288,
+    "n_bin_files": 83,
+    "likes": 5,
+    "downloads": 7578,
+    "last_modified": "2025-09-07T18:53:16.000Z",
+    "tags": [
+      "mlc-llm",
+      "web-llm",
+      "base_model:microsoft/Phi-3.5-mini-instruct",
+      "base_model:quantized:microsoft/Phi-3.5-mini-instruct",
+      "region:us"
+    ],
+    "error": null
+  },
+  {
+    "repo_id": "mlc-ai/Phi-3.5-mini-instruct-q4f16_0-MLC",
+    "family": "Phi-3.5-mini",
+    "params_b": null,
+    "quant": "q4f16_0",
+    "total_bin_bytes": 2149644288,
+    "n_bin_files": 83,
+    "likes": 0,
+    "downloads": 7560,
+    "last_modified": "2025-09-07T18:53:10.000Z",
+    "tags": [
+      "mlc-llm",
+      "web-llm",
+      "base_model:microsoft/Phi-3.5-mini-instruct",
+      "base_model:quantized:microsoft/Phi-3.5-mini-instruct",
+      "region:us"
+    ],
+    "error": null
+  },
+  {
+    "repo_id": "mlc-ai/Qwen2-0.5B-Instruct-q4f16_0-MLC",
+    "family": "Qwen2",
+    "params_b": 0.5,
+    "quant": "q4f16_0",
+    "total_bin_bytes": 277996288,
+    "n_bin_files": 8,
+    "likes": 0,
+    "downloads": 19,
+    "last_modified": "2025-09-07T18:53:10.000Z",
+    "tags": [
+      "mlc-llm",
+      "web-llm",
+      "base_model:Qwen/Qwen2-0.5B-Instruct",
+      "base_model:quantized:Qwen/Qwen2-0.5B-Instruct",
+      "region:us"
+    ],
+    "error": null
+  },
+  {
+    "repo_id": "mlc-ai/gemma-2-2b-it-q4f16_0-MLC",
+    "family": "gemma-2",
+    "params_b": 2.0,
+    "quant": "q4f16_0",
+    "total_bin_bytes": 1470915072,
+    "n_bin_files": 42,
+    "likes": 1,
+    "downloads": 1480,
+    "last_modified": "2025-09-07T18:53:13.000Z",
+    "tags": [
+      "mlc-llm",
+      "web-llm",
+      "base_model:google/gemma-2-2b-it",
+      "base_model:quantized:google/gemma-2-2b-it",
+      "region:us"
+    ],
+    "error": null
+  },
+  {
+    "repo_id": "mlc-ai/Mistral-7B-Instruct-v0.3-q4f16_0-MLC",
+    "family": "Mistral",
+    "params_b": 7.0,
+    "quant": "q4f16_0",
+    "total_bin_bytes": 4077395968,
+    "n_bin_files": 106,
+    "likes": 0,
+    "downloads": 1,
+    "last_modified": "2025-09-07T18:53:12.000Z",
+    "tags": [
+      "mlc-llm",
+      "web-llm",
+      "base_model:mistralai/Mistral-7B-Instruct-v0.3",
+      "base_model:quantized:mistralai/Mistral-7B-Instruct-v0.3",
+      "region:us"
+    ],
+    "error": null
+  },
+  {
+    "repo_id": "mlc-ai/Qwen2-1.5B-Instruct-q4f16_0-MLC",
+    "family": "Qwen2",
+    "params_b": 1.5,
+    "quant": "q4f16_0",
+    "total_bin_bytes": 868547584,
+    "n_bin_files": 30,
+    "likes": 0,
+    "downloads": 620,
+    "last_modified": "2025-09-07T18:53:11.000Z",
+    "tags": [
+      "mlc-llm",
+      "web-llm",
+      "base_model:Qwen/Qwen2-1.5B-Instruct",
+      "base_model:quantized:Qwen/Qwen2-1.5B-Instruct",
+      "region:us"
+    ],
+    "error": null
+  },
+  {
+    "repo_id": "mlc-ai/Llama-3.1-8B-Instruct-q3f16_0-MLC",
+    "family": "Llama-3.1",
+    "params_b": 8.0,
+    "quant": null,
+    "total_bin_bytes": 3631664128,
+    "n_bin_files": 100,
+    "likes": 0,
+    "downloads": 0,
+    "last_modified": "2025-09-07T18:53:25.000Z",
+    "tags": [
+      "mlc-llm",
+      "web-llm",
+      "base_model:meta-llama/Llama-3.1-8B-Instruct",
+      "base_model:quantized:meta-llama/Llama-3.1-8B-Instruct",
+      "region:us"
+    ],
+    "error": null
+  },
+  {
+    "repo_id": "mlc-ai/Hermes-3-Llama-3.1-8B-q4f16_1-MLC",
+    "family": "Hermes-3-Llama-3.1",
+    "params_b": 8.0,
+    "quant": "q4f16_1",
+    "total_bin_bytes": 4517404672,
+    "n_bin_files": 108,
+    "likes": 1,
+    "downloads": 30369,
+    "last_modified": "2025-09-07T18:53:18.000Z",
+    "tags": [
+      "mlc-llm",
+      "web-llm",
+      "base_model:NousResearch/Hermes-3-Llama-3.1-8B",
+      "base_model:quantized:NousResearch/Hermes-3-Llama-3.1-8B",
+      "region:us"
+    ],
+    "error": null
+  },
+  {
+    "repo_id": "mlc-ai/Hermes-3-Llama-3.1-8B-q3f16_1-MLC",
+    "family": "Hermes-3-Llama-3.1",
+    "params_b": 8.0,
+    "quant": "q3f16_1",
+    "total_bin_bytes": 3631664128,
+    "n_bin_files": 100,
+    "likes": 0,
+    "downloads": 0,
+    "last_modified": "2025-09-07T18:53:18.000Z",
+    "tags": [
+      "mlc-llm",
+      "web-llm",
+      "base_model:NousResearch/Hermes-3-Llama-3.1-8B",
+      "base_model:quantized:NousResearch/Hermes-3-Llama-3.1-8B",
+      "region:us"
+    ],
+    "error": null
+  },
+  {
+    "repo_id": "mlc-ai/Hermes-3-Llama-3.1-8B-q4f32_1-MLC",
+    "family": "Hermes-3-Llama-3.1",
+    "params_b": 8.0,
+    "quant": "q4f32_1",
+    "total_bin_bytes": 4517404672,
+    "n_bin_files": 108,
+    "likes": 0,
+    "downloads": 65,
+    "last_modified": "2025-09-07T18:53:19.000Z",
+    "tags": [
+      "mlc-llm",
+      "web-llm",
+      "base_model:NousResearch/Hermes-3-Llama-3.1-8B",
+      "base_model:quantized:NousResearch/Hermes-3-Llama-3.1-8B",
+      "region:us"
+    ],
+    "error": null
+  },
+  {
+    "repo_id": "mlc-ai/Phi-3.5-vision-instruct-q0f16-MLC",
+    "family": "Phi-3.5-vision",
+    "params_b": null,
+    "quant": "q0f16",
+    "total_bin_bytes": 8293242880,
+    "n_bin_files": 156,
+    "likes": 2,
+    "downloads": 3,
+    "last_modified": "2025-09-07T18:55:15.000Z",
+    "tags": [
+      "mlc-llm",
+      "web-llm",
+      "base_model:microsoft/Phi-3.5-vision-instruct",
+      "base_model:quantized:microsoft/Phi-3.5-vision-instruct",
+      "region:us"
+    ],
+    "error": null
+  },
+  {
+    "repo_id": "mlc-ai/Phi-3.5-vision-instruct-q4f32_1-MLC",
+    "family": "Phi-3.5-vision",
+    "params_b": null,
+    "quant": "q4f32_1",
+    "total_bin_bytes": 2769074176,
+    "n_bin_files": 106,
+    "likes": 0,
+    "downloads": 47,
+    "last_modified": "2025-09-07T18:55:14.000Z",
+    "tags": [
+      "mlc-llm",
+      "web-llm",
+      "base_model:microsoft/Phi-3.5-vision-instruct",
+      "base_model:quantized:microsoft/Phi-3.5-vision-instruct",
+      "region:us"
+    ],
+    "error": null
+  },
+  {
+    "repo_id": "mlc-ai/Phi-3.5-vision-instruct-q3f16_1-MLC",
+    "family": "Phi-3.5-vision",
+    "params_b": null,
+    "quant": "q3f16_1",
+    "total_bin_bytes": 2340679936,
+    "n_bin_files": 90,
+    "likes": 1,
+    "downloads": 2,
+    "last_modified": "2025-09-07T18:55:12.000Z",
+    "tags": [
+      "mlc-llm",
+      "web-llm",
+      "base_model:microsoft/Phi-3.5-vision-instruct",
+      "base_model:quantized:microsoft/Phi-3.5-vision-instruct",
+      "region:us"
+    ],
+    "error": null
+  },
+  {
+    "repo_id": "mlc-ai/Phi-3.5-vision-instruct-q4f16_1-MLC",
+    "family": "Phi-3.5-vision",
+    "params_b": null,
+    "quant": "q4f16_1",
+    "total_bin_bytes": 2769074176,
+    "n_bin_files": 106,
+    "likes": 2,
+    "downloads": 475,
+    "last_modified": "2025-09-07T18:55:10.000Z",
+    "tags": [
+      "mlc-llm",
+      "web-llm",
+      "base_model:microsoft/Phi-3.5-vision-instruct",
+      "base_model:quantized:microsoft/Phi-3.5-vision-instruct",
+      "region:us"
+    ],
+    "error": null
+  },
+  {
+    "repo_id": "mlc-ai/Qwen2.5-0.5B-Instruct-q4f16_1-MLC",
+    "family": "Qwen2.5",
+    "params_b": 0.5,
+    "quant": "q4f16_1",
+    "total_bin_bytes": 277996288,
+    "n_bin_files": 8,
+    "likes": 4,
+    "downloads": 45843,
+    "last_modified": "2025-09-07T18:53:24.000Z",
+    "tags": [
+      "mlc-llm",
+      "web-llm",
+      "base_model:Qwen/Qwen2.5-0.5B-Instruct",
+      "base_model:quantized:Qwen/Qwen2.5-0.5B-Instruct",
+      "region:us"
+    ],
+    "error": null
+  },
+  {
+    "repo_id": "mlc-ai/Qwen2.5-0.5B-Instruct-q0f32-MLC",
+    "family": "Qwen2.5",
+    "params_b": 0.5,
+    "quant": "q0f32",
+    "total_bin_bytes": 988065536,
+    "n_bin_files": 25,
+    "likes": 0,
+    "downloads": 14,
+    "last_modified": "2025-09-07T18:54:11.000Z",
+    "tags": [
+      "mlc-llm",
+      "web-llm",
+      "base_model:Qwen/Qwen2.5-0.5B-Instruct",
+      "base_model:quantized:Qwen/Qwen2.5-0.5B-Instruct",
+      "region:us"
+    ],
+    "error": null
+  },
+  {
+    "repo_id": "mlc-ai/Qwen2.5-0.5B-Instruct-q0f16-MLC",
+    "family": "Qwen2.5",
+    "params_b": 0.5,
+    "quant": "q0f16",
+    "total_bin_bytes": 988065536,
+    "n_bin_files": 25,
+    "likes": 1,
+    "downloads": 88,
+    "last_modified": "2025-09-07T18:54:10.000Z",
+    "tags": [
+      "mlc-llm",
+      "web-llm",
+      "base_model:Qwen/Qwen2.5-0.5B-Instruct",
+      "base_model:quantized:Qwen/Qwen2.5-0.5B-Instruct",
+      "region:us"
+    ],
+    "error": null
+  },
+  {
+    "repo_id": "mlc-ai/Qwen2.5-0.5B-Instruct-q4f32_1-MLC",
+    "family": "Qwen2.5",
+    "params_b": 0.5,
+    "quant": "q4f32_1",
+    "total_bin_bytes": 277996288,
+    "n_bin_files": 8,
+    "likes": 0,
+    "downloads": 1493,
+    "last_modified": "2025-09-07T18:54:08.000Z",
+    "tags": [
+      "mlc-llm",
+      "web-llm",
+      "base_model:Qwen/Qwen2.5-0.5B-Instruct",
+      "base_model:quantized:Qwen/Qwen2.5-0.5B-Instruct",
+      "region:us"
+    ],
+    "error": null
+  },
+  {
+    "repo_id": "mlc-ai/Qwen2.5-1.5B-Instruct-q4f16_1-MLC",
+    "family": "Qwen2.5",
+    "params_b": 1.5,
+    "quant": "q4f16_1",
+    "total_bin_bytes": 868547584,
+    "n_bin_files": 30,
+    "likes": 1,
+    "downloads": 22106,
+    "last_modified": "2025-09-07T18:53:43.000Z",
+    "tags": [
+      "mlc-llm",
+      "web-llm",
+      "base_model:Qwen/Qwen2.5-1.5B-Instruct",
+      "base_model:quantized:Qwen/Qwen2.5-1.5B-Instruct",
+      "region:us"
+    ],
+    "error": null
+  },
+  {
+    "repo_id": "mlc-ai/Qwen2.5-1.5B-Instruct-q0f16-MLC",
+    "family": "Qwen2.5",
+    "params_b": 1.5,
+    "quant": "q0f16",
+    "total_bin_bytes": 3087428608,
+    "n_bin_files": 67,
+    "likes": 0,
+    "downloads": 1,
+    "last_modified": "2025-09-07T18:53:45.000Z",
+    "tags": [
+      "mlc-llm",
+      "web-llm",
+      "base_model:Qwen/Qwen2.5-1.5B-Instruct",
+      "base_model:quantized:Qwen/Qwen2.5-1.5B-Instruct",
+      "region:us"
+    ],
+    "error": null
+  },
+  {
+    "repo_id": "mlc-ai/Qwen2.5-1.5B-Instruct-q4f32_1-MLC",
+    "family": "Qwen2.5",
+    "params_b": 1.5,
+    "quant": "q4f32_1",
+    "total_bin_bytes": 868547584,
+    "n_bin_files": 30,
+    "likes": 0,
+    "downloads": 482,
+    "last_modified": "2025-09-07T18:53:45.000Z",
+    "tags": [
+      "mlc-llm",
+      "web-llm",
+      "base_model:Qwen/Qwen2.5-1.5B-Instruct",
+      "base_model:quantized:Qwen/Qwen2.5-1.5B-Instruct",
+      "region:us"
+    ],
+    "error": null
+  },
+  {
+    "repo_id": "mlc-ai/Qwen2.5-3B-Instruct-q4f16_1-MLC",
+    "family": "Qwen2.5",
+    "params_b": 3.0,
+    "quant": "q4f16_1",
+    "total_bin_bytes": 1736187904,
+    "n_bin_files": 62,
+    "likes": 2,
+    "downloads": 983,
+    "last_modified": "2025-09-07T18:53:46.000Z",
+    "tags": [
+      "mlc-llm",
+      "web-llm",
+      "base_model:Qwen/Qwen2.5-3B-Instruct",
+      "base_model:quantized:Qwen/Qwen2.5-3B-Instruct",
+      "region:us"
+    ],
+    "error": null
+  },
+  {
+    "repo_id": "mlc-ai/Qwen2.5-3B-Instruct-q0f16-MLC",
+    "family": "Qwen2.5",
+    "params_b": 3.0,
+    "quant": "q0f16",
+    "total_bin_bytes": 6171877376,
+    "n_bin_files": 97,
+    "likes": 0,
+    "downloads": 0,
+    "last_modified": "2025-09-07T18:53:49.000Z",
+    "tags": [
+      "mlc-llm",
+      "web-llm",
+      "base_model:Qwen/Qwen2.5-3B-Instruct",
+      "base_model:quantized:Qwen/Qwen2.5-3B-Instruct",
+      "region:us"
+    ],
+    "error": null
+  },
+  {
+    "repo_id": "mlc-ai/Qwen2.5-3B-Instruct-q4f32_1-MLC",
+    "family": "Qwen2.5",
+    "params_b": 3.0,
+    "quant": "q4f32_1",
+    "total_bin_bytes": 1736187904,
+    "n_bin_files": 62,
+    "likes": 0,
+    "downloads": 102,
+    "last_modified": "2025-09-07T18:53:48.000Z",
+    "tags": [
+      "mlc-llm",
+      "web-llm",
+      "base_model:Qwen/Qwen2.5-3B-Instruct",
+      "base_model:quantized:Qwen/Qwen2.5-3B-Instruct",
+      "region:us"
+    ],
+    "error": null
+  },
+  {
+    "repo_id": "mlc-ai/Qwen2.5-7B-Instruct-q4f16_1-MLC",
+    "family": "Qwen2.5",
+    "params_b": 7.0,
+    "quant": "q4f16_1",
+    "total_bin_bytes": 4284263424,
+    "n_bin_files": 88,
+    "likes": 2,
+    "downloads": 602,
+    "last_modified": "2025-09-07T18:53:50.000Z",
+    "tags": [
+      "mlc-llm",
+      "web-llm",
+      "base_model:Qwen/Qwen2.5-7B-Instruct",
+      "base_model:quantized:Qwen/Qwen2.5-7B-Instruct",
+      "region:us"
+    ],
+    "error": null
+  },
+  {
+    "repo_id": "mlc-ai/Qwen2.5-7B-Instruct-q4f32_1-MLC",
+    "family": "Qwen2.5",
+    "params_b": 7.0,
+    "quant": "q4f32_1",
+    "total_bin_bytes": 4284263424,
+    "n_bin_files": 88,
+    "likes": 0,
+    "downloads": 73,
+    "last_modified": "2025-09-07T18:53:51.000Z",
+    "tags": [
+      "mlc-llm",
+      "web-llm",
+      "base_model:Qwen/Qwen2.5-7B-Instruct",
+      "base_model:quantized:Qwen/Qwen2.5-7B-Instruct",
+      "region:us"
+    ],
+    "error": null
+  },
+  {
+    "repo_id": "mlc-ai/Qwen2.5-14B-Instruct-q4f16_1-MLC",
+    "family": "Qwen2.5",
+    "params_b": 14.0,
+    "quant": "q4f16_1",
+    "total_bin_bytes": 8309352448,
+    "n_bin_files": 194,
+    "likes": 0,
+    "downloads": 4,
+    "last_modified": "2025-09-07T18:53:53.000Z",
+    "tags": [
+      "mlc-llm",
+      "web-llm",
+      "base_model:Qwen/Qwen2.5-14B-Instruct",
+      "base_model:quantized:Qwen/Qwen2.5-14B-Instruct",
+      "region:us"
+    ],
+    "error": null
+  },
+  {
+    "repo_id": "mlc-ai/Qwen2.5-14B-Instruct-q4f32_1-MLC",
+    "family": "Qwen2.5",
+    "params_b": 14.0,
+    "quant": "q4f32_1",
+    "total_bin_bytes": 8309352448,
+    "n_bin_files": 194,
+    "likes": 0,
+    "downloads": 1,
+    "last_modified": "2025-09-07T18:53:54.000Z",
+    "tags": [
+      "mlc-llm",
+      "web-llm",
+      "base_model:Qwen/Qwen2.5-14B-Instruct",
+      "base_model:quantized:Qwen/Qwen2.5-14B-Instruct",
+      "region:us"
+    ],
+    "error": null
+  },
+  {
+    "repo_id": "mlc-ai/Qwen2.5-Coder-1.5B-Instruct-q4f16_1-MLC",
+    "family": "Qwen2.5-Coder",
+    "params_b": 1.5,
+    "quant": "q4f16_1",
+    "total_bin_bytes": 868547584,
+    "n_bin_files": 30,
+    "likes": 0,
+    "downloads": 3633,
+    "last_modified": "2025-09-07T18:54:01.000Z",
+    "tags": [
+      "mlc-llm",
+      "web-llm",
+      "base_model:Qwen/Qwen2.5-Coder-1.5B-Instruct",
+      "base_model:quantized:Qwen/Qwen2.5-Coder-1.5B-Instruct",
+      "region:us"
+    ],
+    "error": null
+  },
+  {
+    "repo_id": "mlc-ai/Qwen2.5-Coder-1.5B-Instruct-q0f16-MLC",
+    "family": "Qwen2.5-Coder",
+    "params_b": 1.5,
+    "quant": "q0f16",
+    "total_bin_bytes": 3087428608,
+    "n_bin_files": 67,
+    "likes": 1,
+    "downloads": 2,
+    "last_modified": "2025-09-07T18:54:00.000Z",
+    "tags": [
+      "mlc-llm",
+      "web-llm",
+      "base_model:Qwen/Qwen2.5-Coder-1.5B-Instruct",
+      "base_model:quantized:Qwen/Qwen2.5-Coder-1.5B-Instruct",
+      "region:us"
+    ],
+    "error": null
+  },
+  {
+    "repo_id": "mlc-ai/Qwen2.5-Coder-1.5B-Instruct-q4f32_1-MLC",
+    "family": "Qwen2.5-Coder",
+    "params_b": 1.5,
+    "quant": "q4f32_1",
+    "total_bin_bytes": 868547584,
+    "n_bin_files": 30,
+    "likes": 0,
+    "downloads": 92,
+    "last_modified": "2025-09-07T18:54:02.000Z",
+    "tags": [
+      "mlc-llm",
+      "web-llm",
+      "base_model:Qwen/Qwen2.5-Coder-1.5B-Instruct",
+      "base_model:quantized:Qwen/Qwen2.5-Coder-1.5B-Instruct",
+      "region:us"
+    ],
+    "error": null
+  },
+  {
+    "repo_id": "mlc-ai/Qwen2.5-Coder-7B-Instruct-q4f16_1-MLC",
+    "family": "Qwen2.5-Coder",
+    "params_b": 7.0,
+    "quant": "q4f16_1",
+    "total_bin_bytes": 4284263424,
+    "n_bin_files": 88,
+    "likes": 1,
+    "downloads": 335,
+    "last_modified": "2025-09-07T18:54:03.000Z",
+    "tags": [
+      "mlc-llm",
+      "web-llm",
+      "base_model:Qwen/Qwen2.5-Coder-7B-Instruct",
+      "base_model:quantized:Qwen/Qwen2.5-Coder-7B-Instruct",
+      "region:us"
+    ],
+    "error": null
+  },
+  {
+    "repo_id": "mlc-ai/Qwen2.5-Coder-7B-Instruct-q4f32_1-MLC",
+    "family": "Qwen2.5-Coder",
+    "params_b": 7.0,
+    "quant": "q4f32_1",
+    "total_bin_bytes": 4284263424,
+    "n_bin_files": 88,
+    "likes": 0,
+    "downloads": 855,
+    "last_modified": "2025-09-07T18:54:04.000Z",
+    "tags": [
+      "mlc-llm",
+      "web-llm",
+      "base_model:Qwen/Qwen2.5-Coder-7B-Instruct",
+      "base_model:quantized:Qwen/Qwen2.5-Coder-7B-Instruct",
+      "region:us"
+    ],
+    "error": null
+  },
+  {
+    "repo_id": "mlc-ai/Qwen2.5-Math-1.5B-Instruct-q4f16_1-MLC",
+    "family": "Qwen2.5-Math",
+    "params_b": 1.5,
+    "quant": "q4f16_1",
+    "total_bin_bytes": 868547584,
+    "n_bin_files": 30,
+    "likes": 0,
+    "downloads": 23,
+    "last_modified": "2025-09-07T18:54:13.000Z",
+    "tags": [
+      "mlc-llm",
+      "web-llm",
+      "base_model:Qwen/Qwen2.5-Math-1.5B-Instruct",
+      "base_model:quantized:Qwen/Qwen2.5-Math-1.5B-Instruct",
+      "region:us"
+    ],
+    "error": null
+  },
+  {
+    "repo_id": "mlc-ai/Qwen2.5-Math-1.5B-Instruct-q0f16-MLC",
+    "family": "Qwen2.5-Math",
+    "params_b": 1.5,
+    "quant": "q0f16",
+    "total_bin_bytes": 3087428608,
+    "n_bin_files": 67,
+    "likes": 0,
+    "downloads": 2,
+    "last_modified": "2025-09-07T18:54:12.000Z",
+    "tags": [
+      "mlc-llm",
+      "web-llm",
+      "base_model:Qwen/Qwen2.5-Math-1.5B-Instruct",
+      "base_model:quantized:Qwen/Qwen2.5-Math-1.5B-Instruct",
+      "region:us"
+    ],
+    "error": null
+  },
+  {
+    "repo_id": "mlc-ai/Qwen2.5-Math-1.5B-Instruct-q4f32_1-MLC",
+    "family": "Qwen2.5-Math",
+    "params_b": 1.5,
+    "quant": "q4f32_1",
+    "total_bin_bytes": 868547584,
+    "n_bin_files": 30,
+    "likes": 0,
+    "downloads": 7,
+    "last_modified": "2025-09-07T18:54:15.000Z",
+    "tags": [
+      "mlc-llm",
+      "web-llm",
+      "base_model:Qwen/Qwen2.5-Math-1.5B-Instruct",
+      "base_model:quantized:Qwen/Qwen2.5-Math-1.5B-Instruct",
+      "region:us"
+    ],
+    "error": null
+  },
+  {
+    "repo_id": "mlc-ai/Llama-3.2-1B-Instruct-q0f16-MLC",
+    "family": "Llama-3.2",
+    "params_b": 1.0,
+    "quant": "q0f16",
+    "total_bin_bytes": 2471628800,
+    "n_bin_files": 49,
+    "likes": 0,
+    "downloads": 191,
+    "last_modified": "2025-09-07T18:54:18.000Z",
+    "tags": [
+      "mlc-llm",
+      "web-llm",
+      "base_model:meta-llama/Llama-3.2-1B-Instruct",
+      "base_model:quantized:meta-llama/Llama-3.2-1B-Instruct",
+      "region:us"
+    ],
+    "error": null
+  },
+  {
+    "repo_id": "mlc-ai/Llama-3.2-1B-Instruct-q4f16_1-MLC",
+    "family": "Llama-3.2",
+    "params_b": 1.0,
+    "quant": "q4f16_1",
+    "total_bin_bytes": 695242752,
+    "n_bin_files": 22,
+    "likes": 5,
+    "downloads": 60809,
+    "last_modified": "2025-09-07T18:54:20.000Z",
+    "tags": [
+      "mlc-llm",
+      "web-llm",
+      "base_model:meta-llama/Llama-3.2-1B-Instruct",
+      "base_model:quantized:meta-llama/Llama-3.2-1B-Instruct",
+      "region:us"
+    ],
+    "error": null
+  },
+  {
+    "repo_id": "mlc-ai/Llama-3.2-1B-Instruct-q4f32_1-MLC",
+    "family": "Llama-3.2",
+    "params_b": 1.0,
+    "quant": "q4f32_1",
+    "total_bin_bytes": 695242752,
+    "n_bin_files": 22,
+    "likes": 1,
+    "downloads": 8321,
+    "last_modified": "2025-09-07T18:54:21.000Z",
+    "tags": [
+      "mlc-llm",
+      "web-llm",
+      "base_model:meta-llama/Llama-3.2-1B-Instruct",
+      "base_model:quantized:meta-llama/Llama-3.2-1B-Instruct",
+      "region:us"
+    ],
+    "error": null
+  },
+  {
+    "repo_id": "mlc-ai/Llama-3.2-1B-Instruct-q0f32-MLC",
+    "family": "Llama-3.2",
+    "params_b": 1.0,
+    "quant": "q0f32",
+    "total_bin_bytes": 2471628800,
+    "n_bin_files": 49,
+    "likes": 0,
+    "downloads": 28,
+    "last_modified": "2025-09-07T18:54:20.000Z",
+    "tags": [
+      "mlc-llm",
+      "web-llm",
+      "base_model:meta-llama/Llama-3.2-1B-Instruct",
+      "base_model:quantized:meta-llama/Llama-3.2-1B-Instruct",
+      "region:us"
+    ],
+    "error": null
+  },
+  {
+    "repo_id": "mlc-ai/Llama-3.2-3B-Instruct-q0f16-MLC",
+    "family": "Llama-3.2",
+    "params_b": 3.0,
+    "quant": "q0f16",
+    "total_bin_bytes": 6425499648,
+    "n_bin_files": 113,
+    "likes": 0,
+    "downloads": 0,
+    "last_modified": "2025-09-07T18:54:24.000Z",
+    "tags": [
+      "mlc-llm",
+      "web-llm",
+      "base_model:meta-llama/Llama-3.2-3B-Instruct",
+      "base_model:quantized:meta-llama/Llama-3.2-3B-Instruct",
+      "region:us"
+    ],
+    "error": null
+  },
+  {
+    "repo_id": "mlc-ai/Llama-3.2-3B-Instruct-q4f16_1-MLC",
+    "family": "Llama-3.2",
+    "params_b": 3.0,
+    "quant": "q4f16_1",
+    "total_bin_bytes": 1807423488,
+    "n_bin_files": 58,
+    "likes": 5,
+    "downloads": 6176,
+    "last_modified": "2025-09-07T18:54:23.000Z",
+    "tags": [
+      "mlc-llm",
+      "web-llm",
+      "base_model:meta-llama/Llama-3.2-3B-Instruct",
+      "base_model:quantized:meta-llama/Llama-3.2-3B-Instruct",
+      "region:us"
+    ],
+    "error": null
+  },
+  {
+    "repo_id": "mlc-ai/Llama-3.2-3B-Instruct-q0f32-MLC",
+    "family": "Llama-3.2",
+    "params_b": 3.0,
+    "quant": "q0f32",
+    "total_bin_bytes": 6425499648,
+    "n_bin_files": 113,
+    "likes": 0,
+    "downloads": 0,
+    "last_modified": "2025-09-07T18:54:26.000Z",
+    "tags": [
+      "mlc-llm",
+      "web-llm",
+      "base_model:meta-llama/Llama-3.2-3B-Instruct",
+      "base_model:quantized:meta-llama/Llama-3.2-3B-Instruct",
+      "region:us"
+    ],
+    "error": null
+  },
+  {
+    "repo_id": "mlc-ai/Llama-3.2-3B-Instruct-q4f32_1-MLC",
+    "family": "Llama-3.2",
+    "params_b": 3.0,
+    "quant": "q4f32_1",
+    "total_bin_bytes": 1807423488,
+    "n_bin_files": 58,
+    "likes": 2,
+    "downloads": 8511,
+    "last_modified": "2025-09-07T18:54:25.000Z",
+    "tags": [
+      "mlc-llm",
+      "web-llm",
+      "base_model:meta-llama/Llama-3.2-3B-Instruct",
+      "base_model:quantized:meta-llama/Llama-3.2-3B-Instruct",
+      "region:us"
+    ],
+    "error": null
+  },
+  {
+    "repo_id": "mlc-ai/Llama-3.2-1B-Instruct-q4f16_0-MLC",
+    "family": "Llama-3.2",
+    "params_b": 1.0,
+    "quant": "q4f16_0",
+    "total_bin_bytes": 695242752,
+    "n_bin_files": 22,
+    "likes": 3,
+    "downloads": 2019,
+    "last_modified": "2025-09-07T18:54:28.000Z",
+    "tags": [
+      "mlc-llm",
+      "web-llm",
+      "base_model:meta-llama/Llama-3.2-1B-Instruct",
+      "base_model:quantized:meta-llama/Llama-3.2-1B-Instruct",
+      "region:us"
+    ],
+    "error": null
+  },
+  {
+    "repo_id": "mlc-ai/Llama-3.2-3B-Instruct-q4f16_0-MLC",
+    "family": "Llama-3.2",
+    "params_b": 3.0,
+    "quant": "q4f16_0",
+    "total_bin_bytes": 1807423488,
+    "n_bin_files": 58,
+    "likes": 1,
+    "downloads": 9544,
+    "last_modified": "2025-09-07T18:54:27.000Z",
+    "tags": [
+      "mlc-llm",
+      "web-llm",
+      "base_model:meta-llama/Llama-3.2-3B-Instruct",
+      "base_model:quantized:meta-llama/Llama-3.2-3B-Instruct",
+      "region:us"
+    ],
+    "error": null
+  },
+  {
+    "repo_id": "mlc-ai/Llama-3.1-8B-Instruct-fp8-MLC",
+    "family": "Llama-3.1",
+    "params_b": 8.0,
+    "quant": null,
+    "total_bin_bytes": 9081201152,
+    "n_bin_files": 131,
+    "likes": 0,
+    "downloads": 0,
+    "last_modified": "2025-09-07T18:54:29.000Z",
+    "tags": [
+      "mlc-llm",
+      "base_model:meta-llama/Llama-3.1-8B-Instruct",
+      "base_model:finetune:meta-llama/Llama-3.1-8B-Instruct",
+      "region:us"
+    ],
+    "error": null
+  },
+  {
+    "repo_id": "mlc-ai/gemma-2-2b-jpn-it-q4f16_1-MLC",
+    "family": "gemma-2",
+    "params_b": 2.0,
+    "quant": "q4f16_1",
+    "total_bin_bytes": 1470915072,
+    "n_bin_files": 42,
+    "likes": 0,
+    "downloads": 242,
+    "last_modified": "2025-09-07T18:54:32.000Z",
+    "tags": [
+      "mlc-llm",
+      "web-llm",
+      "base_model:google/gemma-2-2b-jpn-it",
+      "base_model:quantized:google/gemma-2-2b-jpn-it",
+      "region:us"
+    ],
+    "error": null
+  },
+  {
+    "repo_id": "mlc-ai/gemma-2-2b-jpn-it-q0f32-MLC",
+    "family": "gemma-2",
+    "params_b": 2.0,
+    "quant": "q0f32",
+    "total_bin_bytes": 5228683776,
+    "n_bin_files": 80,
+    "likes": 0,
+    "downloads": 0,
+    "last_modified": "2025-09-07T18:54:37.000Z",
+    "tags": [
+      "mlc-llm",
+      "web-llm",
+      "base_model:google/gemma-2-2b-jpn-it",
+      "base_model:quantized:google/gemma-2-2b-jpn-it",
+      "region:us"
+    ],
+    "error": null
+  },
+  {
+    "repo_id": "mlc-ai/gemma-2-2b-jpn-it-q4f32_1-MLC",
+    "family": "gemma-2",
+    "params_b": 2.0,
+    "quant": "q4f32_1",
+    "total_bin_bytes": 1470915072,
+    "n_bin_files": 42,
+    "likes": 0,
+    "downloads": 51,
+    "last_modified": "2025-09-07T18:54:36.000Z",
+    "tags": [
+      "mlc-llm",
+      "web-llm",
+      "base_model:google/gemma-2-2b-jpn-it",
+      "base_model:quantized:google/gemma-2-2b-jpn-it",
+      "region:us"
+    ],
+    "error": null
+  },
+  {
+    "repo_id": "mlc-ai/gemma-2-2b-jpn-it-q0f16-MLC",
+    "family": "gemma-2",
+    "params_b": 2.0,
+    "quant": "q0f16",
+    "total_bin_bytes": 5228683776,
+    "n_bin_files": 80,
+    "likes": 0,
+    "downloads": 0,
+    "last_modified": "2025-09-07T18:54:35.000Z",
+    "tags": [
+      "mlc-llm",
+      "web-llm",
+      "base_model:google/gemma-2-2b-jpn-it",
+      "base_model:quantized:google/gemma-2-2b-jpn-it",
+      "region:us"
+    ],
+    "error": null
+  },
+  {
+    "repo_id": "mlc-ai/Llama-3-8B-Instruct-fp8-MLC",
+    "family": "Llama-3",
+    "params_b": 8.0,
+    "quant": null,
+    "total_bin_bytes": 9081201152,
+    "n_bin_files": 131,
+    "likes": 0,
+    "downloads": 0,
+    "last_modified": "2025-09-07T18:54:39.000Z",
+    "tags": [
+      "mlc-llm",
+      "base_model:meta-llama/Meta-Llama-3-8B-Instruct",
+      "base_model:finetune:meta-llama/Meta-Llama-3-8B-Instruct",
+      "region:us"
+    ],
+    "error": null
+  },
+  {
+    "repo_id": "mlc-ai/SmolLM2-1.7B-Instruct-q4f32_1-MLC",
+    "family": "SmolLM2",
+    "params_b": 1.7,
+    "quant": "q4f32_1",
+    "total_bin_bytes": 962793472,
+    "n_bin_files": 37,
+    "likes": 0,
+    "downloads": 157,
+    "last_modified": "2025-09-07T18:54:43.000Z",
+    "tags": [
+      "mlc-llm",
+      "web-llm",
+      "base_model:HuggingFaceTB/SmolLM2-1.7B-Instruct",
+      "base_model:quantized:HuggingFaceTB/SmolLM2-1.7B-Instruct",
+      "region:us"
+    ],
+    "error": null
+  },
+  {
+    "repo_id": "mlc-ai/SmolLM2-1.7B-Instruct-q4f16_1-MLC",
+    "family": "SmolLM2",
+    "params_b": 1.7,
+    "quant": "q4f16_1",
+    "total_bin_bytes": 962793472,
+    "n_bin_files": 37,
+    "likes": 0,
+    "downloads": 693,
+    "last_modified": "2025-09-07T18:54:41.000Z",
+    "tags": [
+      "mlc-llm",
+      "web-llm",
+      "base_model:HuggingFaceTB/SmolLM2-1.7B-Instruct",
+      "base_model:quantized:HuggingFaceTB/SmolLM2-1.7B-Instruct",
+      "region:us"
+    ],
+    "error": null
+  },
+  {
+    "repo_id": "mlc-ai/SmolLM2-1.7B-Instruct-q0f16-MLC",
+    "family": "SmolLM2",
+    "params_b": 1.7,
+    "quant": "q0f16",
+    "total_bin_bytes": 3422752768,
+    "n_bin_files": 81,
+    "likes": 1,
+    "downloads": 5,
+    "last_modified": "2025-09-07T18:54:41.000Z",
+    "tags": [
+      "mlc-llm",
+      "web-llm",
+      "base_model:HuggingFaceTB/SmolLM2-1.7B-Instruct",
+      "base_model:quantized:HuggingFaceTB/SmolLM2-1.7B-Instruct",
+      "region:us"
+    ],
+    "error": null
+  },
+  {
+    "repo_id": "mlc-ai/SmolLM2-360M-Instruct-q4f32_1-MLC",
+    "family": "SmolLM2-360M",
+    "params_b": null,
+    "quant": "q4f32_1",
+    "total_bin_bytes": 203614080,
+    "n_bin_files": 7,
+    "likes": 0,
+    "downloads": 257,
+    "last_modified": "2025-09-07T18:54:46.000Z",
+    "tags": [
+      "mlc-llm",
+      "web-llm",
+      "base_model:HuggingFaceTB/SmolLM2-360M-Instruct",
+      "base_model:quantized:HuggingFaceTB/SmolLM2-360M-Instruct",
+      "region:us"
+    ],
+    "error": null
+  },
+  {
+    "repo_id": "mlc-ai/SmolLM2-360M-Instruct-q0f32-MLC",
+    "family": "SmolLM2-360M",
+    "params_b": null,
+    "quant": "q0f32",
+    "total_bin_bytes": 723642240,
+    "n_bin_files": 23,
+    "likes": 0,
+    "downloads": 38,
+    "last_modified": "2025-09-07T18:54:44.000Z",
+    "tags": [
+      "mlc-llm",
+      "web-llm",
+      "base_model:HuggingFaceTB/SmolLM2-360M-Instruct",
+      "base_model:quantized:HuggingFaceTB/SmolLM2-360M-Instruct",
+      "region:us"
+    ],
+    "error": null
+  },
+  {
+    "repo_id": "mlc-ai/SmolLM2-360M-Instruct-q4f16_1-MLC",
+    "family": "SmolLM2-360M",
+    "params_b": null,
+    "quant": "q4f16_1",
+    "total_bin_bytes": 203614080,
+    "n_bin_files": 7,
+    "likes": 0,
+    "downloads": 1992,
+    "last_modified": "2025-09-07T18:54:45.000Z",
+    "tags": [
+      "mlc-llm",
+      "web-llm",
+      "base_model:HuggingFaceTB/SmolLM2-360M-Instruct",
+      "base_model:quantized:HuggingFaceTB/SmolLM2-360M-Instruct",
+      "region:us"
+    ],
+    "error": null
+  },
+  {
+    "repo_id": "mlc-ai/SmolLM2-360M-Instruct-q0f16-MLC",
+    "family": "SmolLM2-360M",
+    "params_b": null,
+    "quant": "q0f16",
+    "total_bin_bytes": 723642240,
+    "n_bin_files": 23,
+    "likes": 0,
+    "downloads": 189,
+    "last_modified": "2025-09-07T18:54:43.000Z",
+    "tags": [
+      "mlc-llm",
+      "web-llm",
+      "base_model:HuggingFaceTB/SmolLM2-360M-Instruct",
+      "base_model:quantized:HuggingFaceTB/SmolLM2-360M-Instruct",
+      "region:us"
+    ],
+    "error": null
+  },
+  {
+    "repo_id": "mlc-ai/SmolLM2-135M-Instruct-q4f32_1-MLC",
+    "family": "SmolLM2-135M",
+    "params_b": null,
+    "quant": "q4f32_1",
+    "total_bin_bytes": 75715200,
+    "n_bin_files": 3,
+    "likes": 0,
+    "downloads": 6,
+    "last_modified": "2025-09-07T18:54:49.000Z",
+    "tags": [
+      "mlc-llm",
+      "web-llm",
+      "base_model:HuggingFaceTB/SmolLM2-135M-Instruct",
+      "base_model:quantized:HuggingFaceTB/SmolLM2-135M-Instruct",
+      "region:us"
+    ],
+    "error": null
+  },
+  {
+    "repo_id": "mlc-ai/SmolLM2-135M-Instruct-q0f32-MLC",
+    "family": "SmolLM2-135M",
+    "params_b": null,
+    "quant": "q0f32",
+    "total_bin_bytes": 269030016,
+    "n_bin_files": 8,
+    "likes": 0,
+    "downloads": 536,
+    "last_modified": "2025-09-07T18:54:47.000Z",
+    "tags": [
+      "mlc-llm",
+      "web-llm",
+      "base_model:HuggingFaceTB/SmolLM2-135M-Instruct",
+      "base_model:quantized:HuggingFaceTB/SmolLM2-135M-Instruct",
+      "region:us"
+    ],
+    "error": null
+  },
+  {
+    "repo_id": "mlc-ai/SmolLM2-135M-Instruct-q4f16_1-MLC",
+    "family": "SmolLM2-135M",
+    "params_b": null,
+    "quant": "q4f16_1",
+    "total_bin_bytes": 75715200,
+    "n_bin_files": 3,
+    "likes": 0,
+    "downloads": 76,
+    "last_modified": "2025-09-07T18:54:48.000Z",
+    "tags": [
+      "mlc-llm",
+      "web-llm",
+      "base_model:HuggingFaceTB/SmolLM2-135M-Instruct",
+      "base_model:quantized:HuggingFaceTB/SmolLM2-135M-Instruct",
+      "region:us"
+    ],
+    "error": null
+  },
+  {
+    "repo_id": "mlc-ai/SmolLM2-135M-Instruct-q0f16-MLC",
+    "family": "SmolLM2-135M",
+    "params_b": null,
+    "quant": "q0f16",
+    "total_bin_bytes": 269030016,
+    "n_bin_files": 8,
+    "likes": 0,
+    "downloads": 1248,
+    "last_modified": "2025-09-07T18:54:46.000Z",
+    "tags": [
+      "mlc-llm",
+      "web-llm",
+      "base_model:HuggingFaceTB/SmolLM2-135M-Instruct",
+      "base_model:quantized:HuggingFaceTB/SmolLM2-135M-Instruct",
+      "region:us"
+    ],
+    "error": null
+  },
+  {
+    "repo_id": "mlc-ai/Qwen2.5-Coder-0.5B-Instruct-q4f32_1-MLC",
+    "family": "Qwen2.5-Coder",
+    "params_b": 0.5,
+    "quant": "q4f32_1",
+    "total_bin_bytes": 277996288,
+    "n_bin_files": 8,
+    "likes": 0,
+    "downloads": 49,
+    "last_modified": "2025-09-07T18:54:50.000Z",
+    "tags": [
+      "mlc-llm",
+      "web-llm",
+      "base_model:Qwen/Qwen2.5-Coder-0.5B-Instruct",
+      "base_model:quantized:Qwen/Qwen2.5-Coder-0.5B-Instruct",
+      "region:us"
+    ],
+    "error": null
+  },
+  {
+    "repo_id": "mlc-ai/Qwen2.5-Coder-0.5B-Instruct-q4f16_1-MLC",
+    "family": "Qwen2.5-Coder",
+    "params_b": 0.5,
+    "quant": "q4f16_1",
+    "total_bin_bytes": 277996288,
+    "n_bin_files": 8,
+    "likes": 0,
+    "downloads": 274,
+    "last_modified": "2025-09-07T18:54:54.000Z",
+    "tags": [
+      "mlc-llm",
+      "web-llm",
+      "base_model:Qwen/Qwen2.5-Coder-0.5B-Instruct",
+      "base_model:quantized:Qwen/Qwen2.5-Coder-0.5B-Instruct",
+      "region:us"
+    ],
+    "error": null
+  },
+  {
+    "repo_id": "mlc-ai/Qwen2.5-Coder-0.5B-Instruct-q0f16-MLC",
+    "family": "Qwen2.5-Coder",
+    "params_b": 0.5,
+    "quant": "q0f16",
+    "total_bin_bytes": 988065536,
+    "n_bin_files": 25,
+    "likes": 0,
+    "downloads": 35,
+    "last_modified": "2025-09-07T18:54:56.000Z",
+    "tags": [
+      "mlc-llm",
+      "web-llm",
+      "base_model:Qwen/Qwen2.5-Coder-0.5B-Instruct",
+      "base_model:quantized:Qwen/Qwen2.5-Coder-0.5B-Instruct",
+      "region:us"
+    ],
+    "error": null
+  },
+  {
+    "repo_id": "mlc-ai/Qwen2.5-Coder-0.5B-Instruct-q0f32-MLC",
+    "family": "Qwen2.5-Coder",
+    "params_b": 0.5,
+    "quant": "q0f32",
+    "total_bin_bytes": 988065536,
+    "n_bin_files": 25,
+    "likes": 0,
+    "downloads": 14,
+    "last_modified": "2025-09-07T18:54:55.000Z",
+    "tags": [
+      "mlc-llm",
+      "web-llm",
+      "base_model:Qwen/Qwen2.5-Coder-0.5B-Instruct",
+      "base_model:quantized:Qwen/Qwen2.5-Coder-0.5B-Instruct",
+      "region:us"
+    ],
+    "error": null
+  },
+  {
+    "repo_id": "mlc-ai/Qwen2.5-Coder-0.5B-Instruct-q4f16_0-MLC",
+    "family": "Qwen2.5-Coder",
+    "params_b": 0.5,
+    "quant": "q4f16_0",
+    "total_bin_bytes": 277996288,
+    "n_bin_files": 8,
+    "likes": 0,
+    "downloads": 0,
+    "last_modified": "2025-09-07T18:54:57.000Z",
+    "tags": [
+      "mlc-llm",
+      "web-llm",
+      "base_model:Qwen/Qwen2.5-Coder-0.5B-Instruct",
+      "base_model:quantized:Qwen/Qwen2.5-Coder-0.5B-Instruct",
+      "region:us"
+    ],
+    "error": null
+  },
+  {
+    "repo_id": "mlc-ai/Qwen2.5-Coder-3B-Instruct-q4f32_1-MLC",
+    "family": "Qwen2.5-Coder",
+    "params_b": 3.0,
+    "quant": "q4f32_1",
+    "total_bin_bytes": 1736187904,
+    "n_bin_files": 62,
+    "likes": 0,
+    "downloads": 50,
+    "last_modified": "2025-09-07T18:55:00.000Z",
+    "tags": [
+      "mlc-llm",
+      "web-llm",
+      "base_model:Qwen/Qwen2.5-Coder-3B-Instruct",
+      "base_model:quantized:Qwen/Qwen2.5-Coder-3B-Instruct",
+      "region:us"
+    ],
+    "error": null
+  },
+  {
+    "repo_id": "mlc-ai/Qwen2.5-Coder-3B-Instruct-q0f16-MLC",
+    "family": "Qwen2.5-Coder",
+    "params_b": 3.0,
+    "quant": "q0f16",
+    "total_bin_bytes": 6171877376,
+    "n_bin_files": 97,
+    "likes": 0,
+    "downloads": 3,
+    "last_modified": "2025-09-07T18:54:59.000Z",
+    "tags": [
+      "mlc-llm",
+      "web-llm",
+      "base_model:Qwen/Qwen2.5-Coder-3B-Instruct",
+      "base_model:quantized:Qwen/Qwen2.5-Coder-3B-Instruct",
+      "region:us"
+    ],
+    "error": null
+  },
+  {
+    "repo_id": "mlc-ai/Qwen2.5-Coder-3B-Instruct-q4f16_1-MLC",
+    "family": "Qwen2.5-Coder",
+    "params_b": 3.0,
+    "quant": "q4f16_1",
+    "total_bin_bytes": 1736187904,
+    "n_bin_files": 62,
+    "likes": 0,
+    "downloads": 4438,
+    "last_modified": "2025-09-07T18:55:01.000Z",
+    "tags": [
+      "mlc-llm",
+      "web-llm",
+      "base_model:Qwen/Qwen2.5-Coder-3B-Instruct",
+      "base_model:quantized:Qwen/Qwen2.5-Coder-3B-Instruct",
+      "region:us"
+    ],
+    "error": null
+  },
+  {
+    "repo_id": "mlc-ai/Qwen2.5-Coder-14B-Instruct-q4f32_1-MLC",
+    "family": "Qwen2.5-Coder",
+    "params_b": 14.0,
+    "quant": "q4f32_1",
+    "total_bin_bytes": 8309352448,
+    "n_bin_files": 192,
+    "likes": 0,
+    "downloads": 0,
+    "last_modified": "2025-09-07T18:55:01.000Z",
+    "tags": [
+      "mlc-llm",
+      "web-llm",
+      "base_model:Qwen/Qwen2.5-Coder-14B-Instruct",
+      "base_model:quantized:Qwen/Qwen2.5-Coder-14B-Instruct",
+      "region:us"
+    ],
+    "error": null
+  },
+  {
+    "repo_id": "mlc-ai/Qwen2.5-Coder-14B-Instruct-q4f16_1-MLC",
+    "family": "Qwen2.5-Coder",
+    "params_b": 14.0,
+    "quant": "q4f16_1",
+    "total_bin_bytes": 8309352448,
+    "n_bin_files": 192,
+    "likes": 1,
+    "downloads": 1,
+    "last_modified": "2025-09-07T18:55:06.000Z",
+    "tags": [
+      "mlc-llm",
+      "web-llm",
+      "base_model:Qwen/Qwen2.5-Coder-14B-Instruct",
+      "base_model:quantized:Qwen/Qwen2.5-Coder-14B-Instruct",
+      "region:us"
+    ],
+    "error": null
+  },
+  {
+    "repo_id": "mlc-ai/internlm2_5-1_8b-chat-q4f16_1-MLC",
+    "family": "internlm2_5-1",
+    "params_b": 8.0,
+    "quant": "q4f16_1",
+    "total_bin_bytes": 1062768640,
+    "n_bin_files": 33,
+    "likes": 0,
+    "downloads": 2,
+    "last_modified": "2025-09-07T18:55:27.000Z",
+    "tags": [
+      "mlc-llm",
+      "web-llm",
+      "base_model:internlm/internlm2_5-1_8b-chat",
+      "base_model:quantized:internlm/internlm2_5-1_8b-chat",
+      "region:us"
+    ],
+    "error": null
+  },
+  {
+    "repo_id": "mlc-ai/internlm2_5-1_8b-chat-q4f32_1-MLC",
+    "family": "internlm2_5-1",
+    "params_b": 8.0,
+    "quant": "q4f32_1",
+    "total_bin_bytes": 1062768640,
+    "n_bin_files": 33,
+    "likes": 0,
+    "downloads": 3,
+    "last_modified": "2025-09-07T18:55:28.000Z",
+    "tags": [
+      "mlc-llm",
+      "web-llm",
+      "base_model:internlm/internlm2_5-1_8b-chat",
+      "base_model:quantized:internlm/internlm2_5-1_8b-chat",
+      "region:us"
+    ],
+    "error": null
+  },
+  {
+    "repo_id": "mlc-ai/internlm2_5-1_8b-chat-q0f16-MLC",
+    "family": "internlm2_5-1",
+    "params_b": 8.0,
+    "quant": "q0f16",
+    "total_bin_bytes": 3778220032,
+    "n_bin_files": 74,
+    "likes": 0,
+    "downloads": 0,
+    "last_modified": "2025-09-07T18:55:30.000Z",
+    "tags": [
+      "mlc-llm",
+      "web-llm",
+      "base_model:internlm/internlm2_5-1_8b-chat",
+      "base_model:quantized:internlm/internlm2_5-1_8b-chat",
+      "region:us"
+    ],
+    "error": null
+  },
+  {
+    "repo_id": "mlc-ai/internlm2_5-7b-chat-q4f16_1-MLC",
+    "family": "internlm2_5",
+    "params_b": 7.0,
+    "quant": "q4f16_1",
+    "total_bin_bytes": 4352843776,
+    "n_bin_files": 107,
+    "likes": 0,
+    "downloads": 3,
+    "last_modified": "2025-09-07T18:55:29.000Z",
+    "tags": [
+      "mlc-llm",
+      "web-llm",
+      "base_model:internlm/internlm2_5-7b-chat",
+      "base_model:quantized:internlm/internlm2_5-7b-chat",
+      "region:us"
+    ],
+    "error": null
+  },
+  {
+    "repo_id": "mlc-ai/internlm2_5-7b-chat-q4f32_1-MLC",
+    "family": "internlm2_5",
+    "params_b": 7.0,
+    "quant": "q4f32_1",
+    "total_bin_bytes": 4352843776,
+    "n_bin_files": 107,
+    "likes": 0,
+    "downloads": 1,
+    "last_modified": "2025-09-07T18:55:31.000Z",
+    "tags": [
+      "mlc-llm",
+      "web-llm",
+      "base_model:internlm/internlm2_5-7b-chat",
+      "base_model:quantized:internlm/internlm2_5-7b-chat",
+      "region:us"
+    ],
+    "error": null
+  },
+  {
+    "repo_id": "mlc-ai/DeepSeek-V2-Lite-Chat-q4f16_1-MLC",
+    "family": "DeepSeek-V2-Lite",
+    "params_b": null,
+    "quant": "q4f16_1",
+    "total_bin_bytes": 8839977984,
+    "n_bin_files": 109,
+    "likes": 0,
+    "downloads": 2,
+    "last_modified": "2025-09-07T18:56:02.000Z",
+    "tags": [
+      "mlc-llm",
+      "web-llm",
+      "base_model:deepseek-ai/DeepSeek-V2-Lite-Chat",
+      "base_model:quantized:deepseek-ai/DeepSeek-V2-Lite-Chat",
+      "region:us"
+    ],
+    "error": null
+  },
+  {
+    "repo_id": "mlc-ai/DeepSeek-V2-Lite-Chat-q4f32_1-MLC",
+    "family": "DeepSeek-V2-Lite",
+    "params_b": null,
+    "quant": "q4f32_1",
+    "total_bin_bytes": 8839977984,
+    "n_bin_files": 109,
+    "likes": 0,
+    "downloads": 8,
+    "last_modified": "2025-09-07T18:56:04.000Z",
+    "tags": [
+      "mlc-llm",
+      "web-llm",
+      "base_model:deepseek-ai/DeepSeek-V2-Lite-Chat",
+      "base_model:quantized:deepseek-ai/DeepSeek-V2-Lite-Chat",
+      "region:us"
+    ],
+    "error": null
+  },
+  {
+    "repo_id": "mlc-ai/DeepSeek-R1-Distill-Qwen-1.5B-q4f16_1-MLC",
+    "family": "DeepSeek-R1-Distill-Qwen",
+    "params_b": 1.5,
+    "quant": "q4f16_1",
+    "total_bin_bytes": 999820288,
+    "n_bin_files": 31,
+    "likes": 3,
+    "downloads": 23,
+    "last_modified": "2025-09-07T18:55:40.000Z",
+    "tags": [
+      "mlc-llm",
+      "web-llm",
+      "base_model:deepseek-ai/DeepSeek-R1-Distill-Qwen-1.5B",
+      "base_model:quantized:deepseek-ai/DeepSeek-R1-Distill-Qwen-1.5B",
+      "region:us"
+    ],
+    "error": null
+  },
+  {
+    "repo_id": "mlc-ai/DeepSeek-R1-Distill-Qwen-1.5B-q0f16-MLC",
+    "family": "DeepSeek-R1-Distill-Qwen",
+    "params_b": 1.5,
+    "quant": "q0f16",
+    "total_bin_bytes": 3554176000,
+    "n_bin_files": 68,
+    "likes": 0,
+    "downloads": 607,
+    "last_modified": "2025-09-07T18:55:41.000Z",
+    "tags": [
+      "mlc-llm",
+      "web-llm",
+      "base_model:deepseek-ai/DeepSeek-R1-Distill-Qwen-1.5B",
+      "base_model:quantized:deepseek-ai/DeepSeek-R1-Distill-Qwen-1.5B",
+      "region:us"
+    ],
+    "error": null
+  },
+  {
+    "repo_id": "mlc-ai/DeepSeek-R1-Distill-Qwen-1.5B-q4f32_1-MLC",
+    "family": "DeepSeek-R1-Distill-Qwen",
+    "params_b": 1.5,
+    "quant": "q4f32_1",
+    "total_bin_bytes": 999820288,
+    "n_bin_files": 31,
+    "likes": 0,
+    "downloads": 4,
+    "last_modified": "2025-09-07T18:55:42.000Z",
+    "tags": [
+      "mlc-llm",
+      "web-llm",
+      "base_model:deepseek-ai/DeepSeek-R1-Distill-Qwen-1.5B",
+      "base_model:quantized:deepseek-ai/DeepSeek-R1-Distill-Qwen-1.5B",
+      "region:us"
+    ],
+    "error": null
+  },
+  {
+    "repo_id": "mlc-ai/DeepSeek-R1-Distill-Qwen-7B-q4f16_1-MLC",
+    "family": "DeepSeek-R1-Distill-Qwen",
+    "params_b": 7.0,
+    "quant": "q4f16_1",
+    "total_bin_bytes": 4284263424,
+    "n_bin_files": 88,
+    "likes": 2,
+    "downloads": 1930,
+    "last_modified": "2025-09-07T18:55:40.000Z",
+    "tags": [
+      "mlc-llm",
+      "web-llm",
+      "base_model:deepseek-ai/DeepSeek-R1-Distill-Qwen-7B",
+      "base_model:quantized:deepseek-ai/DeepSeek-R1-Distill-Qwen-7B",
+      "region:us"
+    ],
+    "error": null
+  },
+  {
+    "repo_id": "mlc-ai/DeepSeek-R1-Distill-Qwen-7B-q4f32_1-MLC",
+    "family": "DeepSeek-R1-Distill-Qwen",
+    "params_b": 7.0,
+    "quant": "q4f32_1",
+    "total_bin_bytes": 4284263424,
+    "n_bin_files": 88,
+    "likes": 0,
+    "downloads": 242,
+    "last_modified": "2025-09-07T18:55:45.000Z",
+    "tags": [
+      "mlc-llm",
+      "web-llm",
+      "base_model:deepseek-ai/DeepSeek-R1-Distill-Qwen-7B",
+      "base_model:quantized:deepseek-ai/DeepSeek-R1-Distill-Qwen-7B",
+      "region:us"
+    ],
+    "error": null
+  },
+  {
+    "repo_id": "mlc-ai/DeepSeek-R1-Distill-Qwen-14B-q4f16_1-MLC",
+    "family": "DeepSeek-R1-Distill-Qwen",
+    "params_b": 14.0,
+    "quant": "q4f16_1",
+    "total_bin_bytes": 8309352448,
+    "n_bin_files": 196,
+    "likes": 1,
+    "downloads": 8,
+    "last_modified": "2025-09-07T18:55:46.000Z",
+    "tags": [
+      "mlc-llm",
+      "web-llm",
+      "base_model:deepseek-ai/DeepSeek-R1-Distill-Qwen-14B",
+      "base_model:quantized:deepseek-ai/DeepSeek-R1-Distill-Qwen-14B",
+      "region:us"
+    ],
+    "error": null
+  },
+  {
+    "repo_id": "mlc-ai/DeepSeek-R1-Distill-Qwen-14B-q4f32_1-MLC",
+    "family": "DeepSeek-R1-Distill-Qwen",
+    "params_b": 14.0,
+    "quant": "q4f32_1",
+    "total_bin_bytes": 8309352448,
+    "n_bin_files": 196,
+    "likes": 0,
+    "downloads": 0,
+    "last_modified": "2025-09-07T18:55:52.000Z",
+    "tags": [
+      "mlc-llm",
+      "web-llm",
+      "base_model:deepseek-ai/DeepSeek-R1-Distill-Qwen-14B",
+      "base_model:quantized:deepseek-ai/DeepSeek-R1-Distill-Qwen-14B",
+      "region:us"
+    ],
+    "error": null
+  },
+  {
+    "repo_id": "mlc-ai/DeepSeek-R1-Distill-Llama-8B-q4f16_1-MLC",
+    "family": "DeepSeek-R1-Distill-Llama",
+    "params_b": 8.0,
+    "quant": "q4f16_1",
+    "total_bin_bytes": 4517404672,
+    "n_bin_files": 108,
+    "likes": 0,
+    "downloads": 3215,
+    "last_modified": "2025-09-07T18:55:55.000Z",
+    "tags": [
+      "mlc-llm",
+      "web-llm",
+      "base_model:deepseek-ai/DeepSeek-R1-Distill-Llama-8B",
+      "base_model:quantized:deepseek-ai/DeepSeek-R1-Distill-Llama-8B",
+      "region:us"
+    ],
+    "error": null
+  },
+  {
+    "repo_id": "mlc-ai/DeepSeek-R1-Distill-Llama-8B-q4f32_1-MLC",
+    "family": "DeepSeek-R1-Distill-Llama",
+    "params_b": 8.0,
+    "quant": "q4f32_1",
+    "total_bin_bytes": 4517404672,
+    "n_bin_files": 108,
+    "likes": 0,
+    "downloads": 288,
+    "last_modified": "2025-09-07T18:55:58.000Z",
+    "tags": [
+      "mlc-llm",
+      "web-llm",
+      "base_model:deepseek-ai/DeepSeek-R1-Distill-Llama-8B",
+      "base_model:quantized:deepseek-ai/DeepSeek-R1-Distill-Llama-8B",
+      "region:us"
+    ],
+    "error": null
+  },
+  {
+    "repo_id": "mlc-ai/Hermes-3-Llama-3.2-3B-q4f16_1-MLC",
+    "family": "Hermes-3-Llama-3.2",
+    "params_b": 3.0,
+    "quant": "q4f16_1",
+    "total_bin_bytes": 1807423488,
+    "n_bin_files": 58,
+    "likes": 0,
+    "downloads": 1864,
+    "last_modified": "2025-09-07T18:55:37.000Z",
+    "tags": [
+      "mlc-llm",
+      "web-llm",
+      "base_model:NousResearch/Hermes-3-Llama-3.2-3B",
+      "base_model:quantized:NousResearch/Hermes-3-Llama-3.2-3B",
+      "region:us"
+    ],
+    "error": null
+  },
+  {
+    "repo_id": "mlc-ai/Hermes-3-Llama-3.2-3B-q4f32_1-MLC",
+    "family": "Hermes-3-Llama-3.2",
+    "params_b": 3.0,
+    "quant": "q4f32_1",
+    "total_bin_bytes": 1807423488,
+    "n_bin_files": 58,
+    "likes": 0,
+    "downloads": 198,
+    "last_modified": "2025-09-07T18:55:36.000Z",
+    "tags": [
+      "mlc-llm",
+      "web-llm",
+      "base_model:NousResearch/Hermes-3-Llama-3.2-3B",
+      "base_model:quantized:NousResearch/Hermes-3-Llama-3.2-3B",
+      "region:us"
+    ],
+    "error": null
+  },
+  {
+    "repo_id": "mlc-ai/Hermes-3-Llama-3.2-3B-q0f16-MLC",
+    "family": "Hermes-3-Llama-3.2",
+    "params_b": 3.0,
+    "quant": "q0f16",
+    "total_bin_bytes": 6425499648,
+    "n_bin_files": 113,
+    "likes": 0,
+    "downloads": 1,
+    "last_modified": "2025-09-07T18:55:39.000Z",
+    "tags": [
+      "mlc-llm",
+      "web-llm",
+      "base_model:NousResearch/Hermes-3-Llama-3.2-3B",
+      "base_model:quantized:NousResearch/Hermes-3-Llama-3.2-3B",
+      "region:us"
+    ],
+    "error": null
+  },
+  {
+    "repo_id": "mlc-ai/gemma-3-1b-it-q4bf16_0-MLC",
+    "family": "gemma-3",
+    "params_b": 1.0,
+    "quant": null,
+    "total_bin_bytes": 562628864,
+    "n_bin_files": 15,
+    "likes": 1,
+    "downloads": 3,
+    "last_modified": "2025-09-07T18:56:12.000Z",
+    "tags": [
+      "mlc-llm",
+      "web-llm",
+      "base_model:google/gemma-3-1b-it",
+      "base_model:quantized:google/gemma-3-1b-it",
+      "region:us"
+    ],
+    "error": null
+  },
+  {
+    "repo_id": "mlc-ai/gemma-3-1b-it-q4bf16_1-MLC",
+    "family": "gemma-3",
+    "params_b": 1.0,
+    "quant": null,
+    "total_bin_bytes": 562628864,
+    "n_bin_files": 15,
+    "likes": 1,
+    "downloads": 10,
+    "last_modified": "2025-09-07T18:56:13.000Z",
+    "tags": [
+      "mlc-llm",
+      "web-llm",
+      "base_model:google/gemma-3-1b-it",
+      "base_model:quantized:google/gemma-3-1b-it",
+      "region:us"
+    ],
+    "error": null
+  },
+  {
+    "repo_id": "mlc-ai/gemma-3-1b-it-q0bf16-MLC",
+    "family": "gemma-3",
+    "params_b": 1.0,
+    "quant": null,
+    "total_bin_bytes": 1999771904,
+    "n_bin_files": 53,
+    "likes": 2,
+    "downloads": 1,
+    "last_modified": "2025-09-07T18:56:11.000Z",
+    "tags": [
+      "mlc-llm",
+      "web-llm",
+      "base_model:google/gemma-3-1b-it",
+      "base_model:quantized:google/gemma-3-1b-it",
+      "region:us"
+    ],
+    "error": null
+  },
+  {
+    "repo_id": "mlc-ai/gemma-3-4b-it-q4bf16_0-MLC",
+    "family": "gemma-3",
+    "params_b": 4.0,
+    "quant": null,
+    "total_bin_bytes": 2183177216,
+    "n_bin_files": 69,
+    "likes": 1,
+    "downloads": 11,
+    "last_modified": "2025-09-07T18:56:17.000Z",
+    "tags": [
+      "mlc-llm",
+      "web-llm",
+      "base_model:google/gemma-3-4b-it",
+      "base_model:quantized:google/gemma-3-4b-it",
+      "region:us"
+    ],
+    "error": null
+  },
+  {
+    "repo_id": "mlc-ai/gemma-3-4b-it-q4bf16_1-MLC",
+    "family": "gemma-3",
+    "params_b": 4.0,
+    "quant": null,
+    "total_bin_bytes": 2183177216,
+    "n_bin_files": 69,
+    "likes": 1,
+    "downloads": 9,
+    "last_modified": "2025-09-07T18:56:18.000Z",
+    "tags": [
+      "mlc-llm",
+      "web-llm",
+      "base_model:google/gemma-3-4b-it",
+      "base_model:quantized:google/gemma-3-4b-it",
+      "region:us"
+    ],
+    "error": null
+  },
+  {
+    "repo_id": "mlc-ai/gemma-3-4b-it-q0bf16-MLC",
+    "family": "gemma-3",
+    "params_b": 4.0,
+    "quant": null,
+    "total_bin_bytes": 7760526336,
+    "n_bin_files": 103,
+    "likes": 1,
+    "downloads": 2,
+    "last_modified": "2025-09-07T18:56:20.000Z",
+    "tags": [
+      "mlc-llm",
+      "web-llm",
+      "base_model:google/gemma-3-4b-it",
+      "base_model:quantized:google/gemma-3-4b-it",
+      "region:us"
+    ],
+    "error": null
+  },
+  {
+    "repo_id": "mlc-ai/gemma-3-12b-it-q4bf16_0-MLC",
+    "family": "gemma-3",
+    "params_b": 12.0,
+    "quant": null,
+    "total_bin_bytes": 6619494912,
+    "n_bin_files": 156,
+    "likes": 1,
+    "downloads": 2,
+    "last_modified": "2025-09-07T18:56:24.000Z",
+    "tags": [
+      "mlc-llm",
+      "web-llm",
+      "base_model:google/gemma-3-12b-it",
+      "base_model:quantized:google/gemma-3-12b-it",
+      "region:us"
+    ],
+    "error": null
+  },
+  {
+    "repo_id": "mlc-ai/gemma-3-12b-it-q4bf16_1-MLC",
+    "family": "gemma-3",
+    "params_b": 12.0,
+    "quant": null,
+    "total_bin_bytes": 6619494912,
+    "n_bin_files": 156,
+    "likes": 2,
+    "downloads": 1,
+    "last_modified": "2025-09-07T18:56:23.000Z",
+    "tags": [
+      "mlc-llm",
+      "web-llm",
+      "base_model:google/gemma-3-12b-it",
+      "base_model:quantized:google/gemma-3-12b-it",
+      "region:us"
+    ],
+    "error": null
+  },
+  {
+    "repo_id": "mlc-ai/gemma-3-1b-it-q4f32_1-MLC",
+    "family": "gemma-3",
+    "params_b": 1.0,
+    "quant": "q4f32_1",
+    "total_bin_bytes": 562628864,
+    "n_bin_files": 15,
+    "likes": 2,
+    "downloads": 7,
+    "last_modified": "2025-09-07T18:56:16.000Z",
+    "tags": [
+      "mlc-llm",
+      "web-llm",
+      "base_model:google/gemma-3-1b-it",
+      "base_model:quantized:google/gemma-3-1b-it",
+      "region:us"
+    ],
+    "error": null
+  },
+  {
+    "repo_id": "mlc-ai/gemma-3-1b-it-q4f16_1-MLC",
+    "family": "gemma-3",
+    "params_b": 1.0,
+    "quant": "q4f16_1",
+    "total_bin_bytes": 562628864,
+    "n_bin_files": 15,
+    "likes": 0,
+    "downloads": 1544,
+    "last_modified": "2025-09-07T18:56:14.000Z",
+    "tags": [
+      "mlc-llm",
+      "web-llm",
+      "base_model:google/gemma-3-1b-it",
+      "base_model:quantized:google/gemma-3-1b-it",
+      "region:us"
+    ],
+    "error": null
+  },
+  {
+    "repo_id": "mlc-ai/gemma-3-1b-it-q0f16-MLC",
+    "family": "gemma-3",
+    "params_b": 1.0,
+    "quant": "q0f16",
+    "total_bin_bytes": 1999771904,
+    "n_bin_files": 53,
+    "likes": 0,
+    "downloads": 1,
+    "last_modified": "2025-09-07T18:56:15.000Z",
+    "tags": [
+      "mlc-llm",
+      "web-llm",
+      "base_model:google/gemma-3-1b-it",
+      "base_model:quantized:google/gemma-3-1b-it",
+      "region:us"
+    ],
+    "error": null
+  },
+  {
+    "repo_id": "mlc-ai/gemma-3-4b-it-q4f32_1-MLC",
+    "family": "gemma-3",
+    "params_b": 4.0,
+    "quant": "q4f32_1",
+    "total_bin_bytes": 2183177216,
+    "n_bin_files": 69,
+    "likes": 0,
+    "downloads": 0,
+    "last_modified": "2025-09-07T18:56:21.000Z",
+    "tags": [
+      "mlc-llm",
+      "web-llm",
+      "base_model:google/gemma-3-4b-it",
+      "base_model:quantized:google/gemma-3-4b-it",
+      "region:us"
+    ],
+    "error": null
+  },
+  {
+    "repo_id": "mlc-ai/gemma-3-4b-it-q4f16_1-MLC",
+    "family": "gemma-3",
+    "params_b": 4.0,
+    "quant": "q4f16_1",
+    "total_bin_bytes": 2183177216,
+    "n_bin_files": 69,
+    "likes": 3,
+    "downloads": 108,
+    "last_modified": "2025-09-07T18:56:22.000Z",
+    "tags": [
+      "mlc-llm",
+      "web-llm",
+      "base_model:google/gemma-3-4b-it",
+      "base_model:quantized:google/gemma-3-4b-it",
+      "region:us"
+    ],
+    "error": null
+  },
+  {
+    "repo_id": "mlc-ai/gemma-3-12b-it-q4f32_1-MLC",
+    "family": "gemma-3",
+    "params_b": 12.0,
+    "quant": "q4f32_1",
+    "total_bin_bytes": 6619494912,
+    "n_bin_files": 156,
+    "likes": 1,
+    "downloads": 1,
+    "last_modified": "2025-09-07T18:56:25.000Z",
+    "tags": [
+      "mlc-llm",
+      "web-llm",
+      "base_model:google/gemma-3-12b-it",
+      "base_model:quantized:google/gemma-3-12b-it",
+      "region:us"
+    ],
+    "error": null
+  },
+  {
+    "repo_id": "mlc-ai/gemma-3-12b-it-q4f16_1-MLC",
+    "family": "gemma-3",
+    "params_b": 12.0,
+    "quant": "q4f16_1",
+    "total_bin_bytes": 6619494912,
+    "n_bin_files": 156,
+    "likes": 1,
+    "downloads": 3,
+    "last_modified": "2025-09-07T18:56:26.000Z",
+    "tags": [
+      "mlc-llm",
+      "web-llm",
+      "base_model:google/gemma-3-12b-it",
+      "base_model:quantized:google/gemma-3-12b-it",
+      "region:us"
+    ],
+    "error": null
+  },
+  {
+    "repo_id": "mlc-ai/gemma-3-1b-it-q0f32-MLC",
+    "family": "gemma-3",
+    "params_b": 1.0,
+    "quant": "q0f32",
+    "total_bin_bytes": 1999771904,
+    "n_bin_files": 53,
+    "likes": 0,
+    "downloads": 1,
+    "last_modified": "2025-09-07T18:56:36.000Z",
+    "tags": [
+      "mlc-llm",
+      "web-llm",
+      "base_model:google/gemma-3-1b-it",
+      "base_model:quantized:google/gemma-3-1b-it",
+      "region:us"
+    ],
+    "error": null
+  },
+  {
+    "repo_id": "mlc-ai/gemma-3-4b-it-q0f32-MLC",
+    "family": "gemma-3",
+    "params_b": 4.0,
+    "quant": "q0f32",
+    "total_bin_bytes": 7760526336,
+    "n_bin_files": 103,
+    "likes": 0,
+    "downloads": 2,
+    "last_modified": "2025-09-07T18:56:38.000Z",
+    "tags": [
+      "mlc-llm",
+      "web-llm",
+      "base_model:google/gemma-3-4b-it",
+      "base_model:quantized:google/gemma-3-4b-it",
+      "region:us"
+    ],
+    "error": null
+  },
+  {
+    "repo_id": "mlc-ai/Qwen3-14B-q4f16_1-MLC",
+    "family": "Qwen3",
+    "params_b": 14.0,
+    "quant": "q4f16_1",
+    "total_bin_bytes": 8307783680,
+    "n_bin_files": 164,
+    "likes": 0,
+    "downloads": 140,
+    "last_modified": "2026-04-18T20:59:16.000Z",
+    "tags": [
+      "mlc-llm",
+      "web-llm",
+      "base_model:Qwen/Qwen3-14B",
+      "base_model:quantized:Qwen/Qwen3-14B",
+      "region:us"
+    ],
+    "error": null
+  },
+  {
+    "repo_id": "mlc-ai/Qwen3-14B-q4f32_1-MLC",
+    "family": "Qwen3",
+    "params_b": 14.0,
+    "quant": "q4f32_1",
+    "total_bin_bytes": 8307783680,
+    "n_bin_files": 164,
+    "likes": 0,
+    "downloads": 16,
+    "last_modified": "2026-04-18T20:59:16.000Z",
+    "tags": [
+      "mlc-llm",
+      "web-llm",
+      "base_model:Qwen/Qwen3-14B",
+      "base_model:quantized:Qwen/Qwen3-14B",
+      "region:us"
+    ],
+    "error": null
+  },
+  {
+    "repo_id": "mlc-ai/Qwen3-8B-q4f16_1-MLC",
+    "family": "Qwen3",
+    "params_b": 8.0,
+    "quant": "q4f16_1",
+    "total_bin_bytes": 4607731712,
+    "n_bin_files": 113,
+    "likes": 0,
+    "downloads": 471,
+    "last_modified": "2026-04-18T20:59:24.000Z",
+    "tags": [
+      "mlc-llm",
+      "web-llm",
+      "base_model:Qwen/Qwen3-8B",
+      "base_model:quantized:Qwen/Qwen3-8B",
+      "region:us"
+    ],
+    "error": null
+  },
+  {
+    "repo_id": "mlc-ai/Qwen3-8B-q4f32_1-MLC",
+    "family": "Qwen3",
+    "params_b": 8.0,
+    "quant": "q4f32_1",
+    "total_bin_bytes": 4607731712,
+    "n_bin_files": 113,
+    "likes": 0,
+    "downloads": 243,
+    "last_modified": "2026-04-18T20:59:25.000Z",
+    "tags": [
+      "mlc-llm",
+      "web-llm",
+      "base_model:Qwen/Qwen3-8B",
+      "base_model:quantized:Qwen/Qwen3-8B",
+      "region:us"
+    ],
+    "error": null
+  },
+  {
+    "repo_id": "mlc-ai/Qwen3-4B-q4f16_1-MLC",
+    "family": "Qwen3",
+    "params_b": 4.0,
+    "quant": "q4f16_1",
+    "total_bin_bytes": 2262920192,
+    "n_bin_files": 74,
+    "likes": 2,
+    "downloads": 4987,
+    "last_modified": "2026-04-18T20:59:22.000Z",
+    "tags": [
+      "mlc-llm",
+      "web-llm",
+      "base_model:Qwen/Qwen3-4B",
+      "base_model:quantized:Qwen/Qwen3-4B",
+      "region:us"
+    ],
+    "error": null
+  },
+  {
+    "repo_id": "mlc-ai/Qwen3-4B-q4f16_0-MLC",
+    "family": "Qwen3",
+    "params_b": 4.0,
+    "quant": "q4f16_0",
+    "total_bin_bytes": 2262920192,
+    "n_bin_files": 74,
+    "likes": 0,
+    "downloads": 14,
+    "last_modified": "2026-04-18T20:59:22.000Z",
+    "tags": [
+      "mlc-llm",
+      "web-llm",
+      "base_model:Qwen/Qwen3-4B",
+      "base_model:quantized:Qwen/Qwen3-4B",
+      "region:us"
+    ],
+    "error": null
+  },
+  {
+    "repo_id": "mlc-ai/Qwen3-4B-q0f16-MLC",
+    "family": "Qwen3",
+    "params_b": 4.0,
+    "quant": "q0f16",
+    "total_bin_bytes": 8044936192,
+    "n_bin_files": 145,
+    "likes": 1,
+    "downloads": 19,
+    "last_modified": "2026-04-18T20:59:21.000Z",
+    "tags": [
+      "mlc-llm",
+      "web-llm",
+      "base_model:Qwen/Qwen3-4B",
+      "base_model:quantized:Qwen/Qwen3-4B",
+      "region:us"
+    ],
+    "error": null
+  },
+  {
+    "repo_id": "mlc-ai/Qwen3-4B-q4f32_1-MLC",
+    "family": "Qwen3",
+    "params_b": 4.0,
+    "quant": "q4f32_1",
+    "total_bin_bytes": 2262920192,
+    "n_bin_files": 74,
+    "likes": 0,
+    "downloads": 123,
+    "last_modified": "2026-04-18T20:59:23.000Z",
+    "tags": [
+      "mlc-llm",
+      "web-llm",
+      "base_model:Qwen/Qwen3-4B",
+      "base_model:quantized:Qwen/Qwen3-4B",
+      "region:us"
+    ],
+    "error": null
+  },
+  {
+    "repo_id": "mlc-ai/Qwen3-1.7B-q4f16_1-MLC",
+    "family": "Qwen3",
+    "params_b": 1.7,
+    "quant": "q4f16_1",
+    "total_bin_bytes": 968001536,
+    "n_bin_files": 30,
+    "likes": 0,
+    "downloads": 1579,
+    "last_modified": "2026-04-18T20:59:14.000Z",
+    "tags": [
+      "mlc-llm",
+      "web-llm",
+      "base_model:Qwen/Qwen3-1.7B",
+      "base_model:quantized:Qwen/Qwen3-1.7B",
+      "region:us"
+    ],
+    "error": null
+  },
+  {
+    "repo_id": "mlc-ai/Qwen3-1.7B-q4f16_0-MLC",
+    "family": "Qwen3",
+    "params_b": 1.7,
+    "quant": "q4f16_0",
+    "total_bin_bytes": 968001536,
+    "n_bin_files": 30,
+    "likes": 0,
+    "downloads": 17,
+    "last_modified": "2026-04-18T20:59:14.000Z",
+    "tags": [
+      "mlc-llm",
+      "web-llm",
+      "base_model:Qwen/Qwen3-1.7B",
+      "base_model:quantized:Qwen/Qwen3-1.7B",
+      "region:us"
+    ],
+    "error": null
+  },
+  {
+    "repo_id": "mlc-ai/Qwen3-1.7B-q0f16-MLC",
+    "family": "Qwen3",
+    "params_b": 1.7,
+    "quant": "q0f16",
+    "total_bin_bytes": 3441149952,
+    "n_bin_files": 86,
+    "likes": 0,
+    "downloads": 16,
+    "last_modified": "2026-04-18T20:59:13.000Z",
+    "tags": [
+      "mlc-llm",
+      "web-llm",
+      "base_model:Qwen/Qwen3-1.7B",
+      "base_model:quantized:Qwen/Qwen3-1.7B",
+      "region:us"
+    ],
+    "error": null
+  },
+  {
+    "repo_id": "mlc-ai/Qwen3-1.7B-q4f32_1-MLC",
+    "family": "Qwen3",
+    "params_b": 1.7,
+    "quant": "q4f32_1",
+    "total_bin_bytes": 968001536,
+    "n_bin_files": 30,
+    "likes": 0,
+    "downloads": 146,
+    "last_modified": "2026-04-18T20:59:15.000Z",
+    "tags": [
+      "mlc-llm",
+      "web-llm",
+      "base_model:Qwen/Qwen3-1.7B",
+      "base_model:quantized:Qwen/Qwen3-1.7B",
+      "region:us"
+    ],
+    "error": null
+  },
+  {
+    "repo_id": "mlc-ai/Qwen3-0.6B-q4f16_1-MLC",
+    "family": "Qwen3",
+    "params_b": 0.6,
+    "quant": "q4f16_1",
+    "total_bin_bytes": 335372288,
+    "n_bin_files": 9,
+    "likes": 1,
+    "downloads": 6717,
+    "last_modified": "2026-04-18T20:59:12.000Z",
+    "tags": [
+      "mlc-llm",
+      "web-llm",
+      "base_model:Qwen/Qwen3-0.6B",
+      "base_model:quantized:Qwen/Qwen3-0.6B",
+      "region:us"
+    ],
+    "error": null
+  },
+  {
+    "repo_id": "mlc-ai/Qwen3-0.6B-q4f16_0-MLC",
+    "family": "Qwen3",
+    "params_b": 0.6,
+    "quant": "q4f16_0",
+    "total_bin_bytes": 335372288,
+    "n_bin_files": 9,
+    "likes": 0,
+    "downloads": 25,
+    "last_modified": "2026-04-18T20:59:11.000Z",
+    "tags": [
+      "mlc-llm",
+      "web-llm",
+      "base_model:Qwen/Qwen3-0.6B",
+      "base_model:quantized:Qwen/Qwen3-0.6B",
+      "region:us"
+    ],
+    "error": null
+  },
+  {
+    "repo_id": "mlc-ai/Qwen3-0.6B-q0f16-MLC",
+    "family": "Qwen3",
+    "params_b": 0.6,
+    "quant": "q0f16",
+    "total_bin_bytes": 1192099840,
+    "n_bin_files": 29,
+    "likes": 0,
+    "downloads": 385,
+    "last_modified": "2026-04-18T20:59:10.000Z",
+    "tags": [
+      "mlc-llm",
+      "web-llm",
+      "base_model:Qwen/Qwen3-0.6B",
+      "base_model:quantized:Qwen/Qwen3-0.6B",
+      "region:us"
+    ],
+    "error": null
+  },
+  {
+    "repo_id": "mlc-ai/Qwen3-0.6B-q4f32_1-MLC",
+    "family": "Qwen3",
+    "params_b": 0.6,
+    "quant": "q4f32_1",
+    "total_bin_bytes": 335372288,
+    "n_bin_files": 9,
+    "likes": 1,
+    "downloads": 210,
+    "last_modified": "2026-04-18T20:59:12.000Z",
+    "tags": [
+      "mlc-llm",
+      "web-llm",
+      "base_model:Qwen/Qwen3-0.6B",
+      "base_model:quantized:Qwen/Qwen3-0.6B",
+      "region:us"
+    ],
+    "error": null
+  },
+  {
+    "repo_id": "mlc-ai/Qwen3-0.6B-q0f32-MLC",
+    "family": "Qwen3",
+    "params_b": 0.6,
+    "quant": "q0f32",
+    "total_bin_bytes": 1192099840,
+    "n_bin_files": 29,
+    "likes": 0,
+    "downloads": 57,
+    "last_modified": "2026-04-18T20:59:11.000Z",
+    "tags": [
+      "mlc-llm",
+      "web-llm",
+      "base_model:Qwen/Qwen3-0.6B",
+      "base_model:quantized:Qwen/Qwen3-0.6B",
+      "region:us"
+    ],
+    "error": null
+  },
+  {
+    "repo_id": "mlc-ai/Phi-4-mini-instruct-q4f16_1-MLC",
+    "family": "Phi-4-mini",
+    "params_b": null,
+    "quant": "q4f16_1",
+    "total_bin_bytes": 2158049280,
+    "n_bin_files": 66,
+    "likes": 1,
+    "downloads": 0,
+    "last_modified": "2025-09-07T18:57:21.000Z",
+    "tags": [
+      "region:us"
+    ],
+    "error": null
+  },
+  {
+    "repo_id": "mlc-ai/Phi-4-mini-instruct-q4f32_1-MLC",
+    "family": "Phi-4-mini",
+    "params_b": null,
+    "quant": "q4f32_1",
+    "total_bin_bytes": 2158049280,
+    "n_bin_files": 66,
+    "likes": 1,
+    "downloads": 0,
+    "last_modified": "2025-09-07T18:57:23.000Z",
+    "tags": [
+      "region:us"
+    ],
+    "error": null
+  },
+  {
+    "repo_id": "mlc-ai/Phi-4-mini-instruct-q0f16-MLC",
+    "family": "Phi-4-mini",
+    "params_b": null,
+    "quant": "q0f16",
+    "total_bin_bytes": 7672043520,
+    "n_bin_files": 129,
+    "likes": 0,
+    "downloads": 0,
+    "last_modified": "2025-09-07T18:57:23.000Z",
+    "tags": [
+      "region:us"
+    ],
+    "error": null
+  },
+  {
+    "repo_id": "mlc-ai/Ministral-3-3B-Reasoning-2512-q4f16_1-MLC",
+    "family": "Ministral-3",
+    "params_b": 3.0,
+    "quant": "q4f16_1",
+    "total_bin_bytes": 1929050112,
+    "n_bin_files": 63,
+    "likes": 0,
+    "downloads": 0,
+    "last_modified": "2026-02-04T02:58:29.000Z",
+    "tags": [
+      "region:us"
+    ],
+    "error": null
+  },
+  {
+    "repo_id": "mlc-ai/Ministral-3-3B-Base-2512-q4f16_1-MLC",
+    "family": "Ministral-3",
+    "params_b": 3.0,
+    "quant": "q4f16_1",
+    "total_bin_bytes": 1929050112,
+    "n_bin_files": 63,
+    "likes": 0,
+    "downloads": 0,
+    "last_modified": "2026-02-04T03:00:03.000Z",
+    "tags": [
+      "region:us"
+    ],
+    "error": null
+  },
+  {
+    "repo_id": "mlc-ai/Ministral-3-3B-Instruct-2512-BF16-q4f16_1-MLC",
+    "family": "Ministral-3",
+    "params_b": 3.0,
+    "quant": "q4f16_1",
+    "total_bin_bytes": 1929050112,
+    "n_bin_files": 63,
+    "likes": 1,
+    "downloads": 0,
+    "last_modified": "2026-02-04T03:01:23.000Z",
+    "tags": [
+      "region:us"
+    ],
+    "error": null
+  },
+  {
+    "repo_id": "mlc-ai/Qwen3.5-0.8B-q4f16_1-MLC",
+    "family": "Qwen3.5",
+    "params_b": 0.8,
+    "quant": "q4f16_1",
+    "total_bin_bytes": 423937664,
+    "n_bin_files": 11,
+    "likes": 0,
+    "downloads": 0,
+    "last_modified": "2026-03-29T07:55:48.000Z",
+    "tags": [
+      "region:us"
+    ],
+    "error": null
+  },
+  {
+    "repo_id": "mlc-ai/Qwen3.5-2B-q4f16_1-MLC",
+    "family": "Qwen3.5",
+    "params_b": 2.0,
+    "quant": "q4f16_1",
+    "total_bin_bytes": 1059315328,
+    "n_bin_files": 31,
+    "likes": 1,
+    "downloads": 0,
+    "last_modified": "2026-03-29T07:53:15.000Z",
+    "tags": [
+      "region:us"
+    ],
+    "error": null
+  },
+  {
+    "repo_id": "mlc-ai/Qwen3.5-0.8B-q4f32_1-MLC",
+    "family": "Qwen3.5",
+    "params_b": 0.8,
+    "quant": "q4f32_1",
+    "total_bin_bytes": 423937664,
+    "n_bin_files": 11,
+    "likes": 0,
+    "downloads": 0,
+    "last_modified": "2026-04-22T18:43:11.000Z",
+    "tags": [
+      "region:us"
+    ],
+    "error": null
+  },
+  {
+    "repo_id": "mlc-ai/Qwen3.5-2B-q4f32_1-MLC",
+    "family": "Qwen3.5",
+    "params_b": 2.0,
+    "quant": "q4f32_1",
+    "total_bin_bytes": 1059315328,
+    "n_bin_files": 31,
+    "likes": 0,
+    "downloads": 0,
+    "last_modified": "2026-04-22T18:44:50.000Z",
+    "tags": [
+      "region:us"
+    ],
+    "error": null
+  },
+  {
+    "repo_id": "mlc-ai/Qwen3.5-4B-q4f32_1-MLC",
+    "family": "Qwen3.5",
+    "params_b": 4.0,
+    "quant": "q4f32_1",
+    "total_bin_bytes": 2367117312,
+    "n_bin_files": 78,
+    "likes": 0,
+    "downloads": 0,
+    "last_modified": "2026-04-22T18:46:33.000Z",
+    "tags": [
+      "region:us"
+    ],
+    "error": null
+  },
+  {
+    "repo_id": "mlc-ai/Qwen3.5-4B-q4f16_1-MLC",
+    "family": "Qwen3.5",
+    "params_b": 4.0,
+    "quant": "q4f16_1",
+    "total_bin_bytes": 2367117312,
+    "n_bin_files": 78,
+    "likes": 0,
+    "downloads": 0,
+    "last_modified": "2026-04-22T18:48:16.000Z",
+    "tags": [
+      "region:us"
+    ],
+    "error": null
+  },
+  {
+    "repo_id": "mlc-ai/Qwen3.5-9B-q4f32_1-MLC",
+    "family": "Qwen3.5",
+    "params_b": 9.0,
+    "quant": "q4f32_1",
+    "total_bin_bytes": 5038040064,
+    "n_bin_files": 127,
+    "likes": 0,
+    "downloads": 0,
+    "last_modified": "2026-04-22T18:51:26.000Z",
+    "tags": [
+      "region:us"
+    ],
+    "error": null
+  },
+  {
+    "repo_id": "mlc-ai/Qwen3.5-9B-q4f16_1-MLC",
+    "family": "Qwen3.5",
+    "params_b": 9.0,
+    "quant": "q4f16_1",
+    "total_bin_bytes": 5038040064,
+    "n_bin_files": 127,
+    "likes": 0,
+    "downloads": 0,
+    "last_modified": "2026-04-22T18:54:34.000Z",
+    "tags": [
+      "region:us"
+    ],
+    "error": null
+  },
+  {
+    "repo_id": "mlc-ai/OLMo-2-1124-7B-Instruct-q4f32_1-MLC",
+    "family": "OLMo-2-1124",
+    "params_b": 7.0,
+    "quant": "q4f32_1",
+    "total_bin_bytes": 4106231808,
+    "n_bin_files": 117,
+    "likes": 0,
+    "downloads": 0,
+    "last_modified": "2026-04-22T18:57:04.000Z",
+    "tags": [
+      "region:us"
+    ],
+    "error": null
+  },
+  {
+    "repo_id": "mlc-ai/OLMo-2-1124-7B-Instruct-q4f16_1-MLC",
+    "family": "OLMo-2-1124",
+    "params_b": 7.0,
+    "quant": "q4f16_1",
+    "total_bin_bytes": 4106231808,
+    "n_bin_files": 117,
+    "likes": 0,
+    "downloads": 0,
+    "last_modified": "2026-04-22T18:59:33.000Z",
+    "tags": [
+      "region:us"
+    ],
+    "error": null
+  },
+  {
+    "repo_id": "mlc-ai/OLMo-2-0425-1B-Instruct-q4f32_1-MLC",
+    "family": "OLMo-2-0425",
+    "params_b": 1.0,
+    "quant": "q4f32_1",
+    "total_bin_bytes": 835457024,
+    "n_bin_files": 27,
+    "likes": 0,
+    "downloads": 0,
+    "last_modified": "2026-04-22T19:00:19.000Z",
+    "tags": [
+      "region:us"
+    ],
+    "error": null
+  },
+  {
+    "repo_id": "mlc-ai/OLMo-2-0425-1B-Instruct-q4f16_1-MLC",
+    "family": "OLMo-2-0425",
+    "params_b": 1.0,
+    "quant": "q4f16_1",
+    "total_bin_bytes": 835457024,
+    "n_bin_files": 27,
+    "likes": 0,
+    "downloads": 0,
+    "last_modified": "2026-04-22T19:01:05.000Z",
+    "tags": [
+      "region:us"
+    ],
+    "error": null
+  },
+  {
+    "repo_id": "mlc-ai/Ministral-3-3B-Base-2512-q4f32_1-MLC",
+    "family": "Ministral-3",
+    "params_b": 3.0,
+    "quant": "q4f32_1",
+    "total_bin_bytes": 1929050112,
+    "n_bin_files": 63,
+    "likes": 0,
+    "downloads": 0,
+    "last_modified": "2026-04-22T19:03:29.000Z",
+    "tags": [
+      "region:us"
+    ],
+    "error": null
+  },
+  {
+    "repo_id": "mlc-ai/Ministral-3-3B-Reasoning-2512-q4f32_1-MLC",
+    "family": "Ministral-3",
+    "params_b": 3.0,
+    "quant": "q4f32_1",
+    "total_bin_bytes": 1929050112,
+    "n_bin_files": 63,
+    "likes": 0,
+    "downloads": 0,
+    "last_modified": "2026-04-22T19:05:54.000Z",
+    "tags": [
+      "region:us"
+    ],
+    "error": null
+  },
+  {
+    "repo_id": "mlc-ai/Ministral-3-3B-Instruct-2512-BF16-q4f32_1-MLC",
+    "family": "Ministral-3",
+    "params_b": 3.0,
+    "quant": "q4f32_1",
+    "total_bin_bytes": 1929050112,
+    "n_bin_files": 63,
+    "likes": 0,
+    "downloads": 0,
+    "last_modified": "2026-04-22T19:08:18.000Z",
+    "tags": [
+      "region:us"
+    ],
+    "error": null
+  },
+  {
+    "repo_id": "mlc-ai/gemma3-1b-it-q4f16_1-MLC",
+    "family": "gemma3",
+    "params_b": 1.0,
+    "quant": "q4f16_1",
+    "total_bin_bytes": 562628864,
+    "n_bin_files": 15,
+    "likes": 0,
+    "downloads": 0,
+    "last_modified": "2026-04-22T20:21:53.000Z",
+    "tags": [
+      "region:us"
+    ],
+    "error": null
+  }
+]

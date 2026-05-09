@@ -1,0 +1,156 @@
+[
+  {
+    "path": "mlc-llm",
+    "is_folder": true,
+    "size": 0,
+    "sha1": null,
+    "sha256": null,
+    "md5": null,
+    "created": "2025-11-13T19:54:48.992Z",
+    "last_modified": "2025-11-13T19:54:48.992Z",
+    "download_uri": null
+  },
+  {
+    "path": "mlc-llm/2025.06.r1",
+    "is_folder": true,
+    "size": 0,
+    "sha1": null,
+    "sha256": null,
+    "md5": null,
+    "created": "2025-11-13T19:54:49.034Z",
+    "last_modified": "2025-11-13T19:54:49.034Z",
+    "download_uri": null
+  },
+  {
+    "path": "mlc-llm/2025.06.r1/mlc-llm-docs-2025.06.r1.zip",
+    "is_folder": false,
+    "size": 7677504,
+    "sha1": "71148384b036f609041c993a84ef863d04f9d602",
+    "sha256": "d004b55cfb05ca8e4e23b006e02906fbe794c83fc7c363909b7bca3874102c1e",
+    "md5": "38ab8bab2d05e72f52ca9056ebd7f139",
+    "created": "2025-11-13T19:54:49.396Z",
+    "last_modified": "2025-11-13T19:54:49.396Z",
+    "download_uri": "https://codelinaro.jfrog.io/artifactory/clo-472-adreno-opensource-ai/mlc-llm/2025.06.r1/mlc-llm-docs-2025.06.r1.zip"
+  },
+  {
+    "path": "mlc-llm/2025.06.r1/mlc_llm-utils-linux-arm64-2025.06.r1.tar.bz2",
+    "is_folder": false,
+    "size": 44564310,
+    "sha1": "9da38918baee5779b96a9bf0be0259bbbc4ac7a1",
+    "sha256": "6b9f9781b4fda358241d4f29c30c067769069811284c356db22be709abc09187",
+    "md5": "01e4760a9e5d5ae5f9b06702604ef59d",
+    "created": "2025-11-13T19:54:49.250Z",
+    "last_modified": "2025-11-13T19:54:49.250Z",
+    "download_uri": "https://codelinaro.jfrog.io/artifactory/clo-472-adreno-opensource-ai/mlc-llm/2025.06.r1/mlc_llm-utils-linux-arm64-2025.06.r1.tar.bz2"
+  },
+  {
+    "path": "mlc-llm/2025.06.r1/mlc_llm-utils-win-arm64-2025.06.r1.zip",
+    "is_folder": false,
+    "size": 7034095,
+    "sha1": "b3d3bf57ee69b4bf98b9fdbb9d69703d222c1828",
+    "sha256": "eb9fe50073fe29d7e31ac01b0696163eb7e42b776303cd151daa4ba4cadca4be",
+    "md5": "8f14002210191c2c2c1d8feb9751c0a9",
+    "created": "2025-11-13T19:54:49.257Z",
+    "last_modified": "2025-11-13T19:54:49.257Z",
+    "download_uri": "https://codelinaro.jfrog.io/artifactory/clo-472-adreno-opensource-ai/mlc-llm/2025.06.r1/mlc_llm-utils-win-arm64-2025.06.r1.zip"
+  },
+  {
+    "path": "mlc-llm/2025.06.r1/mlc_llm-utils-win-arm64-clml-2025.06.r1.zip",
+    "is_folder": false,
+    "size": 7147502,
+    "sha1": "cf83c6207fddd18020dabf0cd0395f5cc203fe59",
+    "sha256": "c00032f207afa93ccba548eba9953f5faf64eaed481bec7de48485e1106eebf4",
+    "md5": "cad06f4fc84fc0a53439fb31c6e72b52",
+    "created": "2025-11-13T19:54:49.344Z",
+    "last_modified": "2025-11-13T19:54:49.344Z",
+    "download_uri": "https://codelinaro.jfrog.io/artifactory/clo-472-adreno-opensource-ai/mlc-llm/2025.06.r1/mlc_llm-utils-win-arm64-clml-2025.06.r1.zip"
+  },
+  {
+    "path": "mlc-llm/2025.06.r1/mlc_llm-utils-win-x86-2025.06.r1.zip",
+    "is_folder": false,
+    "size": 7357529,
+    "sha1": "e1379f18d9f7955a24b0001c98a81cc2bcaae908",
+    "sha256": "442cc29ef647348090ee1f64c1bb42062d3873942d61ff5f3f534f7ac6d36f3b",
+    "md5": "58a0a0342fb3a3876b4c375bb2a8f0ed",
+    "created": "2025-11-13T19:54:49.177Z",
+    "last_modified": "2025-11-13T19:54:49.177Z",
+    "download_uri": "https://codelinaro.jfrog.io/artifactory/clo-472-adreno-opensource-ai/mlc-llm/2025.06.r1/mlc_llm-utils-win-x86-2025.06.r1.zip"
+  },
+  {
+    "path": "mlc-llm/2025.06.r1/mlc_llm-utils-win-x86-clml-2025.06.r1.zip",
+    "is_folder": false,
+    "size": 7471659,
+    "sha1": "5f7e47b23fd2fb5d3594358df26423ec097ac876",
+    "sha256": "68803af790e9075352108f36f4f148a1654f7231907859e0e300d65f5678901f",
+    "md5": "38b4400db0cc9fb7398073c85ff09bec",
+    "created": "2025-11-13T19:54:49.183Z",
+    "last_modified": "2025-11-13T19:54:49.183Z",
+    "download_uri": "https://codelinaro.jfrog.io/artifactory/clo-472-adreno-opensource-ai/mlc-llm/2025.06.r1/mlc_llm-utils-win-x86-clml-2025.06.r1.zip"
+  },
+  {
+    "path": "mlc-llm/2025.06.r1/mlc_llm_adreno_cpu_2025.06.r1-0.1.dev0-cp312-cp312-manylinux_2_28_x86_64.whl",
+    "is_folder": false,
+    "size": 65441118,
+    "sha1": "9c8cc8b420114a01a236d058529e4793612681f4",
+    "sha256": "c569f9985f24b76ec9148f1ccdb5ee781100ccc0ed59aba74e8c307ff0bf8212",
+    "md5": "d5b1b7253661489a061a8ceafde03160",
+    "created": "2025-11-13T19:54:49.383Z",
+    "last_modified": "2025-11-13T19:54:49.383Z",
+    "download_uri": "https://codelinaro.jfrog.io/artifactory/clo-472-adreno-opensource-ai/mlc-llm/2025.06.r1/mlc_llm_adreno_cpu_2025.06.r1-0.1.dev0-cp312-cp312-manylinux_2_28_x86_64.whl"
+  },
+  {
+    "path": "mlc-llm/2025.06.r1/mlc_llm_adreno_cpu_clml_2025_06_r1-0.1.dev0-cp312-cp312-win_amd64.whl",
+    "is_folder": false,
+    "size": 5632224,
+    "sha1": "87b192794a25e3d96d67667d403c647ef017250d",
+    "sha256": "c1ad7c795e782ec876b96f66439206456cd0c8ae9e5d8d6a587b40275b08478e",
+    "md5": "f108ebf5d837008c92ad5f45a8a91217",
+    "created": "2025-11-13T19:54:49.257Z",
+    "last_modified": "2025-11-13T19:54:49.257Z",
+    "download_uri": "https://codelinaro.jfrog.io/artifactory/clo-472-adreno-opensource-ai/mlc-llm/2025.06.r1/mlc_llm_adreno_cpu_clml_2025_06_r1-0.1.dev0-cp312-cp312-win_amd64.whl"
+  },
+  {
+    "path": "mlc-llm/2025.06.r1/mlc_llm_adreno_cuda_2025.06.r1-0.1.dev0-cp312-cp312-manylinux_2_28_x86_64.whl",
+    "is_folder": false,
+    "size": 65441130,
+    "sha1": "1b2657aa047fe335e78232fce2bb8e3ae51a1924",
+    "sha256": "c04cda7851357b3c11de38e9f732317dd3ea7d20a07a7d80a077cb2c4be56c91",
+    "md5": "6d4f87317a31d7a993c45b19ad433bc3",
+    "created": "2025-11-13T19:54:49.348Z",
+    "last_modified": "2025-11-13T19:54:49.348Z",
+    "download_uri": "https://codelinaro.jfrog.io/artifactory/clo-472-adreno-opensource-ai/mlc-llm/2025.06.r1/mlc_llm_adreno_cuda_2025.06.r1-0.1.dev0-cp312-cp312-manylinux_2_28_x86_64.whl"
+  },
+  {
+    "path": "mlc-llm/2025.06.r1/tvm_adreno_cpu_clml_2025_06_r1-0.20.dev0-cp312-cp312-win_amd64.whl",
+    "is_folder": false,
+    "size": 43888029,
+    "sha1": "13ccb904f1eff93766a527bd3f61dec80f00dddd",
+    "sha256": "844dfc6506256006c284243a6d0cfb5dfa26db654218a8105e9d938c10b033db",
+    "md5": "5ab6074486c7a0fa8ebe777454f02f21",
+    "created": "2025-11-13T19:54:49.184Z",
+    "last_modified": "2025-11-13T19:54:49.184Z",
+    "download_uri": "https://codelinaro.jfrog.io/artifactory/clo-472-adreno-opensource-ai/mlc-llm/2025.06.r1/tvm_adreno_cpu_clml_2025_06_r1-0.20.dev0-cp312-cp312-win_amd64.whl"
+  },
+  {
+    "path": "mlc-llm/2025.06.r1/tvm_adreno_mlc_cpu_2025.06.r1-0.20.dev0-cp312-cp312-manylinux_2_28_x86_64.whl",
+    "is_folder": false,
+    "size": 172281992,
+    "sha1": "084f4049ce716b6b473e8182c355a624c466d486",
+    "sha256": "6b62fef210f84599f123ca7f2a36a272fcd9d40069fb2e2681e7ff315661b8b2",
+    "md5": "daafaa8df5772c6e3d2b928c96c8e967",
+    "created": "2025-11-13T19:54:49.353Z",
+    "last_modified": "2025-11-13T19:54:49.353Z",
+    "download_uri": "https://codelinaro.jfrog.io/artifactory/clo-472-adreno-opensource-ai/mlc-llm/2025.06.r1/tvm_adreno_mlc_cpu_2025.06.r1-0.20.dev0-cp312-cp312-manylinux_2_28_x86_64.whl"
+  },
+  {
+    "path": "mlc-llm/2025.06.r1/tvm_adreno_mlc_cuda_2025.06.r1-0.20.dev0-cp312-cp312-manylinux_2_28_x86_64.whl",
+    "is_folder": false,
+    "size": 172389538,
+    "sha1": "feedf068ebcfeda036f31fe94777452716e72136",
+    "sha256": "97f1e5d36d42b8854be4bf4e1a0b6d46dcc5c2716361dad28c10e103918006a6",
+    "md5": "f01bb37e053040fbe0499c34260e9508",
+    "created": "2025-11-13T19:54:49.292Z",
+    "last_modified": "2025-11-13T19:54:49.292Z",
+    "download_uri": "https://codelinaro.jfrog.io/artifactory/clo-472-adreno-opensource-ai/mlc-llm/2025.06.r1/tvm_adreno_mlc_cuda_2025.06.r1-0.20.dev0-cp312-cp312-manylinux_2_28_x86_64.whl"
+  }
+]
