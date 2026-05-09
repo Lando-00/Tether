@@ -208,7 +208,10 @@ class Engine:
         # the store so the DB is always at the latest schema version when the
         # store opens its connection. Migration is idempotent — calling it on
         # an already-current DB is a no-op. Synthesis §3.6, B1 step 2.
-        _store_dsn: str = store_spec.args.get("dsn", "sqlite:///./data/tether.db")
+        # Phase 6 step 60: DSN resolved from settings.storage.sqlite.dsn
+        # (platformdirs default when unset) instead of the legacy CWD-relative
+        # literal. Synthesis §3.6, §4 Phase 6 step 60.
+        _store_dsn: str = settings.storage.resolved_dsn()
         from tether_service.context.migration_runner import apply_pending_migrations
         try:
             apply_pending_migrations(_store_dsn)
