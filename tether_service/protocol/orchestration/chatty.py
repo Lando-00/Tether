@@ -425,6 +425,20 @@ class ChattyAgentOrchestrator(OrchestratorABC):
                 # for-loop fell through: max_tool_loops exhausted with
                 # the model still wanting to call tools (synthesis §3.5).
                 if self.config.loop_limit_policy is LoopLimitPolicy.RAISE:
+                    # Phase 5 followups F5: emit MessageStop BEFORE
+                    # raising — async generators cannot yield once an
+                    # exception is propagating through ``finally``, so
+                    # the post-finally yield below never runs on this
+                    # path. Mirrors the F2 fix for outer CancelledError.
+                    # Synthesis §3.5: every terminal path emits one
+                    # MessageStop.
+                    try:
+                        yield MessageStop(
+                            **_envelope(),
+                            stop_reason="tool_loop_exhausted",
+                        )
+                    except BaseException:
+                        pass
                     raise LoopLimitReachedError(
                         f"max_tool_loops={self.config.max_tool_loops} reached"
                     )
@@ -491,7 +505,10 @@ class ChattyAgentOrchestrator(OrchestratorABC):
                     await asyncio.wait_for(
                         active_tool_task, timeout=_TOOL_CANCEL_GRACE_SEC
                     )
-                except (asyncio.TimeoutError, asyncio.CancelledError, Exception):
+                except (asyncio.TimeoutError, asyncio.CancelledError):
+                    # Phase 5 followups F8: dropped ``Exception`` from
+                    # the tuple — let unexpected exceptions surface to
+                    # logs rather than silently swallowing real bugs.
                     pass
 
             # Cancellation contract step 3: persist partial assistant text
@@ -1028,4 +1045,4 @@ class ChattyAgentOrchestrator(OrchestratorABC):
         return None
 
 
-__all__ = ["Orchestrator"]
+__all__ = ["ChattyAgentOrchestrator"]
