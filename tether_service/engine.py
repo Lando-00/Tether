@@ -204,6 +204,19 @@ class Engine:
             return load(parser_spec.impl, **parser_spec.args)
 
         store_spec = settings.providers.session_store
+        # Phase 6 step 59: apply pending schema migrations BEFORE constructing
+        # the store so the DB is always at the latest schema version when the
+        # store opens its connection. Migration is idempotent — calling it on
+        # an already-current DB is a no-op. Synthesis §3.6, B1 step 2.
+        _store_dsn: str = store_spec.args.get("dsn", "sqlite:///./data/tether.db")
+        from tether_service.context.migration_runner import apply_pending_migrations
+        try:
+            apply_pending_migrations(_store_dsn)
+        except Exception as _mig_exc:
+            logger.exception(
+                "Schema migration failed at Engine startup: %s", _mig_exc
+            )
+            raise
         store = load(store_spec.impl, **store_spec.args)
 
         tools_settings = settings.tools
