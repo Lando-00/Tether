@@ -1,7 +1,10 @@
-from datetime import datetime
-import time
-import uuid
-from typing import Any, AsyncGenerator, Dict, List
+"""Deprecated alias for :class:`tether_service.engine.Engine`.
+
+Kept for one cycle to avoid breaking downstream callers. Removal scheduled
+for Phase 8 (per _synthesis.md §4 Phase 2 step 22 / §4 Phase 8 cleanup).
+"""
+import warnings
+from typing import Dict
 
 from tether_service.core.interfaces import (
     ModelProvider,
@@ -9,8 +12,17 @@ from tether_service.core.interfaces import (
     StreamParser,
     Tool,
 )
+from tether_service.engine import Engine
 
-class GenerationService:
+
+class GenerationService(Engine):
+    """Deprecated alias for :class:`tether_service.engine.Engine`.
+
+    Construction emits a ``DeprecationWarning``. All methods are inherited
+    from ``Engine``. New code should use ``Engine`` (or
+    ``Engine.from_settings``) directly.
+    """
+
     def __init__(
         self,
         provider: ModelProvider,
@@ -19,67 +31,16 @@ class GenerationService:
         tools: Dict[str, Tool],
         system_prompt: str,
     ):
-        """Initialize with provider, parser, session store, and tools registry"""
-        self.provider = provider
-        self.parser = parser
-        self.store = session_store
-        self.tools = tools
-        self.system_prompt = system_prompt
-
-    async def stream(
-        self, session_id: str, prompt: str, model_name: str
-    ) -> AsyncGenerator[bytes, None]:
-        """Drive the core orchestration to stream NDJSON bytes"""
-        from tether_service.protocol.orchestration.orchestrator import orchestrate
-
-        async for chunk in orchestrate(
-            session_id=session_id,
-            prompt=prompt,
-            model_name=model_name,
-            provider=self.provider,
-            parser=self.parser,
-            store=self.store,
-            tools=self.tools,
-            system_prompt=self.system_prompt,
-        ):
-            yield chunk
-
-    # --- Session Management ---
-
-    async def create_session(self, model_name: str | None = None) -> Dict[str, Any]:
-        """Creates a new session and returns its details."""
-        session_id = str(uuid.uuid4())
-        created_at = int(time.time())
-        # The model_name is not stored in the session in this architecture
-        await self.store.create_session(session_id, created_at)
-        
-        # Convert timestamp to ISO 8601 string format to ensure consistency
-        created_at_iso = datetime.fromtimestamp(created_at).isoformat()
-        
-        return {"session_id": session_id, "created_at": created_at_iso}
-
-    async def list_sessions(self) -> List[Dict[str, Any]]:
-        """Lists all sessions."""
-        return await self.store.list_sessions()
-
-    async def get_session_messages(self, session_id: str) -> List[Dict[str, Any]]:
-        """Gets messages for a session."""
-        return await self.store.get_history(session_id)
-
-    async def delete_session(self, session_id: str) -> bool:
-        """Deletes a session by its ID."""
-        return await self.store.delete_session(session_id)
-
-    async def delete_all_sessions(self) -> int:
-        """Deletes all sessions."""
-        return await self.store.delete_all_sessions()
-
-    # --- Model Management ---
-
-    def list_models(self) -> List[str]:
-        """Lists available models from the provider."""
-        return self.provider.list_models()
-
-    def unload_model(self, model_name: str) -> bool:
-        """Unloads a model via the provider."""
-        return self.provider.unload_model(model_name)
+        warnings.warn(
+            "GenerationService is deprecated; use tether_service.Engine "
+            "(or Engine.from_settings) instead. Removal scheduled for Phase 8.",
+            DeprecationWarning,
+            stacklevel=2,
+        )
+        super().__init__(
+            provider=provider,
+            parser=parser,
+            session_store=session_store,
+            tools=tools,
+            system_prompt=system_prompt,
+        )
