@@ -62,3 +62,16 @@ async def test_model_shutdown_completes(model_name: str):
         f"{model_name} shutdown took {elapsed:.2f}s — "
         "expected < 10s. Check GC-disable fix in api.py."
     )
+
+    # Synthesis §4 Phase 3 step 38 / §11.3 R23: parallel shutdown must
+    # complete within the provider's advertised budget (×1.5 slack for
+    # cold-cache or unusual contention). This validates that the 5s
+    # SignalSupervisor budget is conservative enough — if the parallel
+    # path slips past hw_shutdown_budget_sec×1.5, the watchdog's
+    # daemon_thread_call abandon path is hiding the regression.
+    budget = provider.hw_shutdown_budget_sec
+    assert elapsed < budget * 1.5, (
+        f"{model_name} parallel shutdown took {elapsed:.2f}s — "
+        f"exceeded hw_shutdown_budget_sec×1.5 = {budget * 1.5:.2f}s. "
+        "Parallelisation may have regressed; check shutdown_all."
+    )
