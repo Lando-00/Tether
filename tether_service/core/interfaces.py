@@ -186,7 +186,14 @@ class SessionStore(ABC):
         ...
 
     @abstractmethod
-    async def add_user(self, session_id: str, text: str) -> None:
+    async def add_user(
+        self,
+        session_id: str,
+        text: str,
+        *,
+        turn_id: Optional[str] = None,
+        seq_start: Optional[int] = None,
+    ) -> None:
         ...
 
     @abstractmethod
@@ -196,15 +203,89 @@ class SessionStore(ABC):
         text: str,
         thinking_text: Optional[str] = None,
         save_thinking: bool = True,
+        *,
+        turn_id: Optional[str] = None,
+        seq_start: Optional[int] = None,
     ) -> None:
         ...
 
     @abstractmethod
-    async def add_assistant_toolcall(self, session_id: str, tool_name: str, args: Dict[str, Any]) -> None:
+    async def add_assistant_toolcall(
+        self,
+        session_id: str,
+        tool_name: str,
+        args: Dict[str, Any],
+        *,
+        turn_id: Optional[str] = None,
+        tool_call_id: Optional[str] = None,
+        seq_start: Optional[int] = None,
+    ) -> None:
         ...
 
     @abstractmethod
-    async def add_tool_result(self, session_id: str, tool_name: str, result: Any) -> None:
+    async def add_tool_result(
+        self,
+        session_id: str,
+        tool_name: str,
+        result: Any,
+        *,
+        turn_id: Optional[str] = None,
+        tool_call_id: Optional[str] = None,
+        seq_start: Optional[int] = None,
+        status: str = "ok",
+        error: Optional[str] = None,
+        duration_ms: Optional[int] = None,
+    ) -> None:
+        ...
+
+    @abstractmethod
+    async def start_turn(
+        self,
+        session_id: str,
+        turn_id: str,
+        *,
+        model_name: Optional[str] = None,
+    ) -> None:
+        """Insert a turns row and mark it running.
+
+        Must be called before any add_* calls that pass turn_id.
+        Synthesis §3.6 + b1-persistence.md v2 table design.
+        """
+        ...
+
+    @abstractmethod
+    async def complete_turn(
+        self,
+        turn_id: str,
+        *,
+        status: str = "completed",
+        stop_reason: Optional[str] = None,
+        error_json: Optional[str] = None,
+    ) -> None:
+        """Update the turns row with completion status and timestamp.
+
+        status must be one of: completed, failed, cancelled.
+        Synthesis §3.6 + b1-persistence.md v2 table design.
+        """
+        ...
+
+    @abstractmethod
+    async def record_raw_event(
+        self,
+        session_id: str,
+        turn_id: str,
+        seq: int,
+        event_type: str,
+        payload: Dict[str, Any],
+        *,
+        tool_call_id: Optional[str] = None,
+    ) -> None:
+        """Persist a single raw_events row for the replay/debug timeline.
+
+        Duplicate (turn_id, seq) is silently skipped — UNIQUE constraint
+        violation is logged at WARNING and swallowed; the event log can
+        tolerate sparse gaps. Synthesis §3.6.
+        """
         ...
 
     @abstractmethod
