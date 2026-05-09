@@ -888,7 +888,36 @@ class ChattyAgentOrchestrator(OrchestratorABC):
                 status="ok",
             )
         finally:
+            # Phase 5 followups F3 (rubber-duck review by xhigh + gpt-5.5):
+            # cancel any still-running tool task before clearing the holder.
+            # When outer cancellation arrives while we're in the 50ms-poll
+            # ``asyncio.wait`` loop above, ``CancelledError`` propagates out
+            # WITHOUT cancelling the awaited tool task, AND the orchestrator's
+            # outer ``finally`` doesn't see the task because the
+            # ``async for wire in self._dispatch_tools(...)`` was interrupted
+            # mid-iteration (so ``active_tool_task`` was never assigned in
+            # the outer scope). Result: tool task leaks unbounded after
+            # outer cancel.
+            #
+            # Fix: this ``finally`` always runs (whether normal exit, a
+            # ``return``, or outer cancellation), so it's the right place
+            # to enforce the cancellation contract on the tool task.
+            # Synthesis §3.5: 250 ms grace bounds the tool's
+            # CancelledError handler.
+            pending = dispatch_state["active_task_holder"][0]
             dispatch_state["active_task_holder"][0] = None
+            if pending is not None and not pending.done():
+                pending.cancel()
+                try:
+                    await asyncio.wait_for(
+                        pending, timeout=_TOOL_CANCEL_GRACE_SEC
+                    )
+                except (asyncio.TimeoutError, asyncio.CancelledError):
+                    # Tool either over-ran the grace or honored the
+                    # cancel. Either way, we're done with it. Don't
+                    # add ``Exception`` to the tuple (Phase 5 followups
+                    # F8) — let real bugs surface to the logger.
+                    pass
 
     async def _persist_partial(
         self,
