@@ -24,6 +24,7 @@ dependencies = [
     "httpx",
     "requests",
     "sqlalchemy",
+    "yoyo-migrations>=8.2,<9",
 ]
 
 [project.optional-dependencies]
