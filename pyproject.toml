@@ -18,6 +18,7 @@ classifiers = [
 ]
 dependencies = [
     "pydantic>=2.0",
+    "pydantic-settings>=2",
     "pyyaml",
     "python-dotenv",
     "httpx",

@@ -191,11 +191,12 @@ async def lifespan(app: FastAPI):
 
 def create_app():
     """Create and configure the FastAPI application with DI"""
-    from tether_service.core.config import load_settings
+    from tether_service.core.config import load_settings_legacy
     from tether_service.core.factory import load
     from tether_service.protocol.service.generation_service import GenerationService
+    from tether_service.config.settings import load_settings as load_settings_v2
 
-    settings = load_settings()
+    settings = load_settings_legacy()
     # instantiate model provider
     model_cfg = settings.get('providers', {}).get('model', {})
     provider = cast(ModelProvider, load(model_cfg.get('impl', ''), **model_cfg.get('args', {}) or {}))
@@ -227,6 +228,9 @@ def create_app():
     app = FastAPI(lifespan=lifespan)
     # store service on app state
     app.state.gen_svc = gen_service
+    # Phase 2 (p2-settings): also expose typed Settings on app.state. Existing
+    # dict-based wiring above is unchanged; p2-cleanup migrates consumers.
+    app.state.settings = load_settings_v2()
 
     # Create a new APIRouter for versioning
     v1_router = APIRouter(prefix="/api/v1")
