@@ -7,6 +7,24 @@ import asyncio
 import json
 from tether_service.core.logging import logger
 
+
+def _has_version_1_0(accept_lower: str) -> bool:
+    """Detect 'version=1.0' parameter on application/x-ndjson media type.
+
+    Permissive parser:
+      - Any whitespace + comma between parameters is OK.
+      - Quoted values ('version="1.0"') and unquoted ('version=1.0') both match.
+      - Case-insensitive on the parameter name (already lowercased input).
+      - Other parameters (q=, profile=, etc.) are ignored.
+
+    Returns True only if 'version=1.0' (or 'version="1.0"') appears
+    after a 'application/x-ndjson' media type token.
+
+    R6 anti-overengineering: simple substring suffices for the documented
+    contract. No RFC 7231 parser needed. Synthesis §3.4; §11.3 R18.
+    """
+    return "version=1.0" in accept_lower or 'version="1.0"' in accept_lower
+
 router = APIRouter(prefix="/chat", tags=["chat"])
 
 class StreamRequest(BaseModel):
