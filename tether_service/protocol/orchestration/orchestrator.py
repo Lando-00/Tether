@@ -10,6 +10,7 @@ orchestrator investigation.
 from __future__ import annotations
 
 import asyncio
+from contextlib import aclosing
 from typing import Any, AsyncGenerator, Dict, Optional
 
 from tether_service.core.interfaces import (
@@ -61,9 +62,15 @@ async def orchestrate(
     """
     emitter = NdjsonEmitter()
 
-    # Per-iteration mirrors used by the outer ``finally`` to recover partial
-    # text on cancellation / disconnect / unexpected exception. Reset each
-    # time we successfully persist text via the inner happy path.
+    # Deliberate cross-iteration carry-over (synthesis §4 Phase 2 step 20):
+    # `last_response_text` / `last_thinking_text` mirror the per-iteration
+    # accumulators and are NOT reset between tool-loop iterations. If iteration N
+    # emits text/thinking and iteration N+1 is cancelled before any deltas
+    # arrive, the finally block persists iteration N's text. This is the
+    # "rescue any text the user saw on-wire that history would otherwise drop"
+    # semantic — internally consistent with
+    # test_orchestrator_finally_runs_even_on_unexpected_exception.
+    # Future contributors: do NOT move these resets inside the for-loop.
     last_response_text = ""
     last_thinking_text = ""
     text_persisted = False
@@ -106,78 +113,81 @@ async def orchestrate(
             text_persisted = False
 
             try:
-                async for chunk in provider.stream(
-                    model_name=model_name, messages=messages, tools=tool_schemas
-                ):
-                    logger.debug(f"Provider stream chunk: {chunk}")
-                    events = parser.feed(chunk)
-                    for evt in events:
-                        logger.debug(f"Parser event: {evt}")
-                        evt_type = evt.get("type")
-                        evt_data = evt.get("data", {})
+                async with aclosing(
+                    provider.stream(
+                        model_name=model_name, messages=messages, tools=tool_schemas
+                    )
+                ) as provider_stream:
+                    async for chunk in provider_stream:
+                        logger.debug(f"Provider stream chunk: {chunk}")
+                        events = parser.feed(chunk)
+                        for evt in events:
+                            logger.debug(f"Parser event: {evt}")
+                            evt_type = evt.get("type")
+                            evt_data = evt.get("data", {})
 
-                        if evt_type == StreamEvent.TEXT:
-                            delta = evt_data.get("delta", "")
-                            if delta:
-                                full_response_text += delta
-                                last_response_text = full_response_text
+                            if evt_type == StreamEvent.TEXT:
+                                delta = evt_data.get("delta", "")
+                                if delta:
+                                    full_response_text += delta
+                                    last_response_text = full_response_text
+                                    yield emitter.emit({
+                                        "type": "text",
+                                        "session_id": session_id,
+                                        "data": {"delta": delta},
+                                    })
+
+                            elif evt_type == StreamEvent.THINK:
+                                delta = evt_data.get("delta", "")
+                                if delta:
+                                    full_thinking_text += delta
+                                    last_thinking_text = full_thinking_text
+                                    yield emitter.emit({
+                                        "type": "think",
+                                        "session_id": session_id,
+                                        "data": {"delta": delta},
+                                    })
+
+                            elif evt_type == StreamEvent.TOOL_STARTED:
+                                # Parser detected <<function_call>> marker
+                                logger.info(
+                                    f"Tool call marker detected for session_id={session_id}"
+                                )
+                                if not tool_started_notified:
+                                    yield emitter.emit({
+                                        "type": "tool_marker_detected",
+                                        "session_id": session_id,
+                                        "data": {},
+                                    })
+                                    tool_started_notified = True
+
+                            elif evt_type == StreamEvent.TOOL_COMPLETE:
+                                # A tool call has been fully parsed.
+                                tool_call_to_run = evt_data
+                                logger.info(f"Tool call detected: {tool_call_to_run}")
+                                # We break the inner loop to proceed with execution.
+                                break
+
+                            elif evt_type == StreamEvent.ERROR:
+                                logger.error(f"Parser error: {evt_data}")
                                 yield emitter.emit({
-                                    "type": "text",
+                                    "type": "error",
                                     "session_id": session_id,
-                                    "data": {"delta": delta},
+                                    "data": evt_data,
                                 })
 
-                        elif evt_type == StreamEvent.THINK:
-                            delta = evt_data.get("delta", "")
-                            if delta:
-                                full_thinking_text += delta
-                                last_thinking_text = full_thinking_text
-                                yield emitter.emit({
-                                    "type": "think",
-                                    "session_id": session_id,
-                                    "data": {"delta": delta},
-                                })
-
-                        elif evt_type == StreamEvent.TOOL_STARTED:
-                            # Parser detected <<function_call>> marker
-                            logger.info(
-                                f"Tool call marker detected for session_id={session_id}"
-                            )
-                            if not tool_started_notified:
-                                yield emitter.emit({
-                                    "type": "tool_marker_detected",
-                                    "session_id": session_id,
-                                    "data": {},
-                                })
-                                tool_started_notified = True
-
-                        elif evt_type == StreamEvent.TOOL_COMPLETE:
-                            # A tool call has been fully parsed.
-                            tool_call_to_run = evt_data
-                            logger.info(f"Tool call detected: {tool_call_to_run}")
-                            # We break the inner loop to proceed with execution.
+                        if tool_call_to_run:
                             break
 
-                        elif evt_type == StreamEvent.ERROR:
-                            logger.error(f"Parser error: {evt_data}")
-                            yield emitter.emit({
-                                "type": "error",
-                                "session_id": session_id,
-                                "data": evt_data,
-                            })
-
-                    if tool_call_to_run:
-                        break
-
-                    # Cancellation check — granular at the chunk boundary, not
-                    # the parser-event boundary (R6 anti-overengineering: too
-                    # frequent a check buys nothing on small chunks).
-                    if cancel_event is not None and cancel_event.is_set():
-                        logger.info(
-                            f"Cancellation requested mid-stream for session_id={session_id}"
-                        )
-                        cancelled = True
-                        break
+                        # Cancellation check — granular at the chunk boundary, not
+                        # the parser-event boundary (R6 anti-overengineering: too
+                        # frequent a check buys nothing on small chunks).
+                        if cancel_event is not None and cancel_event.is_set():
+                            logger.info(
+                                f"Cancellation requested mid-stream for session_id={session_id}"
+                            )
+                            cancelled = True
+                            break
 
             except Exception as stream_error:
                 # Handle model streaming errors (e.g., TVM/OpenCL errors)

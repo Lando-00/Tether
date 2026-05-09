@@ -2,6 +2,7 @@
 from fastapi import APIRouter, Request, HTTPException
 from fastapi.responses import StreamingResponse
 from pydantic import BaseModel, Field
+import asyncio
 import json
 from tether_service.core.logging import logger
 
@@ -32,15 +33,18 @@ async def stream(request: Request, body: StreamRequest):
     gen_service = request.app.state.gen_svc
 
     async def event_generator():
+        cancel_event = asyncio.Event()
         try:
             async for chunk in gen_service.stream(
                 session_id=body.session_id,
                 prompt=body.prompt,
                 model_name=body.model_name,
+                cancel_event=cancel_event,
             ):
                 # Check disconnect BEFORE yielding
                 if await request.is_disconnected():
                     logger.info(f"Client disconnected: session_id={body.session_id}")
+                    cancel_event.set()
                     break
                 yield chunk
         except Exception as e:

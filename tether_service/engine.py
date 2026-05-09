@@ -192,6 +192,17 @@ class Engine:
         Phase 3 step 35 will replace this body with
         ``await self.hw_watchdog.shutdown_all()`` once HardwareWatchdog is in
         place. Per _synthesis.md §11.3 R22.
+
+        .. warning::
+            Phase 2 placeholder calls provider.shutdown_all() synchronously on
+            the event loop. For LIBRARY-mode usage with the MLC provider on
+            Snapdragon Adreno hardware, OpenCL destructor hangs are known
+            (see docs/REFACTOR_BRIEFING.md). Library users running real
+            providers should treat this as best-effort until Phase 3 wires
+            HardwareWatchdog with a daemon-thread + GC-disable + bounded-wait
+            teardown. SERVER-mode usage (FastAPI lifespan) routes through
+            shutdown_provider_with_timeout(...) in app/http/api.py:185-187,
+            which already has the safe path.
         """
         if self._closed:
             return

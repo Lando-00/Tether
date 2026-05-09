@@ -11,7 +11,7 @@ from typing import Any, AsyncGenerator, Dict, List, Optional
 
 from tether_service.app.http.routers.health import router as health_router
 from tether_service.core.interfaces import ModelProvider, SessionStore
-from tether_service.protocol.service.generation_service import GenerationService
+from tether_service.engine import Engine
 
 
 # ---------------------------------------------------------------------------
@@ -133,7 +133,7 @@ def _make_app(provider: ModelProvider, store: SessionStore) -> FastAPI:
     """Build a minimal FastAPI app wired to the given provider and store."""
     from tether_service.protocol.parsers.sliding import SlidingParser
 
-    gen_svc = GenerationService(
+    gen_svc = Engine(
         provider=provider,
         parser=SlidingParser(),
         session_store=store,
