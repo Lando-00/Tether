@@ -233,6 +233,13 @@ class ChattyAgentOrchestrator(OrchestratorABC):
         # MessageStart.
         await self._seed_history(session_id, prompt)
 
+        # v2 turn lifecycle: open the turn row before the loop so all
+        # add_* calls below can link their v2 rows to this turn_id.
+        # complete_turn is called in the finally block. Synthesis §3.6.
+        await self.store.start_turn(
+            session_id, turn_id, model_name=model_name
+        )
+
         try:
             # Yield message_start with available tools (synthesis §3.4).
             yield MessageStart(
@@ -533,6 +540,34 @@ class ChattyAgentOrchestrator(OrchestratorABC):
                         f"Failed to persist partial text in finally: {fin_exc}"
                     )
 
+            # v2 turn lifecycle: close the turn row opened above.
+            # Map the internal stop_reason to the turns.status CHECK values:
+            #   cancelled → cancelled
+            #   error / tool_loop_exhausted → failed
+            #   complete / None → completed
+            # Synthesis §3.6.
+            _turn_status_map = {
+                "cancelled": "cancelled",
+                "error": "failed",
+                "tool_loop_exhausted": "failed",
+            }
+            _final_turn_status = _turn_status_map.get(
+                final_stop_reason or "", "completed"
+            )
+            if cancelled:
+                _final_turn_status = "cancelled"
+            try:
+                await self.store.complete_turn(
+                    turn_id,
+                    status=_final_turn_status,
+                    stop_reason=final_stop_reason or ("cancelled" if cancelled else "complete"),
+                )
+            except Exception as ct_exc:
+                logger.warning(
+                    "complete_turn failed (non-fatal): turn_id=%s error=%s",
+                    turn_id, ct_exc,
+                )
+
         # Outside the try/finally: emit terminal MessageStop. The
         # CancelledError path doesn't reach here (it re-raised), so
         # this only runs on the normal / handled-error paths.
@@ -739,7 +774,12 @@ class ChattyAgentOrchestrator(OrchestratorABC):
         # Persist the assistant's tool-call intent before yielding the
         # ToolCall wire event, so even if the consumer hangs up after
         # tool_started the call is in history. Mirrors legacy ordering.
-        await self.store.add_assistant_toolcall(session_id, tool_name, tool_args)
+        # Thread v2 IDs so SqliteSessionStore writes a tool_calls row.
+        # Synthesis §3.6.
+        await self.store.add_assistant_toolcall(
+            session_id, tool_name, tool_args,
+            turn_id=turn_id, tool_call_id=tool_call_id,
+        )
         logger.debug(
             f"Assistant tool call persisted: session_id={session_id}, "
             f"tool_name={tool_name}, tool_args={_redact(tool_args)}"
@@ -792,7 +832,9 @@ class ChattyAgentOrchestrator(OrchestratorABC):
                         pass
                     error_msg = f"Tool '{tool_name}' cancelled by client"
                     await self.store.add_tool_result(
-                        session_id, tool_name, {"error": error_msg}
+                        session_id, tool_name, {"error": error_msg},
+                        turn_id=turn_id, tool_call_id=tool_call_id,
+                        status="cancelled", error=error_msg,
                     )
                     yield ToolResult(
                         **envelope_factory(),
@@ -821,7 +863,9 @@ class ChattyAgentOrchestrator(OrchestratorABC):
                 error_msg = f"Tool '{tool_name}' timed out"
                 logger.error(error_msg)
                 await self.store.add_tool_result(
-                    session_id, tool_name, {"error": error_msg}
+                    session_id, tool_name, {"error": error_msg},
+                    turn_id=turn_id, tool_call_id=tool_call_id,
+                    status="error", error=error_msg,
                 )
                 yield ToolResult(
                     **envelope_factory(),
@@ -854,7 +898,9 @@ class ChattyAgentOrchestrator(OrchestratorABC):
                 error_msg = f"Error running tool {tool_name}: {e}"
                 logger.exception(error_msg)
                 await self.store.add_tool_result(
-                    session_id, tool_name, {"error": error_msg}
+                    session_id, tool_name, {"error": error_msg},
+                    turn_id=turn_id, tool_call_id=tool_call_id,
+                    status="error", error=error_msg,
                 )
                 yield ToolResult(
                     **envelope_factory(),
@@ -883,7 +929,10 @@ class ChattyAgentOrchestrator(OrchestratorABC):
             logger.debug(
                 f"Tool executed: {tool_name}, result={_redact(result)}"
             )
-            await self.store.add_tool_result(session_id, tool_name, result)
+            await self.store.add_tool_result(
+                session_id, tool_name, result,
+                turn_id=turn_id, tool_call_id=tool_call_id, status="ok",
+            )
             # ``result`` may be any JSON-able value; ToolResult.result is
             # Optional[Dict] so wrap non-dicts in {"result": ...} per the
             # legacy v0 shape.
