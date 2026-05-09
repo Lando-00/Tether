@@ -1,8 +1,16 @@
 from abc import ABC, abstractmethod
-from typing import AsyncGenerator, List, Dict, Any, Optional
+from typing import Any, AsyncGenerator, AsyncIterator, Dict, List, Optional
+
+from tether_service.providers.types import ProviderCapabilities, ProviderEvent
 
 
 class ModelProvider(ABC):
+    # ------------------------------------------------------------------
+    # LEGACY contract (UNCHANGED; orchestrator still uses these).
+    # Phase 5 step 52 will migrate the orchestrator to ``stream_typed``;
+    # at that point ``stream()`` may become a shim.
+    # ------------------------------------------------------------------
+
     @abstractmethod
     def stream(
         self,
@@ -10,7 +18,14 @@ class ModelProvider(ABC):
         messages: List[Dict[str, Any]],
         tools: Optional[List[Dict[str, Any]]] = None,
     ) -> AsyncGenerator[str | List[Dict[str, Any]], None]:
-        """Stream raw text chunks for a given model, history, and tools"""
+        """Stream raw text chunks for a given model, history, and tools.
+
+        Legacy: yields ``str`` for text deltas and ``List[Dict[str, Any]]``
+        for native tool_calls (MLC-style). DEPRECATED in favor of
+        :meth:`stream_typed` which returns typed :class:`ProviderEvent`
+        values; kept for one cycle until Phase 5 step 52 migrates the
+        orchestrator. See _synthesis.md §4 Phase 3 step 39, §6 bug #12.
+        """
         ...
 
     @abstractmethod
@@ -35,6 +50,90 @@ class ModelProvider(ABC):
             Context window size in tokens
         """
         ...
+
+    # ------------------------------------------------------------------
+    # v2 typed contract (Phase 3 step 39).
+    # Defaults so existing concrete classes still construct without
+    # immediate overrides; concrete classes SHOULD override these to opt
+    # into the v2 path. Synthesis §4 Phase 3 step 39, §11.3 R21.
+    # ------------------------------------------------------------------
+
+    @property
+    def kind(self) -> str:
+        """Provider kind identifier (e.g., ``"mlc"``, ``"dummy"``,
+        ``"ollama"``).
+
+        Concrete classes MUST override. Default raises
+        :class:`NotImplementedError` so missing overrides fail loudly at
+        introspection time. Synthesis §4 Phase 3 step 39.
+        """
+        raise NotImplementedError(
+            f"{type(self).__name__} must override `kind` property"
+        )
+
+    @property
+    def capabilities(self) -> ProviderCapabilities:
+        """Static introspection of provider capabilities.
+
+        Default returns all-False capabilities (fail closed); concrete
+        classes should override with the right flags. Synthesis §4 Phase
+        3 step 39.
+        """
+        return ProviderCapabilities()
+
+    async def warm_up(self, model_name: str) -> None:
+        """Pre-load a model so first inference is fast.
+
+        Default no-op for providers that don't need eager warm-up
+        (HTTP-based providers, dummy providers). Hardware-owning providers
+        (MLC) override to call their cold-start path. Synthesis §4 Phase 3
+        step 39.
+        """
+        return None
+
+    async def aclose(self) -> None:
+        """Provider-level shutdown.
+
+        Default no-op for stateless providers (Dummy, future HTTP-based
+        providers).
+
+        Hardware-lifecycle providers (MLC) typically override to call
+        their ``shutdown_all()``. Note: this is the PROVIDER's ``aclose``;
+        ``Engine.aclose`` routes through :class:`HardwareWatchdog` for
+        providers that implement :class:`HardwareLifecycle`. For non-HW
+        providers, ``Engine.aclose`` calls this directly.
+        """
+        return None
+
+    async def stream_typed(
+        self,
+        *,
+        model_name: str,
+        messages: List[Dict[str, Any]],
+        tools: Optional[List[Dict[str, Any]]] = None,
+        request_id: Optional[str] = None,
+        max_output_tokens: Optional[int] = None,
+        cancel_token: Optional[Any] = None,
+    ) -> AsyncIterator[ProviderEvent]:
+        """v2 stream method yielding typed :class:`ProviderEvent` values.
+
+        Default implementation raises :class:`NotImplementedError` so
+        concrete classes must explicitly opt into the new contract.
+
+        Phase 5 step 52 will migrate the orchestrator to consume this;
+        until then the orchestrator uses the legacy :meth:`stream`.
+
+        Synthesis §4 Phase 3 step 39, §6 bug #12 (native MLC tool_calls
+        are emitted as :class:`ProviderToolCall` here, not silently
+        dropped as the legacy ``stream()`` shape allowed).
+        """
+        raise NotImplementedError(
+            f"{type(self).__name__} must override `stream_typed` for v2 contract"
+        )
+        # Unreachable, but makes the function an async generator so callers
+        # can ``async for`` over the result without TypeError.
+        if False:
+            yield  # type: ignore[unreachable]
 
 
 class StreamParser(ABC):
