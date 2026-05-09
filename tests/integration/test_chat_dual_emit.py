@@ -1,13 +1,14 @@
 """Integration tests for v0 / v2 NDJSON dual-emit on /api/v1/chat/stream.
 
-Default (no Accept) and explicit 'Accept: application/x-ndjson' stay v0.
-'Accept: application/x-ndjson; version=1.0' opts into v2 (text_delta,
-message_stop, tool_call, tool_result vocab).
+Default (no Accept) is now v2 NDJSON after p5-cutover-c-flip-default.
+v0 is legacy opt-in via 'Accept: application/x-ndjson; version=0'.
+'Accept: application/x-ndjson; version=1.0' is explicit v2 (same as default).
 
-All three NDJSON paths and the SSE path carry X-Tether-Protocol-Version: 1.0.
+All four NDJSON paths and the SSE path carry X-Tether-Protocol-Version: 1.0.
+v0 legacy responses additionally carry Warning: 299 per RFC 9110 §5.6.7.
 
-Synthesis §11.3 R18 (split big-bang cutover into 3 PRs); §4 Phase 5 step 54.
-p5-cutover-a-dual-emit.
+Synthesis §11.3 R18 (split big-bang cutover into 3 PRs); §4 Phase 5 step 56.
+p5-cutover-c-flip-default.
 """
 from __future__ import annotations
 
@@ -71,29 +72,35 @@ def _decode(body: str) -> list[dict]:
 
 
 # ---------------------------------------------------------------------------
-# v0 default path
+# v2 default path (NEW DEFAULT after p5-cutover-c-flip-default)
 # ---------------------------------------------------------------------------
 
 
-def test_default_path_emits_v0_vocab(client):
-    """No Accept header -> v0 dict events (text, done); no v2 vocab leaks."""
+def test_default_path_emits_v2_vocab(client):
+    """No Accept header -> v2 typed events (message_start, text_delta, message_stop)."""
     resp = _post(client, session_id="test-default")
     assert resp.status_code == 200
     assert resp.headers["content-type"].startswith("application/x-ndjson")
     events = _decode(resp.text)
     types = [e["type"] for e in events]
-    # v0 vocab present
-    assert "text" in types or "think" in types
-    assert "done" in types
-    # No v2 vocab leaked
-    assert "text_delta" not in types
-    assert "message_stop" not in types
-    assert "message_start" not in types
+    # v2 vocab present
+    assert types[0] == "message_start"
+    assert types[-1] == "message_stop"
+    assert "text_delta" in types
+    # No v0 vocab leaked
+    assert "text" not in types
+    assert "done" not in types
+    assert "tool_started" not in types
 
 
-def test_explicit_v0_path_emits_v0_vocab(client):
-    """Accept: application/x-ndjson (no version) -> v0 dict events."""
-    resp = _post(client, accept="application/x-ndjson", session_id="test-v0")
+# ---------------------------------------------------------------------------
+# v0 legacy opt-in path (DEPRECATED; version=0 explicit)
+# ---------------------------------------------------------------------------
+
+
+def test_v0_legacy_optin_emits_v0_vocab(client):
+    """Accept: application/x-ndjson; version=0 -> v0 dict events (legacy opt-in)."""
+    resp = _post(client, accept="application/x-ndjson; version=0", session_id="test-v0")
     assert resp.status_code == 200
     assert resp.headers["content-type"].startswith("application/x-ndjson")
     events = _decode(resp.text)
@@ -141,17 +148,22 @@ def test_v2_optin_with_quoted_version(client):
 
 
 def test_v2_envelope_fields_present(client):
-    """v2 events carry session_id, turn_id, seq, ts, protocol_version."""
-    resp = _post(
-        client, accept="application/x-ndjson; version=1.0", session_id="test-envelope"
-    )
-    events = _decode(resp.text)
-    for e in events:
-        assert "session_id" in e, f"Missing session_id in event: {e}"
-        assert "turn_id" in e, f"Missing turn_id in event: {e}"
-        assert "seq" in e, f"Missing seq in event: {e}"
-        assert "ts" in e, f"Missing ts in event: {e}"
-        assert e.get("protocol_version") == "1.0", f"Wrong protocol_version: {e}"
+    """v2 events carry session_id, turn_id, seq, ts, protocol_version.
+
+    Both default (no Accept) and explicit version=1.0 yield v2 envelopes.
+    """
+    for accept, label in [
+        (None, "default"),
+        ("application/x-ndjson; version=1.0", "explicit v2"),
+    ]:
+        resp = _post(client, accept=accept, session_id=f"test-envelope-{label[:3]}")
+        events = _decode(resp.text)
+        for e in events:
+            assert "session_id" in e, f"[{label}] Missing session_id in event: {e}"
+            assert "turn_id" in e, f"[{label}] Missing turn_id in event: {e}"
+            assert "seq" in e, f"[{label}] Missing seq in event: {e}"
+            assert "ts" in e, f"[{label}] Missing ts in event: {e}"
+            assert e.get("protocol_version") == "1.0", f"[{label}] Wrong protocol_version: {e}"
 
 
 def test_v2_seq_monotonic(client):
@@ -181,12 +193,12 @@ def test_v2_tool_call_carries_id(client):
         assert tool_results[0]["tool_call_id"] == tool_calls[0]["tool_call_id"]
 
 
-def test_protocol_version_header_on_all_three_paths(client):
-    """X-Tether-Protocol-Version: 1.0 on default v0, explicit v0, v2 NDJSON, SSE."""
+def test_protocol_version_header_on_all_four_paths(client):
+    """X-Tether-Protocol-Version: 1.0 on default v2, v0 legacy, explicit v2 NDJSON, SSE."""
     cases = [
-        (None, "default (no Accept)"),
-        ("application/x-ndjson", "explicit v0 NDJSON"),
-        ("application/x-ndjson; version=1.0", "v2 NDJSON"),
+        (None, "default (no Accept) -> v2"),
+        ("application/x-ndjson; version=0", "v0 legacy NDJSON"),
+        ("application/x-ndjson; version=1.0", "explicit v2 NDJSON"),
         ("text/event-stream", "SSE"),
     ]
     for accept, label in cases:
@@ -199,3 +211,27 @@ def test_protocol_version_header_on_all_three_paths(client):
             f"Missing X-Tether-Protocol-Version: 1.0 on {label!r}; "
             f"got headers={dict(resp.headers)}"
         )
+
+
+# ---------------------------------------------------------------------------
+# Warning header tests
+# ---------------------------------------------------------------------------
+
+
+def test_v0_legacy_response_has_warning_header(client):
+    """v0 legacy Accept opt-in includes RFC 9110 §5.6.7 Warning: 299 ..."""
+    resp = _post(
+        client, accept="application/x-ndjson; version=0", session_id="test-warn"
+    )
+    assert resp.status_code == 200
+    warning = resp.headers.get("warning", "")
+    assert warning.startswith("299"), f"missing or malformed Warning header: {warning!r}"
+    assert "deprecated" in warning.lower()
+    assert "version=1.0" in warning  # tells callers how to migrate
+
+
+def test_default_no_warning_header(client):
+    """v2 default response does NOT carry the deprecation Warning."""
+    resp = _post(client, session_id="test-no-warn")
+    assert resp.status_code == 200
+    assert "warning" not in {k.lower() for k in resp.headers.keys()}
