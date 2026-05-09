@@ -6,12 +6,17 @@ config reads); per _synthesis.md §4 Phase 2 step 23. The outer ``try/finally``
 (added in p2-cleanup) guarantees that any partial assistant text is persisted
 on cancellation, client disconnect, or an unexpected exception path. Per A5
 orchestrator investigation.
+
+Phase 3 step 36 (this PR, ``p3-lifespan-slim``): the post-stream-error
+recovery path delegates classification + reset to
+:class:`tether_service.runtime.hw_watchdog.HardwareWatchdog`, replacing
+the substring-grep ``is_fatal`` pattern. Synthesis §6 row 13 / §11.3 R21.
 """
 from __future__ import annotations
 
 import asyncio
 from contextlib import aclosing
-from typing import Any, AsyncGenerator, Dict, Optional
+from typing import Any, AsyncGenerator, Dict, Optional, TYPE_CHECKING
 
 from tether_service.core.interfaces import (
     ModelProvider,
@@ -23,6 +28,9 @@ from tether_service.core.logging import logger
 from tether_service.core.types import OrchestratorConfig, StreamEvent
 from tether_service.protocol.orchestration.emitter import NdjsonEmitter
 from tether_service.protocol.orchestration.tool_runner import ToolRunner
+
+if TYPE_CHECKING:
+    from tether_service.runtime.hw_watchdog import HardwareWatchdog
 
 
 # §13 R5: Interim redaction helper for prompt/args/result payloads.
@@ -47,6 +55,7 @@ async def orchestrate(
     config: OrchestratorConfig,
     tool_runner: ToolRunner,
     cancel_event: Optional[asyncio.Event] = None,
+    hw_watchdog: Optional["HardwareWatchdog"] = None,
 ) -> AsyncGenerator[bytes, None]:
     """Core orchestration: history → provider stream → parser events → store → NDJSON.
 
@@ -59,6 +68,10 @@ async def orchestrate(
             chunk. If set, the loop exits early and the ``finally`` block
             persists any in-progress assistant text. Phase 5 will replace
             this with a richer ``CancelToken`` (per connector spec §4).
+        hw_watchdog: Optional :class:`HardwareWatchdog`. When the model
+            stream raises mid-flight, the watchdog classifies + recovers.
+            ``None`` (e.g., direct test invocations) skips recovery —
+            the error event is still emitted. Synthesis §4 Phase 3 step 36.
     """
     emitter = NdjsonEmitter()
 
@@ -198,33 +211,35 @@ async def orchestrate(
                     exc_info=True,
                 )
 
-                # Check if this is a fatal error (OpenCL/TVM)
-                is_fatal = (
-                    "TVMError" in error_type
-                    or "CLML" in error_msg
-                    or "CL_" in error_msg
-                )
-
-                # Attempt model recovery if enabled and it's a fatal error
-                if (
-                    is_fatal
-                    and config.auto_reload_on_fatal_error
-                    and hasattr(provider, "unload_model")
-                ):
-                    logger.warning(
-                        f"Fatal error detected, attempting to unload model {model_name} for recovery"
-                    )
+                # Phase 3 step 36 (synthesis §6 row 13 / §11.3 R21): defer
+                # classification + recovery to HardwareWatchdog. The legacy
+                # error-message substring grep is gone — providers now own
+                # classification via HwErrorClass through the
+                # HardwareLifecycle Protocol. is_fatal in the wire event is
+                # True iff a recovery (hw_reset) actually fired.
+                is_fatal = False
+                if hw_watchdog is not None and config.auto_reload_on_fatal_error:
                     try:
-                        provider.unload_model(model_name)
+                        recovered = await hw_watchdog.reset_after(
+                            stream_error, model_name=model_name
+                        )
+                    except Exception as wd_err:
+                        logger.exception(
+                            "HardwareWatchdog.reset_after raised: %s", wd_err
+                        )
+                        recovered = False
+                    if recovered:
+                        is_fatal = True
                         yield emitter.emit({
                             "type": "info",
                             "session_id": session_id,
                             "data": {
-                                "message": "Model unloaded due to fatal error. It will be reloaded on next request."
+                                "message": (
+                                    f"Model '{model_name}' was reset by "
+                                    "HardwareWatchdog after fatal error"
+                                )
                             },
                         })
-                    except Exception as unload_err:
-                        logger.error(f"Failed to unload model: {unload_err}")
 
                 # Send error event to client
                 yield emitter.emit({
