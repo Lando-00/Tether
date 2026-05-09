@@ -18,7 +18,7 @@ from __future__ import annotations
 
 import asyncio
 import logging
-from typing import Any, AsyncGenerator, Dict, List, Optional, TYPE_CHECKING
+from typing import Any, AsyncGenerator, Callable, Dict, List, Optional, TYPE_CHECKING
 
 from tether_service.config.settings import Settings
 from tether_service.core.interfaces import (
@@ -48,7 +48,8 @@ class Engine:
         self,
         *,
         provider: ModelProvider,
-        parser: StreamParser,
+        parser: Optional[StreamParser] = None,
+        parser_factory: Optional[Callable[[], StreamParser]] = None,
         session_store: SessionStore,
         tools: Dict[str, Tool],
         system_prompt: str,
@@ -69,6 +70,17 @@ class Engine:
         and advanced callers may pass them explicitly. Per p2-cleanup
         (synthesis §4 Phase 2 step 23).
 
+        Either ``parser`` (a single instance) or ``parser_factory`` (a
+        callable producing a fresh parser per turn) MUST be provided.
+        ``parser_factory`` is the recommended path for any Engine that
+        serves concurrent requests — a single shared parser instance
+        race-conditions on its internal buffer (gpt-5.5 / Phase 5 review
+        F1). ``Engine.from_settings`` uses ``parser_factory`` so that
+        production deployments construct a fresh ``SlidingParser`` per
+        turn. If only ``parser`` is given, ``parser_factory`` defaults to
+        a closure returning the same instance — back-compat for tests
+        and library callers that explicitly intend single-threaded use.
+
         ``hw_watchdog`` is optional. ``from_settings`` always builds one
         and passes it; direct constructors (used by tests + the legacy
         ``GenerationService`` alias) may pass ``None``, in which case
@@ -87,8 +99,31 @@ class Engine:
         ``mode`` parameter to :meth:`chat`. Mirrors the tools.registry
         pattern. Briefing §2 Seam B item 4; synthesis §3.5.
         """
+        if parser is None and parser_factory is None:
+            raise ValueError(
+                "Engine requires either parser= or parser_factory="
+            )
+        if parser is not None and parser_factory is not None:
+            raise ValueError(
+                "Engine takes parser= OR parser_factory=, not both"
+            )
+
+        if parser_factory is None:
+            # Back-compat: callers passing a single instance get a closure
+            # that returns the same instance. Single-threaded use only.
+            _shared = parser
+            self._parser_factory: Callable[[], StreamParser] = (
+                lambda: _shared  # type: ignore[return-value]
+            )
+        else:
+            self._parser_factory = parser_factory
+
         self.provider = provider
-        self.parser = parser
+        # ``self.parser`` is retained for back-compat reads (tests +
+        # introspection). It's the parser produced by the factory at
+        # construction time; new code should call ``self._parser_factory()``
+        # to get a fresh instance per turn (see :meth:`chat`).
+        self.parser = parser if parser is not None else self._parser_factory()
         self.store = session_store
         self.tools = tools
         self.system_prompt = system_prompt
@@ -157,7 +192,16 @@ class Engine:
         provider = load(model_spec.impl, **model_spec.args)
 
         parser_spec = settings.providers.parser
-        parser = load(parser_spec.impl, **parser_spec.args)
+
+        # Per-request parser FACTORY rather than a single shared instance.
+        # The Phase 5 rubber-duck review (gpt-5.5, F1) showed that a shared
+        # SlidingParser cross-contaminates concurrent requests because its
+        # internal buffer / state is mutable (``self.buf``, ``self._json_depth``,
+        # ``self._tool_started``, ...). Per-turn construction is the fix.
+        # ``importlib.import_module`` caches modules, so re-loading per turn
+        # is essentially a constructor call.
+        def _new_parser() -> StreamParser:
+            return load(parser_spec.impl, **parser_spec.args)
 
         store_spec = settings.providers.session_store
         store = load(store_spec.impl, **store_spec.args)
@@ -189,9 +233,31 @@ class Engine:
 
         hw_watchdog = HardwareWatchdog([provider], mode=watchdog_mode)
 
+        # Phase 5 followups F6 (rubber-duck review): validate the orchestrator
+        # registry at boot rather than letting a typo surface as a 500
+        # mid-handler. ``importlib.import_module`` caches modules so this is
+        # cheap. The default mode is checked first (most-likely typo target),
+        # followed by every other registered mode.
+        registry_dict = dict(settings.orchestrator.registry)
+        from tether_service.protocol.orchestration.registry import (
+            UnknownOrchestratorMode,
+            resolve_orchestrator_class,
+        )
+        for mode in registry_dict:
+            try:
+                resolve_orchestrator_class(mode, registry_dict)
+            except UnknownOrchestratorMode:
+                # Cannot happen — we just iterated the registry's keys.
+                raise
+            except (ImportError, AttributeError, TypeError) as e:
+                raise ValueError(
+                    f"Engine.from_settings: orchestrator registry entry "
+                    f"{mode!r} -> {registry_dict[mode]!r} is invalid: {e}"
+                ) from e
+
         return cls(
             provider=provider,
-            parser=parser,
+            parser_factory=_new_parser,
             session_store=store,
             tools=tools,
             system_prompt=settings.system.prompt,
@@ -200,7 +266,7 @@ class Engine:
             tool_runner=tool_runner,
             hw_watchdog=hw_watchdog,
             connector_registry=connector_registry,
-            orchestrator_registry=dict(settings.orchestrator.registry),
+            orchestrator_registry=registry_dict,
             orchestrator_default_mode=settings.orchestrator.default,
         )
 
@@ -274,9 +340,14 @@ class Engine:
             effective_mode, self._orchestrator_registry
         )
 
+        # Per-turn parser instance — Phase 5 followups F1. A shared
+        # SlidingParser would race-condition on its mutable buffer when
+        # two requests interleave (rubber-duck review by gpt-5.5).
+        per_turn_parser = self._parser_factory()
+
         orch = orchestrator_cls(
             provider=self.provider,
-            parser=self.parser,
+            parser=per_turn_parser,
             store=self.store,
             tools=self.tools,
             system_prompt=self.system_prompt,

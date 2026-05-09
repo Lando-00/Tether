@@ -425,6 +425,20 @@ class ChattyAgentOrchestrator(OrchestratorABC):
                 # for-loop fell through: max_tool_loops exhausted with
                 # the model still wanting to call tools (synthesis §3.5).
                 if self.config.loop_limit_policy is LoopLimitPolicy.RAISE:
+                    # Phase 5 followups F5: emit MessageStop BEFORE
+                    # raising — async generators cannot yield once an
+                    # exception is propagating through ``finally``, so
+                    # the post-finally yield below never runs on this
+                    # path. Mirrors the F2 fix for outer CancelledError.
+                    # Synthesis §3.5: every terminal path emits one
+                    # MessageStop.
+                    try:
+                        yield MessageStop(
+                            **_envelope(),
+                            stop_reason="tool_loop_exhausted",
+                        )
+                    except BaseException:
+                        pass
                     raise LoopLimitReachedError(
                         f"max_tool_loops={self.config.max_tool_loops} reached"
                     )
@@ -442,8 +456,30 @@ class ChattyAgentOrchestrator(OrchestratorABC):
                     yield wire
 
         except asyncio.CancelledError:
-            # Loop-level cancellation: re-raise after finally runs.
+            # Loop-level cancellation: yield ONE terminal MessageStop
+            # before re-raising. Async generators cannot yield once an
+            # exception is propagating through ``finally``, so the
+            # post-finally ``yield MessageStop`` below never runs on
+            # this path. Synthesis §3.5: cancellation contract requires
+            # exactly one terminal MessageStop on every cancel path
+            # (including outer ``task.cancel()`` from FastAPI's response-
+            # generator teardown or library callers using ``aclosing``).
+            #
+            # Phase 5 followups F2 (rubber-duck review by xhigh): wrap
+            # in try/except so a consumer that already aclose()'d the
+            # generator (GeneratorExit during yield) doesn't mask the
+            # original CancelledError that follows. ``BaseException``
+            # is intentionally broad — we're already in cleanup mode
+            # and the bare ``raise`` below re-raises the ORIGINAL
+            # outer CancelledError currently being handled.
             cancelled = True
+            try:
+                yield MessageStop(
+                    **_envelope(),
+                    stop_reason="cancelled",
+                )
+            except BaseException:
+                pass
             raise
         except LoopLimitReachedError:
             # RAISE policy — propagate to caller without further wire events.
@@ -469,7 +505,10 @@ class ChattyAgentOrchestrator(OrchestratorABC):
                     await asyncio.wait_for(
                         active_tool_task, timeout=_TOOL_CANCEL_GRACE_SEC
                     )
-                except (asyncio.TimeoutError, asyncio.CancelledError, Exception):
+                except (asyncio.TimeoutError, asyncio.CancelledError):
+                    # Phase 5 followups F8: dropped ``Exception`` from
+                    # the tuple — let unexpected exceptions surface to
+                    # logs rather than silently swallowing real bugs.
                     pass
 
             # Cancellation contract step 3: persist partial assistant text
@@ -866,7 +905,36 @@ class ChattyAgentOrchestrator(OrchestratorABC):
                 status="ok",
             )
         finally:
+            # Phase 5 followups F3 (rubber-duck review by xhigh + gpt-5.5):
+            # cancel any still-running tool task before clearing the holder.
+            # When outer cancellation arrives while we're in the 50ms-poll
+            # ``asyncio.wait`` loop above, ``CancelledError`` propagates out
+            # WITHOUT cancelling the awaited tool task, AND the orchestrator's
+            # outer ``finally`` doesn't see the task because the
+            # ``async for wire in self._dispatch_tools(...)`` was interrupted
+            # mid-iteration (so ``active_tool_task`` was never assigned in
+            # the outer scope). Result: tool task leaks unbounded after
+            # outer cancel.
+            #
+            # Fix: this ``finally`` always runs (whether normal exit, a
+            # ``return``, or outer cancellation), so it's the right place
+            # to enforce the cancellation contract on the tool task.
+            # Synthesis §3.5: 250 ms grace bounds the tool's
+            # CancelledError handler.
+            pending = dispatch_state["active_task_holder"][0]
             dispatch_state["active_task_holder"][0] = None
+            if pending is not None and not pending.done():
+                pending.cancel()
+                try:
+                    await asyncio.wait_for(
+                        pending, timeout=_TOOL_CANCEL_GRACE_SEC
+                    )
+                except (asyncio.TimeoutError, asyncio.CancelledError):
+                    # Tool either over-ran the grace or honored the
+                    # cancel. Either way, we're done with it. Don't
+                    # add ``Exception`` to the tuple (Phase 5 followups
+                    # F8) — let real bugs surface to the logger.
+                    pass
 
     async def _persist_partial(
         self,
@@ -977,4 +1045,4 @@ class ChattyAgentOrchestrator(OrchestratorABC):
         return None
 
 
-__all__ = ["Orchestrator"]
+__all__ = ["ChattyAgentOrchestrator"]

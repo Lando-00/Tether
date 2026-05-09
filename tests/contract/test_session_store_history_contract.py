@@ -232,3 +232,112 @@ async def test_cross_store_equivalence_long_sequence(memory_store, sqlite_store)
 
     assert h_mem == h_sql
     assert len(h_mem) == 7  # one history entry per input
+
+
+# ---------------------------------------------------------------------------
+# Partial-write coverage — Phase 5 → Phase 6 gate (synthesis §11.3 R19).
+#
+# Phase 5 followups F9 (rubber-duck review): the schema-v2 migration in
+# Phase 6 is most likely to mishandle (a) orphan tool calls (client
+# disconnect mid-tool, no subsequent ``tool_result``) and (b) tool results
+# whose values aren't dicts. Both stores must agree.
+# ---------------------------------------------------------------------------
+
+
+async def test_orphan_tool_call_no_result(store):
+    """Tool call without a subsequent ``tool_result`` (e.g. client
+    disconnected mid-tool) still produces well-formed history without
+    raising.
+    """
+    await store.add_user("s1", "what time is it?")
+    await store.add_assistant_toolcall("s1", "now", {})
+    # NO tool_result — the orchestrator never persisted one (client
+    # disconnected mid-tool).
+    history = await store.get_history("s1")
+
+    assert len(history) == 2
+    assert history[0] == {"role": "user", "content": "what time is it?"}
+    assert history[1]["role"] == "assistant"
+    assert "<<function_call>>" in history[1]["content"]
+
+
+async def test_tool_result_none(store):
+    """``add_tool_result`` with ``None`` renders as ``null`` in both stores
+    (canonical alignment per F9: drop the memory-store None→{} coercion).
+    """
+    await store.add_assistant_toolcall("s1", "noop", {})
+    await store.add_tool_result("s1", "noop", None)
+    history = await store.get_history("s1")
+
+    result_msg = history[-1]
+    assert result_msg["role"] == "user"
+    assert result_msg["content"] == "Tool 'noop' returned:\nnull"
+
+
+async def test_tool_result_list(store):
+    """``add_tool_result`` with a list value works."""
+    await store.add_assistant_toolcall("s1", "search", {"q": "x"})
+    await store.add_tool_result("s1", "search", ["a", "b", "c"])
+    history = await store.get_history("s1")
+
+    result_msg = history[-1]
+    assert result_msg["role"] == "user"
+    assert result_msg["content"].startswith("Tool 'search' returned:\n")
+    # JSON-array indent=2 formatting.
+    assert "[" in result_msg["content"]
+    assert '"a"' in result_msg["content"]
+    assert '"b"' in result_msg["content"]
+
+
+async def test_tool_result_string(store):
+    """``add_tool_result`` with a plain-string value works."""
+    await store.add_assistant_toolcall("s1", "echo", {"x": "y"})
+    await store.add_tool_result("s1", "echo", "plain string result")
+    history = await store.get_history("s1")
+
+    result_msg = history[-1]
+    assert result_msg["role"] == "user"
+    # JSON-string formatting wraps the value in quotes.
+    assert result_msg["content"] == (
+        'Tool \'echo\' returned:\n"plain string result"'
+    )
+
+
+async def test_tool_result_int(store):
+    """``add_tool_result`` with an int value works."""
+    await store.add_assistant_toolcall("s1", "count", {})
+    await store.add_tool_result("s1", "count", 42)
+    history = await store.get_history("s1")
+
+    result_msg = history[-1]
+    assert result_msg["role"] == "user"
+    assert result_msg["content"] == "Tool 'count' returned:\n42"
+
+
+async def test_cross_store_equivalence_partial_writes(memory_store, sqlite_store):
+    """Both stores agree on the partial-write edge cases too — the
+    Phase 6 schema migration MUST NOT diverge on these inputs.
+    """
+    for s in [memory_store, sqlite_store]:
+        # Orphan tool call.
+        await s.add_user("s1", "q1")
+        await s.add_assistant_toolcall("s1", "orphan", {})
+
+        # Non-dict results.
+        await s.add_assistant_toolcall("s2", "noop", {})
+        await s.add_tool_result("s2", "noop", None)
+        await s.add_assistant_toolcall("s3", "search", {"q": "x"})
+        await s.add_tool_result("s3", "search", ["a", "b"])
+        await s.add_assistant_toolcall("s4", "echo", {})
+        await s.add_tool_result("s4", "echo", "str")
+        await s.add_assistant_toolcall("s5", "count", {})
+        await s.add_tool_result("s5", "count", 7)
+
+    for sid in ("s1", "s2", "s3", "s4", "s5"):
+        h_mem = await memory_store.get_history(sid)
+        h_sql = await sqlite_store.get_history(sid)
+        assert h_mem == h_sql, (
+            f"\nMemoryStore: {h_mem}\nSqliteStore: {h_sql}\n"
+            f"Stores diverge on partial-write input ({sid}); F9 alignment "
+            "regression."
+        )
