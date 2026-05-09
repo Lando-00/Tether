@@ -1,5 +1,5 @@
 
-from fastapi import APIRouter, Request, HTTPException
+from fastapi import APIRouter, Request
 from fastapi.responses import StreamingResponse
 from pydantic import BaseModel, Field
 import asyncio
@@ -29,40 +29,103 @@ class StreamRequest(BaseModel):
 
 @router.post("/stream")
 async def stream(request: Request, body: StreamRequest):
-    logger.info(f"/chat/stream called: session_id={body.session_id}, model_name={body.model_name}")
-    gen_service = request.app.state.gen_svc
+    """Stream chat events. Content negotiation via Accept header:
 
-    async def event_generator():
+        text/event-stream     -> SSE-framed v2 events (typed WireEvent)
+        application/x-ndjson  -> NDJSON v0 dict events (default; back-compat)
+        (absent)              -> NDJSON v0 dict events (default)
+
+    Response carries X-Tether-Protocol-Version: 1.0 on every path.
+
+    Synthesis §4 Phase 5 step 53.
+    """
+    accept = request.headers.get("accept", "")
+    use_sse = "text/event-stream" in accept.lower()
+
+    logger.info(
+        f"/chat/stream called: session_id={body.session_id}, "
+        f"model_name={body.model_name}, sse={use_sse}"
+    )
+
+    engine = request.app.state.gen_svc
+    headers = {"X-Tether-Protocol-Version": "1.0"}
+
+    if use_sse:
+        # SSE path: Engine.chat() yields typed WireEvents; transport_sse frames them.
+        # Lazy import keeps tether_service importable without triggering the full
+        # transport module graph (library-first invariant). Synthesis §3.4.
+        from tether_service.protocol.orchestration.cancel import AsyncEventCancelToken
+        from tether_service.protocol.wire.transport_sse import transport_sse
+
+        async def sse_generator():
+            cancel_token = AsyncEventCancelToken()
+            try:
+                async def cancellable_chat():
+                    async for event in engine.chat(
+                        session_id=body.session_id,
+                        prompt=body.prompt,
+                        model_name=body.model_name,
+                        cancel_token=cancel_token,
+                    ):
+                        if await request.is_disconnected():
+                            logger.info(
+                                f"Client disconnected (SSE): session_id={body.session_id}"
+                            )
+                            cancel_token.set()
+                            break
+                        yield event
+
+                async for chunk in transport_sse(cancellable_chat()):
+                    yield chunk
+            except Exception as e:
+                logger.exception(f"Exception in /chat/stream (SSE): {e}")
+                error_payload = {
+                    "type": "error",
+                    "message": f"Streaming error: {str(e)}",
+                    "error_type": type(e).__name__,
+                }
+                yield (
+                    f"event: error\ndata: {json.dumps(error_payload)}\n\n"
+                ).encode("utf-8")
+
+        return StreamingResponse(
+            sse_generator(),
+            media_type="text/event-stream",
+            headers=headers,
+        )
+
+    # Default: NDJSON v0 dict bytes (back-compat; p5-cutover-a-dual-emit flips this).
+    async def ndjson_generator():
         cancel_event = asyncio.Event()
         try:
-            async for chunk in gen_service.stream(
+            async for chunk in engine.stream(
                 session_id=body.session_id,
                 prompt=body.prompt,
                 model_name=body.model_name,
                 cancel_event=cancel_event,
             ):
-                # Check disconnect BEFORE yielding
                 if await request.is_disconnected():
-                    logger.info(f"Client disconnected: session_id={body.session_id}")
+                    logger.info(
+                        f"Client disconnected (NDJSON): session_id={body.session_id}"
+                    )
                     cancel_event.set()
                     break
                 yield chunk
         except Exception as e:
-            # Log and send error event to client
-            logger.exception(f"Exception in /chat/stream for session {body.session_id}: {e}")
-            
-            # Send error as NDJSON event
+            logger.exception(f"Exception in /chat/stream (NDJSON): {e}")
             error_event = {
                 "type": "error",
                 "session_id": body.session_id,
                 "data": {
                     "message": f"Streaming error: {str(e)}",
-                    "error_type": type(e).__name__
+                    "error_type": type(e).__name__,
                 },
-                "ts": None  # Will be added by emitter if needed
+                "ts": None,
             }
             yield (json.dumps(error_event) + "\n").encode("utf-8")
-            
-            # Don't re-raise - we've handled it gracefully
 
-    return StreamingResponse(event_generator(), media_type="application/x-ndjson")
+    return StreamingResponse(
+        ndjson_generator(),
+        media_type="application/x-ndjson",
+        headers=headers,
+    )
