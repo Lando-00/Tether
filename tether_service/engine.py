@@ -105,6 +105,7 @@ class Engine:
         self._closed = False
         self._orchestrator_registry: Dict[str, str] = orchestrator_registry or {
             "chat": "tether_service.protocol.orchestration.chatty.ChattyAgentOrchestrator",
+            "research": "tether_service.protocol.orchestration.notebook.NotebookOrchestrator",
         }
         self._orchestrator_default_mode = orchestrator_default_mode
         # Phase 4.5 step 47d: __aenter__ schedules start_connector(id) for
