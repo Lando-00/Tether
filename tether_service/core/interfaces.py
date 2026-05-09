@@ -6,6 +6,8 @@ from tether_service.providers.types import ProviderCapabilities, ProviderEvent
 
 if TYPE_CHECKING:
     from tether_service.core.types import ToolExecutionContext
+    from tether_service.protocol.orchestration.cancel import CancelToken
+    from tether_service.protocol.wire.events import WireEvent
 
 
 class ModelProvider(ABC):
@@ -251,3 +253,45 @@ class Tool(ABC):
         Synthesis §6 row 4 / A2 step 1 + §4 Phase 4 step 41a.
         """
         ...
+
+
+class Orchestrator(ABC):
+    """Drives one turn of model → parser → tool-execution.
+
+    Two impls today:
+      - ChattyAgentOrchestrator (chatty.py): the standard tool-loop
+        agent that processes a user prompt through model + tools and
+        yields typed WireEvent objects.
+      - NotebookOrchestrator (notebook.py): research-mode strategy,
+        currently a stub. Tracked in docs/research/06_context_strategies.md.
+
+    Briefing §2 Seam B (1-4): the ABC was deferred until both impls
+    were concrete enough to justify the abstraction. Anti-overengineering
+    rule (R6) satisfied: not a single-impl ABC.
+
+    All implementations yield AsyncIterator[WireEvent]. The bytes
+    transport (NDJSON / SSE) lives in protocol/wire/transport_*.py.
+    """
+
+    @abstractmethod
+    async def run(
+        self,
+        *,
+        session_id: str,
+        prompt: str,
+        model_name: str,
+        cancel_token: Optional["CancelToken"] = None,
+    ) -> AsyncIterator["WireEvent"]:
+        """Run one turn. Yields typed WireEvent objects.
+
+        Implementations MUST:
+          - emit MessageStart first
+          - emit MessageStop last (exactly one)
+          - honor cancel_token at chunk boundaries (granularity is
+            implementation choice)
+        """
+        ...
+        # Unreachable, but makes abstract async generators type-check
+        # correctly for callers that do ``async for e in orch.run(...)``.
+        if False:  # pragma: no cover
+            yield  # type: ignore[unreachable]
