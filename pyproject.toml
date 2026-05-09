@@ -38,4 +38,15 @@ dev = ["pytest>=7", "pytest-asyncio", "ruff", "mypy", "build"]
 [tool.hatch.build.targets.wheel]
 packages = ["tether_service"]
 
-
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+markers = [
+    "unit: fast pure-Python unit tests, default-on",
+    "integration: cross-module tests; may touch sqlite/aiosqlite/in-process FastAPI",
+    "network: tests that hit a real external network (Brave/etc.); default-off",
+    "hardware: tests that require the Snapdragon Adreno GPU; default-off",
+    "e2e: end-to-end tests requiring a running server; default-off",
+    "asyncio: pytest-asyncio marker (kept for compatibility)",
+]
+addopts = "--strict-markers --strict-config -m \"not network and not hardware and not e2e\""
+asyncio_mode = "auto"
