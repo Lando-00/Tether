@@ -65,16 +65,25 @@ def test_create_app_no_force_exit_handler():
 
 
 def test_api_py_loc():
-    """api.py size cap: target ~50 lines, allow up to 100.
+    """api.py size cap: target ~50 lines, allow up to 110.
 
     The pre-Phase 3 api.py was 214 LOC (most of it dead helpers we just
-    deleted). If this drifts back over 100 LOC, the slim contract has
+    deleted). If this drifts back over the cap, the slim contract has
     been violated.
+
+    The cap is a regression fence against legacy helper re-introduction
+    (see :func:`test_create_app_no_force_exit_handler`), NOT a freeze on
+    legitimate evolution. Each new HTTP router that ships in v1 adds two
+    lines (one import + one ``include_router`` call); the cap is sized to
+    accommodate that growth without losing the regression signal. The
+    Phase 5 ``p5-event-types-schema-endpoint`` step added the
+    ``protocol`` router (introspection endpoints), bumping the cap from
+    100 → 110.
     """
     src = inspect.getsource(api_mod)
     line_count = len(src.splitlines())
-    assert line_count <= 100, (
-        f"api.py is {line_count} lines; expected <=100 (target ~50). "
+    assert line_count <= 110, (
+        f"api.py is {line_count} lines; expected <=110 (target ~50). "
         "The lifespan slim contract has drifted."
     )
 

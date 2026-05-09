@@ -27,6 +27,7 @@ from tether_service.app.http.routers.chat import router as chat_router
 from tether_service.app.http.routers.connectors import router as connectors_router
 from tether_service.app.http.routers.health import router as health_router
 from tether_service.app.http.routers.models import router as models_router
+from tether_service.app.http.routers.protocol import router as protocol_router
 from tether_service.app.http.routers.sessions import router as sessions_router
 from tether_service.config.settings import load_settings
 from tether_service.engine import Engine
@@ -94,6 +95,7 @@ def create_app():
     v1_router.include_router(connectors_router)
     v1_router.include_router(health_router)
     v1_router.include_router(models_router)
+    v1_router.include_router(protocol_router)
     v1_router.include_router(sessions_router)
 
     app.include_router(v1_router)
