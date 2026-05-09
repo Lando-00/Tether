@@ -1,7 +1,10 @@
 from abc import ABC, abstractmethod
-from typing import Any, AsyncGenerator, AsyncIterator, Dict, List, Optional
+from typing import Any, AsyncGenerator, AsyncIterator, Dict, List, Optional, TYPE_CHECKING
 
 from tether_service.providers.types import ProviderCapabilities, ProviderEvent
+
+if TYPE_CHECKING:
+    from tether_service.core.types import ToolExecutionContext
 
 
 class ModelProvider(ABC):
@@ -214,11 +217,26 @@ class Tool(ABC):
         ...
 
     @abstractmethod
-    async def invoke(self, args: Dict[str, Any]) -> Any:
-        """Invoke the tool with a dict of arguments.
+    async def invoke(
+        self,
+        args: Dict[str, Any],
+        *,
+        context: Optional["ToolExecutionContext"] = None,
+    ) -> Any:
+        """Invoke the tool with a dict of arguments and an optional execution
+        context.
 
         The registry-facing API: what the orchestrator and ToolRunner call.
-        The author-facing API is BaseTool.run(**kwargs); BaseTool.invoke is
-        a shim that unpacks the dict. Synthesis §6 row 4 / A2 step 1.
+        The author-facing API is :meth:`BaseTool.run` (``**kwargs``);
+        ``BaseTool.invoke`` is the shim that unpacks the dict and
+        dispatches ``context`` only to ``run`` signatures that opt in.
+
+        ``context`` is keyword-only and defaults to ``None`` so existing
+        tools (TimeTool, WeatherTool, …) keep working unchanged. Connector
+        tools shipping in Phase 4.5+ consume
+        ``context.user_confirmed_send`` for the draft+confirm send-safety
+        pattern (connector spec §4 footer).
+
+        Synthesis §6 row 4 / A2 step 1 + §4 Phase 4 step 41a.
         """
         ...

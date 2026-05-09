@@ -112,7 +112,12 @@ class TestBaseToolInvokeShim:
 
 class TestToolRunnerUsesInvoke:
     def test_tool_runner_calls_invoke(self):
-        """ToolRunner.run() must call tool.invoke(args), not tool.run(**args)."""
+        """ToolRunner.run() must call tool.invoke(args), not tool.run(**args).
+
+        Phase 4 step 41a: the call now also threads ``context=None`` (or a
+        :class:`ToolExecutionContext` when the orchestrator supplies one).
+        Synthesis §4 Phase 4 step 41a.
+        """
         mock_tool = MagicMock(spec=Tool)
         mock_tool.invoke = AsyncMock(return_value={"ok": True})
         runner = ToolRunner(tools={"my_tool": mock_tool})
@@ -122,7 +127,7 @@ class TestToolRunnerUsesInvoke:
             runner.run("my_tool", {"x": 1})
         )
 
-        mock_tool.invoke.assert_called_once_with({"x": 1})
+        mock_tool.invoke.assert_called_once_with({"x": 1}, context=None)
         assert result == {"ok": True}
 
     def test_tool_runner_raises_on_unknown_tool(self):
