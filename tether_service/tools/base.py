@@ -1,6 +1,9 @@
 from abc import abstractmethod
-from typing import Any, ClassVar, Dict, List, Literal, Optional, get_args, get_origin
+from typing import Any, ClassVar, Dict, List, Literal, Optional, TYPE_CHECKING, get_args, get_origin
 from tether_service.core.interfaces import Tool
+
+if TYPE_CHECKING:
+    from tether_service.core.types import ToolExecutionContext
 
 # =============================
 # Tool Authoring Guidelines
@@ -52,11 +55,34 @@ class BaseTool(Tool):
     def __init__(self):
         self._registry_name: str | None = None
 
-    async def invoke(self, args: Dict[str, Any]) -> Any:
+    async def invoke(
+        self,
+        args: Dict[str, Any],
+        *,
+        context: Optional["ToolExecutionContext"] = None,
+    ) -> Any:
         """Registry-facing shim. Synthesis §6 row 4: unpacks the args dict
         into keyword arguments and delegates to the author-defined run().
-        The orchestrator always calls tool.invoke(args); concrete tool authors
-        always write a typed run(**kwargs) signature."""
+
+        Tools that DO NOT need the execution context define run() with
+        their typed kwargs as before; this shim omits ``context`` from
+        the call. Tools that DO need the context (e.g. Phase 4.5+
+        connector tools — WhatsApp, Gmail draft+confirm send-safety
+        pattern) declare a keyword-only ``context`` parameter on run()
+        and the inspect-based dispatcher passes it through.
+
+        Detection is by *named* parameter only — a bare ``**kwargs`` does
+        NOT opt in. Tools opt in explicitly by adding ``context=None``
+        (or ``context: Optional[ToolExecutionContext] = None``) to their
+        ``run`` signature.
+
+        Synthesis §4 Phase 4 step 41a; connector spec §4 footer.
+        """
+        import inspect
+
+        sig = inspect.signature(self.run)
+        if "context" in sig.parameters:
+            return await self.run(**args, context=context)
         return await self.run(**args)
 
     async def startup(self) -> None:
