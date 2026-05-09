@@ -238,10 +238,11 @@ class TestSlidingParserFinalize:
         parser = SlidingParser()
         parser.feed("Some text")
         events = parser.finalize()
-        
-        # Should emit remaining text and DONE
+
+        # F3 (synthesis §6 row 3): finalize flushes residual text only.
+        # DONE is emitted once by the orchestrator, not by finalize.
         assert any(e["type"] == StreamEvent.TEXT for e in events)
-        assert any(e["type"] == StreamEvent.DONE for e in events)
+        assert not any(e["type"] == StreamEvent.DONE for e in events)
     
     def test_finalize_resets_state(self):
         parser = SlidingParser()
@@ -254,10 +255,12 @@ class TestSlidingParserFinalize:
         assert not parser._tool_started
     
     def test_finalize_emits_done(self):
+        # F3 (synthesis §6 row 3): finalize does NOT emit DONE.
+        # The orchestrator is the sole emitter of the terminal done event.
         parser = SlidingParser()
         events = parser.finalize()
-        
-        assert any(e["type"] == StreamEvent.DONE for e in events)
+
+        assert not any(e["type"] == StreamEvent.DONE for e in events)
 
 
 class TestSlidingParserRealWorldScenarios:
