@@ -240,7 +240,6 @@ class Orchestrator:
                 full_thinking_text = ""
                 tool_call_to_run: Optional[PToolCallParsed] = None
                 text_persisted = False
-                stream_error_occurred = False
 
                 # Mutable per-turn state shared with the streaming
                 # seam. The seam mutates this dict instead of
@@ -275,7 +274,6 @@ class Orchestrator:
                 stream_error = turn_state["stream_error"]
 
                 if stream_error is not None:
-                    stream_error_occurred = True
                     # Dispatch error path (HwReset + Error event +
                     # partial-text persist) — handled inline so we can
                     # yield from this generator.
