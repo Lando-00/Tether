@@ -9,14 +9,15 @@ Per _synthesis.md §2.3 + §4 Phase 2 (steps 21, 22). Importing
 MLC, or Brave — every concrete provider/parser/store/tool is lazy-imported
 inside ``Engine.from_settings`` (see R8 lazy-import rule).
 
-Phase 3 step 35 will replace the ``aclose()`` body with
-``await self.hw_watchdog.shutdown_all()`` once ``HardwareWatchdog`` is in
-place (per §11.3 R22 dependency-graph clarification).
+Phase 3 step 35 (this PR): ``aclose()`` routes through
+:class:`HardwareWatchdog` when available, replacing the Phase 2 placeholder
+body and the legacy ``shutdown_provider_with_timeout`` path that lived in
+``app/http/api.py``. Per §11.3 R22.
 """
 from __future__ import annotations
 
 import asyncio
-from typing import Any, AsyncGenerator, Dict, List, Optional
+from typing import Any, AsyncGenerator, Dict, List, Optional, TYPE_CHECKING
 
 from tether_service.config.settings import Settings
 from tether_service.core.interfaces import (
@@ -28,6 +29,9 @@ from tether_service.core.interfaces import (
 from tether_service.core.types import OrchestratorConfig
 from tether_service.protocol.orchestration.tool_runner import ToolRunner
 from tether_service.runtime.watchdog_mode import WatchdogMode
+
+if TYPE_CHECKING:
+    from tether_service.runtime.hw_watchdog import HardwareWatchdog
 
 
 class Engine:
@@ -44,6 +48,7 @@ class Engine:
         watchdog_mode: WatchdogMode = WatchdogMode.LIBRARY,
         orchestrator_config: Optional[OrchestratorConfig] = None,
         tool_runner: Optional[ToolRunner] = None,
+        hw_watchdog: Optional["HardwareWatchdog"] = None,
     ):
         """Build an Engine from already-constructed components.
 
@@ -53,6 +58,12 @@ class Engine:
         and the deprecated ``GenerationService`` alias keep working. Tests
         and advanced callers may pass them explicitly. Per p2-cleanup
         (synthesis §4 Phase 2 step 23).
+
+        ``hw_watchdog`` is optional. ``from_settings`` always builds one
+        and passes it; direct constructors (used by tests + the legacy
+        ``GenerationService`` alias) may pass ``None``, in which case
+        :meth:`aclose` falls back to ``provider.shutdown_all()`` if present.
+        Synthesis §4 Phase 3 step 35.
         """
         self.provider = provider
         self.parser = parser
@@ -60,6 +71,7 @@ class Engine:
         self.tools = tools
         self.system_prompt = system_prompt
         self.watchdog_mode = watchdog_mode
+        self.hw_watchdog = hw_watchdog
         self.orchestrator_config = orchestrator_config or OrchestratorConfig(
             max_tool_loops=5,
             auto_reload_on_fatal_error=True,
@@ -82,11 +94,19 @@ class Engine:
         ``import tether_service`` does not pull in MLC, FastAPI, or Brave.
         Per R8 lazy-import rule (synthesis).
 
+        Constructs a :class:`HardwareWatchdog` around the provider list.
+        Providers that don't implement :class:`HardwareLifecycle` (e.g.,
+        ``DummyProvider``) are silently filtered out by the watchdog, so
+        an engine with a non-HW provider gets a watchdog with zero entries
+        — ``aclose`` becomes a no-op, ``/readyz`` reports the empty list.
+        Synthesis §4 Phase 3 step 35.
+
         Raises ValueError / RuntimeError if any required impl path doesn't
         resolve (delegated to ``load`` and ``ToolRegistry``).
         """
         from tether_service.core.factory import load
         from tether_service.core.tool_registry import ToolRegistry
+        from tether_service.runtime.hw_watchdog import HardwareWatchdog
 
         model_spec = settings.providers.model
         provider = load(model_spec.impl, **model_spec.args)
@@ -108,6 +128,8 @@ class Engine:
         orchestrator_config = OrchestratorConfig.from_settings(settings)
         tool_runner = ToolRunner(tools, timeout_sec=settings.limits.tool_timeout_sec)
 
+        hw_watchdog = HardwareWatchdog([provider], mode=watchdog_mode)
+
         return cls(
             provider=provider,
             parser=parser,
@@ -117,6 +139,7 @@ class Engine:
             watchdog_mode=watchdog_mode,
             orchestrator_config=orchestrator_config,
             tool_runner=tool_runner,
+            hw_watchdog=hw_watchdog,
         )
 
     # --- Streaming chat (the core API) ---
@@ -187,25 +210,29 @@ class Engine:
         await self.aclose()
 
     async def aclose(self) -> None:
-        """Phase 2 placeholder — delegates to ``provider.shutdown_all()``.
+        """Phase 3: bounded shutdown via :class:`HardwareWatchdog` when present.
 
-        Phase 3 step 35 will replace this body with
-        ``await self.hw_watchdog.shutdown_all()`` once HardwareWatchdog is in
-        place. Per _synthesis.md §11.3 R22.
+        Routes through ``self.hw_watchdog.shutdown_all()`` for any provider
+        implementing :class:`HardwareLifecycle` — that path uses
+        :func:`tether_service.runtime.daemon_call.daemon_thread_call` (M1)
+        so GC stays disabled in the daemon thread (R5) and native cleanup
+        is bounded by per-provider budgets. Production / SERVER-mode usage
+        always reaches this branch because ``from_settings`` always builds
+        a watchdog.
 
-        .. warning::
-            Phase 2 placeholder calls provider.shutdown_all() synchronously on
-            the event loop. For LIBRARY-mode usage with the MLC provider on
-            Snapdragon Adreno hardware, OpenCL destructor hangs are known
-            (see docs/REFACTOR_BRIEFING.md). Library users running real
-            providers should treat this as best-effort until Phase 3 wires
-            HardwareWatchdog with a daemon-thread + GC-disable + bounded-wait
-            teardown. SERVER-mode usage (FastAPI lifespan) routes through
-            shutdown_provider_with_timeout(...) in app/http/api.py:185-187,
-            which already has the safe path.
+        Falls back to ``provider.shutdown_all()`` when ``hw_watchdog`` is
+        ``None`` — only direct constructor / test paths produce that
+        (e.g., the deprecated ``GenerationService`` alias and ad-hoc
+        Engine assemblies in unit tests). Library users who go through
+        ``from_settings`` always get the safe path.
+
+        Synthesis §4 Phase 3 step 35; supersedes the §11.3 R22 placeholder.
         """
         if self._closed:
             return
         self._closed = True
-        if hasattr(self.provider, "shutdown_all"):
+
+        if self.hw_watchdog is not None:
+            self.hw_watchdog.shutdown_all()
+        elif hasattr(self.provider, "shutdown_all"):
             self.provider.shutdown_all()
