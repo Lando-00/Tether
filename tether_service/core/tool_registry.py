@@ -67,10 +67,17 @@ class ToolRegistry:
                 registry calls :func:`discover` itself; tests inject a
                 synthetic mapping to bypass package walking.
 
-        Both paths construct each tool, set ``_registry_name`` on the
-        instance (so ``BaseTool.name`` returns the registered name), and
-        raise :class:`RuntimeError` chained from the original failure
-        when a tool's ``__init__`` raises.
+        Both paths construct each tool and raise :class:`RuntimeError`
+        chained from the original failure when a tool's ``__init__``
+        raises. Phase 4 step 43: the legacy per-instance registry-name
+        injection is retired — the ``@tool(name=...)`` decorator sets
+        the registry name at class definition time via the
+        ``_tether_tool_registered_name`` class attribute consumed by
+        :attr:`BaseTool.name`. Legacy dotted-path tools that aren't
+        decorated still get registered under their YAML ``name``; the
+        ``BaseTool.name`` property then falls back to the class name
+        for those, which is acceptable since the orchestrator looks
+        them up by the registry dict key, not by ``tool.name``.
         """
         self.tools: Dict[str, Any] = {}
 
@@ -167,8 +174,13 @@ class ToolRegistry:
     # ------------------------------------------------------------------
 
     def _register(self, name: str, instance: Any) -> None:
-        if hasattr(instance, "_registry_name"):
-            instance._registry_name = name
+        # Phase 4 step 43: no more per-instance registry-name injection.
+        # The ``@tool(name=...)`` decorator sets the class-level
+        # ``_tether_tool_registered_name`` marker at definition time;
+        # ``BaseTool.name`` reads from it. For undecorated legacy
+        # dotted-path tools, ``BaseTool.name`` falls back to the class
+        # name — that's fine because the orchestrator looks tools up
+        # by the registry-dict key (``name`` arg), not by ``tool.name``.
         self.tools[name] = instance
 
     # ------------------------------------------------------------------

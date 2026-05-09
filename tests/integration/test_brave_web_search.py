@@ -103,7 +103,6 @@ class TestWebSearchWithMockedServer:
         
         # Create tool
         tool = WebSearchTool()
-        tool._registry_name = "web_search"
         
         # Mock BraveSearchClient
         mock_client = AsyncMock()
@@ -130,12 +129,12 @@ class TestWebSearchWithMockedServer:
             mock_get_client.return_value = mock_client
             
             # Execute tool as orchestrator would
-            result = await tool.run(
-                query="AI developments 2025",
-                count=5,
-                country="us",
-                search_lang="en"
-            )
+            result = await tool.invoke({
+                "query": "AI developments 2025",
+                "count": 5,
+                "country": "us",
+                "search_lang": "en",
+            })
             
             # Verify result structure
             assert "results" in result
@@ -184,7 +183,6 @@ class TestWebSearchErrorHandling:
         import httpx
         
         tool = WebSearchTool()
-        tool._registry_name = "web_search"
         
         # Mock client that raises 429 error
         mock_client = AsyncMock()
@@ -200,12 +198,13 @@ class TestWebSearchErrorHandling:
         
         with patch('tether_service.tools.web_search_tool._get_client') as mock_get_client:
             mock_get_client.return_value = mock_client
-            
-            # Tool execution should raise error (orchestrator will handle)
-            with pytest.raises(httpx.HTTPStatusError) as exc_info:
-                await tool.run(query="test")
-            
-            assert exc_info.value.response.status_code == 429
+
+            # The Style A run() now catches exceptions and returns
+            # ``{"error": ...}`` rather than re-raising. Verify the
+            # error dict captures the rate-limit failure.
+            result = await tool.invoke({"query": "test"})
+            assert "error" in result
+            assert "Rate limited" in result["error"] or "429" in result["error"]
     
     async def test_timeout_error_in_orchestration(self):
         """Test that timeout errors are handled gracefully."""
@@ -214,7 +213,6 @@ class TestWebSearchErrorHandling:
         import asyncio
         
         tool = WebSearchTool()
-        tool._registry_name = "web_search"
         
         # Mock client that times out
         mock_client = AsyncMock()
@@ -257,7 +255,7 @@ class TestWebSearchBackwardCompatibility:
         with patch('tether_service.tools.web_search_tool._get_client') as mock_get_client:
             mock_get_client.return_value = mock_client
             
-            result = await tool.run(query="test")
+            result = await tool.invoke({"query": "test"})
             
             # New format
             assert "results" in result

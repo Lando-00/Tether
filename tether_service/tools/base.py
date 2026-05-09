@@ -1,9 +1,31 @@
 from abc import abstractmethod
-from typing import Any, ClassVar, Dict, List, Literal, Optional, TYPE_CHECKING, get_args, get_origin
+from typing import Any, ClassVar, Dict, List, Literal, Optional, Type, TYPE_CHECKING, get_args, get_origin
+
+from pydantic import BaseModel, ConfigDict
+
 from tether_service.core.interfaces import Tool
 
 if TYPE_CHECKING:
     from tether_service.core.types import ToolExecutionContext
+
+
+class ToolInputs(BaseModel):
+    """Base class for **Style A** tool input models.
+
+    Tools that opt into Pydantic-driven input validation declare a nested
+    inputs model inheriting from :class:`ToolInputs` and assign it to the
+    class-level :attr:`BaseTool.Inputs`. The :meth:`BaseTool.invoke` shim
+    detects this and validates the args dict via
+    :func:`Inputs.model_validate` before calling :meth:`run`.
+
+    The default ``extra="forbid"`` matches the contract that the OpenAI
+    function-call schema is the single source of truth: any model-emitted
+    arg outside the schema is a model error, not silently dropped.
+
+    Synthesis §4 Phase 4 step 43; A2 step 5.
+    """
+
+    model_config = ConfigDict(extra="forbid")
 
 # =============================
 # Tool Authoring Guidelines
@@ -52,8 +74,27 @@ class BaseTool(Tool):
     Synthesis §4 Phase 4 step 41 + §13.2 R5.
     """
 
+    Inputs: ClassVar[Optional[Type[ToolInputs]]] = None
+    """**Style A** opt-in: a :class:`ToolInputs` subclass that describes
+    the tool's input schema declaratively.
+
+    When set, :meth:`invoke` Pydantic-validates the args dict via
+    ``Inputs.model_validate(args)`` and calls :meth:`run` with the
+    validated model instance (single positional arg). When ``None``
+    (the default — **Style B**), :meth:`invoke` unpacks the args dict
+    as keyword arguments to :meth:`run`, the legacy behavior preserved
+    for tools that prefer Annotated kwargs over a dedicated inputs class.
+
+    Synthesis §4 Phase 4 step 43; A2 step 5.
+    """
+
     def __init__(self):
-        self._registry_name: str | None = None
+        # No-op constructor preserved for subclasses that call ``super().__init__()``.
+        # The legacy per-instance ``registry-name`` injection was retired in
+        # Phase 4 step 43; the ``@tool(name=...)`` decorator now sets the
+        # registry name at class definition time via the
+        # ``_tether_tool_registered_name`` marker consumed by :attr:`name`.
+        pass
 
     async def invoke(
         self,
@@ -61,24 +102,31 @@ class BaseTool(Tool):
         *,
         context: Optional["ToolExecutionContext"] = None,
     ) -> Any:
-        """Registry-facing shim. Synthesis §6 row 4: unpacks the args dict
-        into keyword arguments and delegates to the author-defined run().
+        """Registry-facing shim. Three dispatch paths:
 
-        Tools that DO NOT need the execution context define run() with
-        their typed kwargs as before; this shim omits ``context`` from
-        the call. Tools that DO need the context (e.g. Phase 4.5+
-        connector tools — WhatsApp, Gmail draft+confirm send-safety
-        pattern) declare a keyword-only ``context`` parameter on run()
-        and the inspect-based dispatcher passes it through.
+        1. **Style A** (``cls.Inputs`` is a :class:`ToolInputs` subclass):
+           Pydantic-validate ``args`` via ``Inputs.model_validate(args)``
+           and call ``run(inputs)`` (or ``run(inputs, context=...)`` if
+           the signature opts in).
+        2. **Style B with context**: ``run`` declares a keyword-only
+           ``context`` param. Unpack args as kwargs and pass ``context``.
+        3. **Style B legacy**: no ``context`` param. Unpack args as
+           kwargs only.
 
-        Detection is by *named* parameter only — a bare ``**kwargs`` does
-        NOT opt in. Tools opt in explicitly by adding ``context=None``
-        (or ``context: Optional[ToolExecutionContext] = None``) to their
-        ``run`` signature.
+        Connector-style tools (Phase 4.5+) opt into ``context`` to
+        consume :attr:`ToolExecutionContext.user_confirmed_send` for
+        the draft+confirm send-safety pattern (connector spec §4 footer).
 
-        Synthesis §4 Phase 4 step 41a; connector spec §4 footer.
+        Synthesis §4 Phase 4 step 41a + step 43; A2 step 5.
         """
         import inspect
+
+        if self.Inputs is not None:
+            inputs = self.Inputs.model_validate(args)
+            sig = inspect.signature(self.run)
+            if "context" in sig.parameters:
+                return await self.run(inputs, context=context)
+            return await self.run(inputs)
 
         sig = inspect.signature(self.run)
         if "context" in sig.parameters:
@@ -225,35 +273,26 @@ class BaseTool(Tool):
 
     @property
     def auto_schema(self) -> Dict[str, Any]:
-        import inspect
-        from typing import get_type_hints
-        sig = inspect.signature(self.run)
-        # get_type_hints resolves string annotations and Annotated metadata
-        try:
-            hints = get_type_hints(self.run, include_extras=True)
-        except Exception:
-            hints = {}
-        docstring = self.run.__doc__ or self.__doc__ or ""
-        param_docs = self._extract_param_descriptions(docstring)
-        params = {}
-        required = []
-        for name, param in sig.parameters.items():
-            if name == "self":
-                continue
-            # Skip *args and **kwargs — not tool parameters
-            if param.kind in (
-                inspect.Parameter.VAR_POSITIONAL,
-                inspect.Parameter.VAR_KEYWORD,
-            ):
-                continue
-            t = hints.get(name, str)
-            prop = self._python_type_to_json_schema(t)
-            prop["description"] = param_docs.get(name, "")
-            if param.default is not inspect.Parameter.empty:
-                prop["default"] = param.default
-            else:
-                required.append(name)
-            params[name] = prop
+        """Generate an OpenAI-style function tool schema.
+
+        Dispatch:
+
+        * If :attr:`Inputs` is set (Style A), generate from
+          ``cls.Inputs.model_json_schema()`` and strip Pydantic-specific
+          noise so the result matches the convention used by the
+          inspect-based path (no ``$defs``, no ``title`` keys, ``Optional``
+          fields use ``nullable: true`` rather than ``anyOf [..., null]``).
+        * Otherwise (Style B), introspect the :meth:`run` signature
+          (with ``Annotated[T, Field(...)]`` metadata if present) and
+          translate each parameter via
+          :meth:`_python_type_to_json_schema`.
+
+        Synthesis §4 Phase 4 step 43 + step 41 (auto_schema); A2 step 5/7.
+        """
+        if self.Inputs is not None:
+            params, required = self._schema_from_inputs(type(self).Inputs)
+        else:
+            params, required = self._schema_from_run_signature()
         return self.build_schema(
             function_name=self.name,
             description=self.__doc__ or "",
@@ -261,12 +300,181 @@ class BaseTool(Tool):
             required=required,
         )
 
+    @staticmethod
+    def _schema_from_inputs(
+        inputs_cls: Type["ToolInputs"],
+    ) -> "tuple[Dict[str, Any], List[str]]":
+        """Extract ``(properties, required)`` from a :class:`ToolInputs` model.
+
+        Strips Pydantic-specific noise so the emitted schema matches the
+        Style B inspect-based convention:
+
+        * Drops the top-level ``title`` and ``additionalProperties`` keys
+          that Pydantic adds (``additionalProperties: false`` comes from
+          ``extra="forbid"`` and is enforced at validate-time on the
+          Python side, not in the wire schema).
+        * Drops the per-property ``title`` keys.
+        * Collapses ``anyOf: [{X}, {"type": "null"}]`` (Pydantic's
+          encoding for ``Optional[X]``) into ``{X, "nullable": true}``
+          to match the existing :meth:`_python_type_to_json_schema`
+          convention.
+        * Drops ``$defs`` if present (flat input models don't reference
+          nested types; emitted defensively).
+
+        Synthesis §4 Phase 4 step 43; A2 step 5.
+        """
+        raw = inputs_cls.model_json_schema()
+        properties = raw.get("properties", {}) or {}
+        required = list(raw.get("required", []) or [])
+
+        cleaned: Dict[str, Any] = {}
+        for name, prop in properties.items():
+            cleaned[name] = BaseTool._clean_property_schema(prop)
+        return cleaned, required
+
+    @staticmethod
+    def _clean_property_schema(prop: Dict[str, Any]) -> Dict[str, Any]:
+        """Strip Pydantic noise from a single property schema fragment.
+
+        Handles the ``Optional[T]`` case (``anyOf: [{T}, {"type": "null"}]``)
+        by collapsing to a single fragment with ``nullable: true``.
+        """
+        prop = {k: v for k, v in prop.items() if k != "title"}
+
+        any_of = prop.get("anyOf")
+        if isinstance(any_of, list) and len(any_of) == 2:
+            null_branch = next(
+                (b for b in any_of if isinstance(b, dict) and b.get("type") == "null"),
+                None,
+            )
+            other_branch = next(
+                (b for b in any_of if not (isinstance(b, dict) and b.get("type") == "null")),
+                None,
+            )
+            if null_branch is not None and isinstance(other_branch, dict):
+                merged = {k: v for k, v in other_branch.items() if k != "title"}
+                merged["nullable"] = True
+                # Preserve sibling keys from the original (description, default).
+                for k, v in prop.items():
+                    if k in ("anyOf", "title"):
+                        continue
+                    merged.setdefault(k, v)
+                return merged
+
+        return prop
+
+    def _schema_from_run_signature(
+        self,
+    ) -> "tuple[Dict[str, Any], List[str]]":
+        """Style B path: introspect the typed :meth:`run` signature.
+
+        Returns ``(properties, required)`` matching the contract that
+        :meth:`auto_schema` then wraps with :meth:`build_schema`.
+
+        Reads ``Annotated[T, Field(description=..., ge=..., ...)]``
+        metadata to lift Pydantic ``Field`` constraints into the JSON
+        schema (description, default, enum via ``Literal``, numeric
+        bounds, etc.). Falls back to docstring ``Args:`` extraction
+        when no Field metadata is present.
+
+        Synthesis §4 Phase 4 step 43; A2 step 7.
+        """
+        import inspect
+        from typing import get_type_hints
+        from pydantic.fields import FieldInfo
+
+        sig = inspect.signature(self.run)
+        try:
+            hints = get_type_hints(self.run, include_extras=True)
+        except Exception:
+            hints = {}
+        docstring = self.run.__doc__ or self.__doc__ or ""
+        param_docs = self._extract_param_descriptions(docstring)
+        params: Dict[str, Any] = {}
+        required: List[str] = []
+        for name, param in sig.parameters.items():
+            if name == "self":
+                continue
+            if param.kind in (
+                inspect.Parameter.VAR_POSITIONAL,
+                inspect.Parameter.VAR_KEYWORD,
+            ):
+                continue
+            if name == "context":
+                # Phase 4 step 41a: ToolExecutionContext is plumbed by the
+                # invoke shim, not exposed in the schema.
+                continue
+
+            t = hints.get(name, str)
+
+            # Annotated[T, Field(...)]: lift Field metadata onto the schema.
+            field_info: Optional[FieldInfo] = None
+            origin = get_origin(t)
+            try:
+                import typing
+                if origin is typing.Annotated:
+                    inner_args = get_args(t)
+                    inner_type = inner_args[0]
+                    for meta in inner_args[1:]:
+                        if isinstance(meta, FieldInfo):
+                            field_info = meta
+                            break
+                    t = inner_type
+            except AttributeError:
+                pass
+
+            prop = self._python_type_to_json_schema(t)
+
+            if field_info is not None:
+                if field_info.description:
+                    prop["description"] = field_info.description
+                # Numeric / string constraints expressed as Field metadata:
+                for meta in field_info.metadata:
+                    if hasattr(meta, "ge"):
+                        prop["minimum"] = meta.ge
+                    if hasattr(meta, "le"):
+                        prop["maximum"] = meta.le
+                    if hasattr(meta, "gt"):
+                        prop["exclusiveMinimum"] = meta.gt
+                    if hasattr(meta, "lt"):
+                        prop["exclusiveMaximum"] = meta.lt
+                    if hasattr(meta, "min_length"):
+                        prop["minLength"] = meta.min_length
+                    if hasattr(meta, "max_length"):
+                        prop["maxLength"] = meta.max_length
+                    if hasattr(meta, "pattern"):
+                        prop["pattern"] = meta.pattern
+
+            if "description" not in prop:
+                prop["description"] = param_docs.get(name, "")
+
+            if param.default is not inspect.Parameter.empty:
+                prop["default"] = param.default
+            else:
+                required.append(name)
+            params[name] = prop
+        return params, required
+
     @property
     def name(self) -> str:
-        # Use registry name if set, otherwise fall back to class name
-        if self._registry_name:
-            return self._registry_name
-        return self.__class__.__name__
+        """Registry name set by the :func:`@tool` decorator.
+
+        Reads the class-level marker attribute
+        (``_tether_tool_registered_name``) installed by
+        :func:`tether_service.tools.registration.tool` at class
+        definition time. Falls back to the bare class name when an
+        undecorated :class:`BaseTool` subclass is used directly (test
+        fixtures).
+
+        Walks the MRO so the marker is found on whichever class in the
+        chain was decorated, preferring the most-derived class's own
+        marker. Synthesis §4 Phase 4 step 42 + step 43.
+        """
+        cls = type(self)
+        for klass in cls.__mro__:
+            if "_tether_tool_registered_name" in klass.__dict__:
+                return klass.__dict__["_tether_tool_registered_name"]
+        return cls.__name__
 
 
     @staticmethod

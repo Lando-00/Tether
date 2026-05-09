@@ -31,7 +31,6 @@ class _AddTool(BaseTool):
 
     def __init__(self):
         super().__init__()
-        self._registry_name = "add"
 
     @property
     def schema(self) -> Dict[str, Any]:
@@ -94,7 +93,6 @@ class TestBaseToolInvokeShim:
     def test_timetool_invoke_and_run_agree(self):
         """TimeTool.invoke({'timezone': 'UTC'}) == TimeTool.run(timezone='UTC')."""
         tool = TimeTool()
-        tool._registry_name = "time_tool"
         r_invoke = asyncio.get_event_loop().run_until_complete(
             tool.invoke({"timezone": "UTC"})
         )
@@ -150,7 +148,6 @@ class TestBundledToolsStillWork:
     def test_bundled_tool_constructible_with_valid_schema(self, tool_cls, registry_name):
         """Each bundled tool can be constructed and its schema is a non-empty dict."""
         tool = tool_cls()
-        tool._registry_name = registry_name
         schema = tool.schema
         assert isinstance(schema, dict), f"{tool_cls.__name__}.schema is not a dict"
         assert schema, f"{tool_cls.__name__}.schema is empty"

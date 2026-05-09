@@ -1,7 +1,10 @@
 
+from typing import Annotated, Any, Dict, Literal
+
+from pydantic import Field
+
 from tether_service.tools.base import BaseTool
 from tether_service.tools.registration import tool
-from typing import Dict, Any, Literal
 
 
 @tool(name="time")
@@ -17,18 +20,33 @@ class TimeTool(BaseTool):
 
     async def run(
         self,
-        timezone: str = "UTC",
-        format: Literal["iso", "rfc2822", "human"] = "human"
+        timezone: Annotated[
+            str,
+            Field(
+                description=(
+                    "IANA timezone (e.g., 'Europe/Dublin', 'America/New_York', 'UTC'). "
+                    "Defaults to UTC."
+                ),
+            ),
+        ] = "UTC",
+        format: Annotated[
+            Literal["iso", "rfc2822", "human"],
+            Field(
+                description=(
+                    "Output format - 'iso' (ISO 8601), 'rfc2822' (RFC 2822), "
+                    "or 'human' (readable). Defaults to 'human'."
+                ),
+            ),
+        ] = "human",
     ) -> dict:
-        """
-        Get the current time for a timezone.
-        
-        Args:
-            timezone: IANA timezone (e.g., 'Europe/Dublin', 'America/New_York', 'UTC'). Defaults to UTC.
-            format: Output format - 'iso' (ISO 8601), 'rfc2822' (RFC 2822), or 'human' (readable). Defaults to 'human'.
-        
-        Returns:
-            dict: {"time": <formatted time string>}
+        """Get the current time for a timezone.
+
+        Style B (synthesis §4 Phase 4 step 43; A2 step 7): parameters use
+        ``Annotated[T, Field(...)]`` so :meth:`BaseTool.auto_schema` lifts
+        descriptions and constraints into the JSON schema. Pydantic does
+        not validate Style B kwargs at invoke-time — that is reserved for
+        Style A (the ``Inputs`` ClassVar). Behavior preserved: unknown
+        timezones return ``{"time": None, "error": ...}``.
         """
         import datetime
         import email.utils as eut
