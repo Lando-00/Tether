@@ -202,70 +202,115 @@ class MLCProvider(ModelProvider):
 
     def shutdown_all(self, per_engine_timeout: float = 0.75) -> None:
         """
-        Bounded, lock-light shutdown that won't hang the process.
-        
-        Phase A: Detach cache under lock (fast)
-        Phase B: Abort requests and terminate engines outside lock (bounded)
-        Phase C: Clear references immediately to avoid destructor hangs
-        
-        If termination times out, we abandon (drop refs) rather than hang.
-        
+        Bounded, lock-light, PARALLEL shutdown that won't hang the process.
+
+        Phase A: Detach cache under lock (fast; serial)
+        Phase B: PARALLEL — abort requests and terminate engines via
+                 ``ThreadPoolExecutor(max_workers=min(N, 4))``. Each worker
+                 calls ``_abort_all_requests`` then ``_terminate_bounded`` and
+                 drops its local engine reference before returning.
+        Phase C: Per-worker references are released by Phase B; the items
+                 list is drained into futures and explicitly cleared before
+                 we wait, so the only remaining references live inside the
+                 worker thread frames.
+
+        Worst case is bounded by ``per_engine_timeout`` (≈0.75s) instead of
+        ``N × per_engine_timeout`` because the workers run concurrently.
+        Total wall time is additionally bounded by
+        ``hw_shutdown_budget_sec`` (the watchdog's outer cap); engines that
+        miss that budget are abandoned — the watchdog's ``daemon_thread_call``
+        wrapper will let the process exit without waiting on them.
+
         CRITICAL: For Qwen2.5-7B (prefill_chunk_size=256) vs Qwen3-4B (2048),
-        the smaller chunks mean different OpenCL resource states. We must
-        clear engine references immediately after terminate() to avoid
-        hanging in destructors when function scope exits.
+        the smaller chunks mean different OpenCL resource states. Each
+        worker drops its engine reference immediately after ``terminate()``
+        so destructors don't fire after the worker thread exits and start
+        chaining cleanup work on the main thread. Synthesis §4 Phase 3
+        step 38; B6 step 9.
         """
-        import gc
-        
-        # 1) Snapshot and detach cache quickly
+        import concurrent.futures
+
+        # 1) Snapshot and detach cache quickly (Phase A)
         with self._cache_lock:
             if not self._engine_cache:
                 print("==== NO MODELS TO UNLOAD ====")
                 return
             items = list(self._engine_cache.items())
             self._engine_cache = {}  # detach in O(1)
-        
-        print(f"==== SHUTTING DOWN: Unloading {len(items)} model(s) ====")
-        
-        # 2) Abort in-flight requests and terminate engines outside the lock
-        # CRITICAL: Process items one at a time and clear references immediately
-        # to prevent holding references that trigger destructors on scope exit
-        for key, engine in items:
-            # Phase A: Abort outstanding requests
+
+        n = len(items)
+        max_workers = min(n, 4)
+        print(
+            f"==== SHUTTING DOWN: Unloading {n} model(s) in parallel "
+            f"(max_workers={max_workers}) ===="
+        )
+
+        # 2) Parallel teardown (Phase B). Each worker owns its engine ref
+        # locally; when the worker function returns, the ref dies before
+        # the executor records the result, so destructors don't accumulate.
+        def _terminate_one(key: str, engine):
             try:
                 aborted = _abort_all_requests(engine)
                 if aborted:
                     print(f"Aborted {aborted} in-flight request(s) for {key}")
             except Exception:
                 pass
-            
-            # Phase B: Terminate with timeout
+
             try:
                 print(f"Terminating engine: {key}")
                 _terminate_bounded(engine, timeout=per_engine_timeout)
                 print(f"Engine terminated: {key}")
+                return (key, "ok")
             except TimeoutError:
                 print(f"Timeout terminating engine: {key} — abandoning")
+                return (key, "timeout")
             except Exception as e:
                 print(f"Warning: Error terminating engine {key}: {e}")
                 traceback.print_exc(file=sys.stderr)
-            
-            # Phase C: Immediately delete reference to this engine
-            # This prevents accumulation of terminated engines in the items list
-            # which would all have destructors called at once on scope exit
-            try:
-                del engine
-            except Exception:
-                pass
-        
-        # 3) Clear the items list and force GC while we're still in controlled context
+                return (key, f"error: {e}")
+            # `engine` ref dies on return — no scope-exit destructor pile-up.
+
+        # Use shutdown(wait=False) on abandon so a stuck future doesn't
+        # block our caller. The watchdog (daemon_thread_call) will let the
+        # process exit even if a worker is wedged inside native code.
+        executor = concurrent.futures.ThreadPoolExecutor(
+            max_workers=max_workers,
+            thread_name_prefix="mlc-shutdown",
+        )
+        results: list[tuple[str, str]] = []
         try:
-            items.clear()  # Remove all (key, engine) tuples
-            del items
-        except Exception:
-            pass
-        
-        print(f"==== ALL MODELS UNLOADED ====")
+            futures = [executor.submit(_terminate_one, k, e) for k, e in items]
+            # Drop the list-level engine refs immediately so only worker
+            # frames keep the engines alive. Without this, `items` would
+            # pin every engine until after the as_completed loop.
+            items.clear()
+            items = None
+
+            # Bound total wall time by the provider's shutdown budget.
+            # Per-engine timeout already caps each worker; the outer cap
+            # protects against worst-case contention (e.g., several engines
+            # all timing out at once).
+            total_budget = max(per_engine_timeout * 1.5, self.hw_shutdown_budget_sec)
+
+            try:
+                for fut in concurrent.futures.as_completed(futures, timeout=total_budget):
+                    try:
+                        results.append(fut.result())
+                    except Exception as e:
+                        results.append(("?", f"error: {e}"))
+            except concurrent.futures.TimeoutError:
+                print(
+                    f"Total shutdown budget {total_budget:.2f}s exceeded; "
+                    "abandoning remaining engines"
+                )
+        finally:
+            # Don't wait for stuck futures; abandoned worker threads are
+            # daemons (default for ThreadPoolExecutor) so they won't block
+            # interpreter shutdown. Synthesis §4 Phase 3 step 38.
+            executor.shutdown(wait=False)
+
+        # 3) Phase C — references already dropped by workers; just log.
+        print(f"==== ALL MODELS UNLOADED (parallel): {results} ====")
 
     def unload_model_by_cache_key(self, cache_key: str) -> bool:
         """
