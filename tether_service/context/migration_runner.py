@@ -21,6 +21,13 @@ from tether_service.core.logging import logger
 
 _MIGRATIONS_DIR = Path(__file__).resolve().parent / "migrations"
 
+# In-process cache of normalized DSNs already migrated in this process.
+# Avoids redundant yoyo I/O when Engine.from_settings and SqliteSessionStore.__init__
+# both call apply_pending_migrations for the same DB in the same process.
+# Safe: schema only changes between process restarts; fresh processes start
+# with an empty cache and always run yoyo on the first call.
+_MIGRATED_DSNS: set[str] = set()
+
 
 def apply_pending_migrations(dsn: str, *, migrations_dir: Optional[Path] = None) -> int:
     """Apply any pending yoyo migrations to the SQLite database at ``dsn``.
@@ -46,6 +53,11 @@ def apply_pending_migrations(dsn: str, *, migrations_dir: Optional[Path] = None)
     # yoyo on Windows requires an absolute path in the DSN.
     normalized_dsn = _normalize_dsn(dsn)
 
+    # Fast path: already migrated in this process (idempotent no-op).
+    if normalized_dsn in _MIGRATED_DSNS:
+        logger.debug("DB schema migration skipped (already applied in this process)")
+        return 0
+
     backend = get_backend(normalized_dsn)
     migrations = read_migrations(str(target))
 
@@ -62,6 +74,7 @@ def apply_pending_migrations(dsn: str, *, migrations_dir: Optional[Path] = None)
         else:
             logger.debug("DB schema is up to date; no migrations to apply")
 
+    _MIGRATED_DSNS.add(normalized_dsn)
     return applied_count
 
 

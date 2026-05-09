@@ -48,12 +48,22 @@ def test_fresh_db_applies_baseline(tmp_dsn: str) -> None:
 
 
 def test_idempotent_second_apply(tmp_dsn: str) -> None:
-    """Applying twice is a no-op the second time."""
+    """Applying twice is a no-op the second time — both via in-process
+    cache (fast path) and via yoyo's own tracking table (slow path)."""
+    import tether_service.context.migration_runner as _runner
+
     first = apply_pending_migrations(tmp_dsn)
     assert first >= 1
 
+    # Fast path: in-process cache returns 0 without hitting yoyo.
     second = apply_pending_migrations(tmp_dsn)
     assert second == 0
+
+    # Slow path: clear the in-process cache and verify yoyo also returns 0
+    # (its _yoyo_migration tracking table already lists 001_current_schema).
+    _runner._MIGRATED_DSNS.discard(_runner._normalize_dsn(tmp_dsn))
+    third = apply_pending_migrations(tmp_dsn)
+    assert third == 0
 
 
 def test_baseline_creates_required_columns(tmp_dsn: str) -> None:
