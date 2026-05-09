@@ -1,0 +1,49 @@
+[
+  {
+    "type": "text",
+    "session_id": "<sid>",
+    "data": {
+      "delta": "Here is the time "
+    }
+  },
+  {
+    "type": "tool_marker_detected",
+    "session_id": "<sid>",
+    "data": {}
+  },
+  {
+    "type": "tool_started",
+    "session_id": "<sid>",
+    "data": {
+      "tool_name": "time_tool",
+      "tool_args": {}
+    }
+  },
+  {
+    "type": "tool_completed",
+    "session_id": "<sid>",
+    "data": {
+      "tool_name": "time_tool",
+      "tool_result": {
+        "time": "<time>"
+      }
+    }
+  },
+  {
+    "type": "text",
+    "session_id": "<sid>",
+    "data": {
+      "delta": "Done."
+    }
+  },
+  {
+    "type": "done",
+    "session_id": "<sid>",
+    "data": {}
+  },
+  {
+    "type": "done",
+    "session_id": "<sid>",
+    "data": {}
+  }
+]

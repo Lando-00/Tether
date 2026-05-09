@@ -19,6 +19,7 @@ from tether_service.tools.brave_client import BraveSearchClient
 # Skip all tests in this module if BRAVE_API_KEY is not set
 pytestmark = [
     pytest.mark.integration,
+    pytest.mark.network,
     pytest.mark.skipif(
         not os.getenv("BRAVE_API_KEY"),
         reason="BRAVE_API_KEY not set - real API tests require valid key"

@@ -18,6 +18,7 @@ from tether_service.tools.web_search_tool import WebSearchTool
 
 pytestmark = [
     pytest.mark.integration,
+    pytest.mark.network,
     pytest.mark.skipif(
         not os.getenv("BRAVE_API_KEY"),
         reason="BRAVE_API_KEY not set - real API tests require valid key"

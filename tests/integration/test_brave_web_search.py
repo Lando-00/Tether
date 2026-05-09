@@ -22,10 +22,13 @@ from typing import AsyncIterator
 
 
 # Skip this test if BRAVE_API_KEY is not set (optional E2E test)
-pytestmark = pytest.mark.skipif(
-    not os.getenv("BRAVE_API_KEY"),
-    reason="BRAVE_API_KEY not set - E2E test requires real API key"
-)
+pytestmark = [
+    pytest.mark.network,
+    pytest.mark.skipif(
+        not os.getenv("BRAVE_API_KEY"),
+        reason="BRAVE_API_KEY not set - E2E test requires real API key"
+    ),
+]
 
 
 @pytest.mark.asyncio
