@@ -12,14 +12,6 @@ from tether_service.core.interfaces import SessionStore
 
 class SqliteSessionStore(SessionStore):
     def __init__(self, dsn: str = "sqlite:///./data/tether.db"):
-        # Apply pending schema migrations before opening the connection so that
-        # SqliteSessionStore instances created outside Engine.from_settings
-        # (e.g. contract tests, CLI one-shots) still get a valid schema.
-        # Migration is idempotent — already-current DBs are no-ops.
-        # Phase 6 step 59. Synthesis §3.6, B1 step 2.
-        from tether_service.context.migration_runner import apply_pending_migrations
-        apply_pending_migrations(dsn)
-
         # Parse DSN
         if dsn.startswith("sqlite:///"):
             path = dsn[len("sqlite:///"):]
@@ -34,12 +26,38 @@ class SqliteSessionStore(SessionStore):
         self.conn = sqlite3.connect(str(p), check_same_thread=False)
         self.conn.row_factory = sqlite3.Row
         self._init_pragmas()
+        # Fast, yoyo-independent schema bootstrap. Reads the baseline SQL file
+        # directly so the schema source of truth stays in migrations/.
+        # Engine.from_settings calls apply_pending_migrations (yoyo-tracked)
+        # BEFORE constructing the store; this call is the fallback for standalone
+        # use (contract tests, CLI one-shots). Idempotent — IF NOT EXISTS guards.
+        self._bootstrap_schema()
 
     def _init_pragmas(self) -> None:
         cur = self.conn.cursor()
         cur.execute("PRAGMA journal_mode=WAL;")
         cur.execute("PRAGMA synchronous=NORMAL;")
         cur.execute("PRAGMA foreign_keys=ON;")
+        self.conn.commit()
+
+    def _bootstrap_schema(self) -> None:
+        """Execute each DDL statement from the baseline migration SQL file.
+
+        This is a lightweight, yoyo-independent path so SqliteSessionStore
+        works standalone (contract tests, CLI). Engine.from_settings calls
+        apply_pending_migrations (yoyo-tracked) first; this is the fallback.
+        All statements use CREATE TABLE/INDEX IF NOT EXISTS — fully idempotent.
+        """
+        sql_path = Path(__file__).resolve().parent / "migrations" / "001_current_schema.sql"
+        sql = sql_path.read_text(encoding="utf-8")
+        for stmt in sql.split(";"):
+            stmt = stmt.strip()
+            # Skip empty fragments and pure-comment lines
+            if stmt and not all(line.startswith("--") for line in stmt.splitlines() if line.strip()):
+                try:
+                    self.conn.execute(stmt)
+                except sqlite3.OperationalError:
+                    pass  # IF NOT EXISTS handles races; ignore duplicates
         self.conn.commit()
 
     async def create_session(self, session_id: str, created_at: int) -> None:
