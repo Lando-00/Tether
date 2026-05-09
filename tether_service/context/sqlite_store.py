@@ -12,9 +12,17 @@ from tether_service.core.interfaces import SessionStore
 
 class SqliteSessionStore(SessionStore):
     def __init__(self, dsn: str = "sqlite:///./data/tether.db"):
+        # Apply pending schema migrations before opening the connection so that
+        # SqliteSessionStore instances created outside Engine.from_settings
+        # (e.g. contract tests, CLI one-shots) still get a valid schema.
+        # Migration is idempotent — already-current DBs are no-ops.
+        # Phase 6 step 59. Synthesis §3.6, B1 step 2.
+        from tether_service.context.migration_runner import apply_pending_migrations
+        apply_pending_migrations(dsn)
+
         # Parse DSN
         if dsn.startswith("sqlite:///"):
-            path = dsn[len("sqlite:///") :]
+            path = dsn[len("sqlite:///"):]
         else:
             path = dsn
 
@@ -26,55 +34,12 @@ class SqliteSessionStore(SessionStore):
         self.conn = sqlite3.connect(str(p), check_same_thread=False)
         self.conn.row_factory = sqlite3.Row
         self._init_pragmas()
-        self._init_schema()
 
     def _init_pragmas(self) -> None:
         cur = self.conn.cursor()
         cur.execute("PRAGMA journal_mode=WAL;")
         cur.execute("PRAGMA synchronous=NORMAL;")
         cur.execute("PRAGMA foreign_keys=ON;")
-        self.conn.commit()
-
-    def _init_schema(self) -> None:
-        cur = self.conn.cursor()
-        cur.execute(
-            """
-            CREATE TABLE IF NOT EXISTS sessions (
-                id TEXT PRIMARY KEY,
-                created_at TEXT NOT NULL,
-                metadata TEXT NOT NULL
-            )
-            """
-        )
-        cur.execute(
-            """
-            CREATE TABLE IF NOT EXISTS messages (
-                id INTEGER PRIMARY KEY AUTOINCREMENT,
-                session_id TEXT NOT NULL,
-                role TEXT NOT NULL,
-                content TEXT,
-                thinking_text TEXT,
-                tool_name TEXT,
-                args TEXT,
-                result TEXT,
-                ts TEXT NOT NULL,
-                FOREIGN KEY(session_id) REFERENCES sessions(id)
-            )
-            """
-        )
-        # Ensure new columns exist when migrating from prior schema versions
-        cur.execute("PRAGMA table_info(messages)")
-        existing_columns = {row["name"] for row in cur.fetchall()}
-        if "thinking_text" not in existing_columns:
-            cur.execute("ALTER TABLE messages ADD COLUMN thinking_text TEXT")
-        if "args" not in existing_columns:
-            cur.execute("ALTER TABLE messages ADD COLUMN args TEXT")
-        if "result" not in existing_columns:
-            cur.execute("ALTER TABLE messages ADD COLUMN result TEXT")
-
-        cur.execute(
-            "CREATE INDEX IF NOT EXISTS idx_session_ts ON messages(session_id, ts)"
-        )
         self.conn.commit()
 
     async def create_session(self, session_id: str, created_at: int) -> None:
