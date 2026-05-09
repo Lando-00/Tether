@@ -183,10 +183,37 @@ async def login_begin(connector_id: str, request: Request) -> Dict[str, Any]:
 
     Returns a serialized :class:`LoginPrompt` (QR-code data URL, OAuth
     URL, password instructions, etc.) per connector spec §3.5.
+
+    Phase 4.5 follow-up (rubber-duck consensus, 1m CONCERN): if the
+    connector emits an ``oauth_state`` token in ``LoginPrompt.extra``,
+    persist it in the registry's TTL cache so a subsequent
+    ``/oauth/callback?state=...`` can validate the round-trip
+    (CSRF guard). Without this hop, Phase 2b Gmail's OAuth flow could
+    never succeed end-to-end — ``oauth_callback`` would always 400 on
+    missing state. Connectors that don't use OAuth (e.g. EchoConnector,
+    WhatsApp's QR flow) simply omit ``oauth_state`` and this branch
+    is a no-op.
     """
     registry = _get_registry(request)
     conn = _resolve(registry, connector_id)
     prompt = await conn.begin_login()
+
+    state_token = (
+        prompt.extra.get("oauth_state") if prompt.extra else None
+    )
+    if state_token:
+        # Forward the full ``extra`` dict to ``complete_login`` on
+        # callback so connectors can attach arbitrary connector-defined
+        # data (PKCE verifier, scope hints, etc.) without changing this
+        # route's signature.
+        registry.oauth_state.set(
+            state_token,
+            {
+                "connector_id": connector_id,
+                "extra": dict(prompt.extra),
+            },
+        )
+
     return _serialize_prompt(prompt)
 
 
@@ -253,16 +280,37 @@ async def oauth_callback(
 
 @router.post("/{connector_id}/logout")
 async def logout(connector_id: str, request: Request) -> Dict[str, Any]:
-    """Delete persisted creds + transition to LOGGED_OUT.
+    """Delete persisted creds + stop the connector + transition to LOGGED_OUT.
 
-    The Connector instance is preserved (re-login can re-use it). Per
-    connector spec §3.1, ``logout()`` is responsible for any internal
-    ``stop()``; the registry does not auto-stop here.
+    Per connector spec §3.8: ``logout()`` is responsible for credential
+    deletion; the registry is responsible for stopping background tasks
+    / connections owned by the connector. Both must run.
+
+    Phase 4.5 follow-up (rubber-duck consensus, gpt-5.5 BLOCKING #2):
+    previously this route only called ``conn.logout()`` and explicitly
+    skipped ``registry.stop_connector()``. That left
+    ``inbound_stream`` consumers, scheduled tasks, and any open
+    connections alive after credentials were deleted — a use-after-
+    logout hazard that future Gmail/WhatsApp connectors would hit.
+
+    Order: credentials first (so a slow stop can't keep using them),
+    then ``stop_connector`` with the registry's 2 s cooperative budget
+    (spec §3.3 step 6). ``stop_connector`` is idempotent and swallows
+    its own exceptions so a flaky stop never bubbles up here.
     """
     registry = _get_registry(request)
     conn = _resolve(registry, connector_id)
+
+    # 1. Delete credentials (transitions to LOGGED_OUT for spec-compliant
+    #    connectors).
     await conn.logout()
-    return {"ok": True, "id": connector_id}
+
+    # 2. Stop background tasks / connections under the 2 s spec §3.3
+    #    cooperative budget. Idempotent + safe even when ``logout()``
+    #    already stopped internal tasks.
+    await registry.stop_connector(connector_id)
+
+    return {"ok": True, "id": connector_id, "state": ConnectorState.LOGGED_OUT.value}
 
 
 __all__ = ["router"]

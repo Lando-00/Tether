@@ -403,6 +403,12 @@ async def test_stop_connector_exception_logged_not_raised(
 
 @pytest.mark.anyio
 async def test_start_all_returns_failures_dict(tmp_path: Path) -> None:
+    """Both connectors are READY by default (per ``_make_fake_connector``);
+    ``start_all`` attempts both, records bad's failure in the dict.
+
+    Phase 4.5 follow-up (F7): start_all filters by READY but these
+    fakes already report READY, so behaviour is unchanged.
+    """
     ok_start = AsyncMock()
     bad_start = AsyncMock(side_effect=RuntimeError("nope"))
     a = _make_fake_connector(
@@ -418,6 +424,78 @@ async def test_start_all_returns_failures_dict(tmp_path: Path) -> None:
     assert "nope" in str(results["bad"])
     ok_start.assert_awaited_once()
     bad_start.assert_awaited_once()
+
+
+@pytest.mark.anyio
+async def test_start_all_skips_non_ready(tmp_path: Path) -> None:
+    """F7: start_all must filter connectors by ``auth_status``: only
+    READY connectors are started; UNCONFIGURED / LOGGED_OUT / ERROR
+    connectors are skipped (and don't appear in the result dict).
+
+    Before the fix, start_all blindly called start_connector on every
+    registered connector, which contradicted spec §3.3 step 4 and
+    differed from Engine.__aenter__ (which already filtered to READY).
+    """
+    ready_start = AsyncMock()
+    skipped_start = AsyncMock()
+
+    # ``ready`` connector: auth_status returns READY (default).
+    ready = _make_fake_connector(
+        connector_id="ready",
+        tool_names=("ready_x",),
+        start=ready_start,
+    )
+    # ``unc`` connector: override auth_status to return UNCONFIGURED.
+    unc = _make_fake_connector(
+        connector_id="unc",
+        tool_names=("unc_y",),
+        start=skipped_start,
+    )
+
+    async def _unconfigured_status() -> AuthStatus:
+        return AuthStatus(state=ConnectorState.UNCONFIGURED)
+
+    unc.auth_status = _unconfigured_status  # type: ignore[method-assign]
+
+    registry = ConnectorRegistry([ready, unc], data_dir=tmp_path)
+    results = await registry.start_all()
+
+    # Only the READY one is in the result dict.
+    assert "ready" in results
+    assert results["ready"] is None
+    assert "unc" not in results, (
+        f"UNCONFIGURED connector should be filtered out of start_all results; "
+        f"got {results!r}"
+    )
+
+    # READY connector's start ran; UNCONFIGURED connector's start did NOT.
+    ready_start.assert_awaited_once()
+    skipped_start.assert_not_awaited()
+
+
+@pytest.mark.anyio
+async def test_start_all_records_auth_status_failure(tmp_path: Path) -> None:
+    """F7: if a connector's ``auth_status`` itself raises, that
+    connector is recorded with the exception in the result dict and
+    its ``start_connector`` is NOT called.
+    """
+    start_mock = AsyncMock()
+    conn = _make_fake_connector(
+        connector_id="boom", tool_names=("boom_x",), start=start_mock
+    )
+
+    async def _failing_status() -> AuthStatus:
+        raise RuntimeError("auth_status failure")
+
+    conn.auth_status = _failing_status  # type: ignore[method-assign]
+
+    registry = ConnectorRegistry([conn], data_dir=tmp_path)
+    results = await registry.start_all()
+
+    assert isinstance(results["boom"], RuntimeError)
+    assert "auth_status failure" in str(results["boom"])
+    # start_connector was NOT called because auth_status raised.
+    start_mock.assert_not_awaited()
 
 
 @pytest.mark.anyio
@@ -545,3 +623,121 @@ def test_default_data_dir_resolution() -> None:
 def test_tool_names_default_none(tmp_path: Path) -> None:
     """Calling ``ConnectorRegistry([])`` (no tool_names arg) must work."""
     ConnectorRegistry([], data_dir=tmp_path)  # smoke
+
+
+# ===========================================================================
+# A4. Phase 4.5 follow-up (rubber-duck consensus): tools() called once
+# ===========================================================================
+
+
+def test_tools_called_once_during_construction(tmp_path: Path) -> None:
+    """F3: a connector's ``tools()`` must be invoked exactly ONCE during
+    ``ConnectorRegistry.__init__`` (validation + aggregation share a
+    single cached call).
+
+    Before the fix, ``tools()`` was called twice — once for M5 validation
+    and once again for aggregation. A non-idempotent ``tools()`` could
+    pass validation then yield a different dict, producing inconsistent
+    registry state silently.
+    """
+    call_counter = {"count": 0}
+    fixed_tools: Dict[str, Tool] = {"echo_send": _StubTool("echo_send")}
+
+    class _CountingConnector(Connector):
+        id = "echo"
+
+        async def start(self) -> None:
+            return None
+
+        async def stop(self) -> None:
+            return None
+
+        async def logout(self) -> None:
+            return None
+
+        async def health(self) -> HealthStatus:
+            return HealthStatus(state=ConnectorState.READY)
+
+        async def auth_status(self) -> AuthStatus:
+            return AuthStatus(state=ConnectorState.READY)
+
+        async def begin_login(self) -> LoginPrompt:
+            return LoginPrompt(kind="url", payload="x")
+
+        async def complete_login(
+            self, *, payload: Dict[str, Any]
+        ) -> LoginContinueResult:
+            return LoginContinueResult(state=ConnectorState.READY)
+
+        def tools(self) -> Dict[str, Tool]:
+            call_counter["count"] += 1
+            return dict(fixed_tools)
+
+        async def inbound_stream(self) -> AsyncIterator[InboundEvent]:
+            if False:  # pragma: no cover
+                yield  # type: ignore[unreachable]
+
+    conn = _CountingConnector()
+    registry = ConnectorRegistry([conn], data_dir=tmp_path)
+
+    # Construction must have called tools() exactly once.
+    assert call_counter["count"] == 1, (
+        f"tools() called {call_counter['count']} times during construction; "
+        f"expected exactly 1 (Phase 4.5 follow-up F3)."
+    )
+
+    # The aggregated tool set still reflects what tools() returned.
+    aggregated = registry.aggregate_tools()
+    assert "echo_send" in aggregated
+    # aggregate_tools() does NOT re-invoke tools() — uses cached dict.
+    assert call_counter["count"] == 1
+
+
+def test_tools_raise_during_construction(tmp_path: Path) -> None:
+    """F3: a connector whose ``tools()`` raises must produce a
+    ``ValueError`` chained from the original exception, with a message
+    that names the offending connector.
+    """
+
+    class _BadToolsConnector(Connector):
+        id = "broken"
+
+        async def start(self) -> None:
+            return None
+
+        async def stop(self) -> None:
+            return None
+
+        async def logout(self) -> None:
+            return None
+
+        async def health(self) -> HealthStatus:
+            return HealthStatus(state=ConnectorState.READY)
+
+        async def auth_status(self) -> AuthStatus:
+            return AuthStatus(state=ConnectorState.READY)
+
+        async def begin_login(self) -> LoginPrompt:
+            return LoginPrompt(kind="url", payload="x")
+
+        async def complete_login(
+            self, *, payload: Dict[str, Any]
+        ) -> LoginContinueResult:
+            return LoginContinueResult(state=ConnectorState.READY)
+
+        def tools(self) -> Dict[str, Tool]:
+            raise RuntimeError("boom from tools()")
+
+        async def inbound_stream(self) -> AsyncIterator[InboundEvent]:
+            if False:  # pragma: no cover
+                yield  # type: ignore[unreachable]
+
+    with pytest.raises(ValueError) as excinfo:
+        ConnectorRegistry([_BadToolsConnector()], data_dir=tmp_path)
+
+    msg = str(excinfo.value)
+    assert "broken" in msg
+    assert "tools()" in msg
+    # Underlying RuntimeError chained via ``raise ... from``.
+    assert isinstance(excinfo.value.__cause__, RuntimeError)
+    assert "boom" in str(excinfo.value.__cause__)

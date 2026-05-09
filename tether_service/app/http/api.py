@@ -1,25 +1,23 @@
 """FastAPI app factory + lifespan.
 
-Phase 3 step 35 (``p3-lifespan-slim``): the lifespan body is now just
-``yield`` then ``await engine.aclose()`` — bounded shutdown lives in
-:meth:`tether_service.runtime.hw_watchdog.HardwareWatchdog.shutdown_all`,
-signal handling lives in
-:class:`tether_service.runtime.signal_supervisor.SignalSupervisor`.
+Phase 3 step 35 (``p3-lifespan-slim``): bounded shutdown lives in
+:class:`HardwareWatchdog`; signal handling lives in
+:class:`SignalSupervisor`.
 
-Phase 3 follow-up (rubber-duck consensus, gpt-5.5 BLOCKING + xhigh
-CONCERN): the SignalSupervisor install moved from ``__main__.py`` INTO
-the lifespan startup. Why: ``uvicorn.run`` calls ``Server.serve``,
-which calls ``capture_signals`` that REPLACES whatever signal handlers
-the process had. If we install in ``__main__.py`` BEFORE
-``uvicorn.run``, uvicorn overwrites our handlers and the force-exit
-timer never fires. Installing from inside the lifespan ``__aenter__``
-runs AFTER ``capture_signals``, so our ``signal.signal(...)`` runs
-LAST and wins.
+Phase 3 follow-up: SignalSupervisor installs from inside the lifespan
+``__aenter__`` (post ``uvicorn.capture_signals``) so our handlers win.
+
+Phase 4.5 follow-up (rubber-duck consensus, gpt-5.5 BLOCKING #1): the
+lifespan now enters the :class:`Engine` async context before ``yield``
+and exits it on shutdown. The previous body skipped ``__aenter__``, so
+``WebSearchTool.startup`` never ran (every search returned
+``"web_search not initialised"``) and READY connectors never
+auto-started after a server restart.
 
 Library-mode users (no FastAPI) do NOT install SignalSupervisor — they
 manage signals themselves per ``WatchdogMode.LIBRARY`` contract.
 
-Synthesis §4 Phase 3 step 35; Phase 3 follow-up.
+Synthesis §4 Phase 3 step 35; Phase 3 + Phase 4.5 follow-ups.
 """
 from contextlib import asynccontextmanager
 
@@ -38,40 +36,42 @@ from tether_service.runtime.watchdog_mode import WatchdogMode
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
-    """Startup installs :class:`SignalSupervisor` (post-uvicorn-capture
-    so our force-exit timer can actually fire); shutdown delegates to
-    :meth:`Engine.aclose` which routes through :class:`HardwareWatchdog`.
+    """Startup: install :class:`SignalSupervisor` (post-uvicorn-capture)
+    and enter the :class:`Engine` async context — runs ``startup_all``
+    on tools and schedules ``start_connector`` for every READY
+    connector (Phase 4 step 41 + Phase 4.5 step 47d).
 
-    The install must run from HERE (not ``__main__.py``) because
-    ``uvicorn.run`` calls ``capture_signals`` which replaces any
-    handlers installed before it. Our lifespan ``__aenter__`` runs
-    AFTER that, so ``signal.signal(...)`` wins. Synthesis §4 Phase 3
-    step 35; Phase 3 follow-up rubber-duck consensus.
+    Shutdown: exit the Engine async context, which runs
+    ``shutdown_all`` on tools, ``stop_all`` on connectors, then
+    ``aclose`` via :class:`HardwareWatchdog`.
 
-    :class:`SignalSupervisor.install` is idempotent (class-level
-    ``_installed`` flag), so multiple lifespan starts in tests don't
-    double-install.
+    Phase 4.5 follow-up (rubber-duck consensus, gpt-5.5 BLOCKING #1):
+    previously the body was ``yield`` + ``aclose`` only; tools and
+    connectors never started in production HTTP serving.
 
-    Note: ``signal.signal`` only works in the main thread of the main
-    interpreter. Production uvicorn runs the lifespan in the main
-    thread (where ``capture_signals`` ran), so the install always
-    succeeds. ``starlette.testclient.TestClient`` runs the lifespan in
-    an ``anyio`` worker thread, which causes ``signal.signal`` to raise
-    ``ValueError``. We swallow that specific case so existing
-    integration tests using ``TestClient`` don't have to patch the
-    install themselves; tests that need to *verify* the install fires
-    should patch it explicitly (see ``test_lifespan_signal_install.py``).
+    The SignalSupervisor install must run from HERE (not
+    ``__main__.py``) because ``uvicorn.run`` calls ``capture_signals``
+    which replaces any handlers installed before it; our lifespan
+    ``__aenter__`` runs AFTER that, so ``signal.signal(...)`` wins
+    (Synthesis §4 Phase 3 step 35; Phase 3 follow-up).
+
+    ``signal.signal`` only works in the main thread; production uvicorn
+    is fine, but ``TestClient`` runs the lifespan in an ``anyio`` worker
+    thread which raises ``ValueError`` — we swallow that case so route
+    tests don't have to patch the install themselves.
     """
     try:
         SignalSupervisor(max_shutdown_sec=5.0).install()
     except ValueError:
-        # Non-main thread (TestClient anyio worker, embedded interpreter,
-        # etc.) — signal handlers can't be installed here; in production
-        # this branch is unreachable. Phase 3 follow-up.
+        # Non-main thread (TestClient anyio worker, embedded interpreter).
         pass
-    yield
+
     engine: Engine = app.state.gen_svc
-    await engine.aclose()
+    await engine.__aenter__()
+    try:
+        yield
+    finally:
+        await engine.__aexit__(None, None, None)
 
 
 def create_app():

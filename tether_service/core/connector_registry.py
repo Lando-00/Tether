@@ -37,6 +37,7 @@ from pathlib import Path
 from typing import Any, Dict, List, Optional, Set
 
 from tether_service.connectors.base import Connector
+from tether_service.connectors.types import ConnectorState
 from tether_service.core.interfaces import Tool
 from tether_service.core.registry_validator import validate_unique_names
 
@@ -157,9 +158,27 @@ class ConnectorRegistry:
         # 2. Validate each connector's tool names per M5. Forbidden set
         #    grows as we accept connectors: this catches A's tool name
         #    colliding with B's even when neither violates ``tool_names``.
+        #
+        # Phase 4.5 follow-up (rubber-duck consensus, gpt-5.5 CONCERN):
+        # cache the per-connector ``tools()`` result so we call it
+        # exactly ONCE per connector (the previous code called it twice
+        # — here for validation, and again below for aggregation). A
+        # non-idempotent or eventually-failing ``tools()`` could pass
+        # validation and then yield a different dict during aggregation,
+        # producing inconsistent registry state silently. ``tools()``
+        # raising during construction is also wrapped here with a clear
+        # ``Connector '<cid>' tools() raised: ...`` message so the
+        # boot-time failure points at the offending connector.
         accumulated_forbidden: Set[str] = set(tool_names)
+        cached_tools_per_connector: Dict[str, Dict[str, Tool]] = {}
         for cid, conn in self._connectors.items():
-            conn_tools = conn.tools()
+            try:
+                conn_tools = conn.tools()
+            except Exception as exc:
+                raise ValueError(
+                    f"Connector {cid!r} tools() raised: {exc}"
+                ) from exc
+            cached_tools_per_connector[cid] = conn_tools
             try:
                 validate_unique_names(
                     conn_tools,
@@ -172,11 +191,12 @@ class ConnectorRegistry:
                 ) from exc
             accumulated_forbidden.update(conn_tools.keys())
 
-        # 3. Aggregate. Safe to merge naively because step 2 proved no
-        #    cross-connector collisions exist.
+        # 3. Aggregate from the cached dicts (single-pass; no second
+        #    ``tools()`` call). Safe to merge naively because step 2
+        #    proved no cross-connector collisions exist.
         self._all_tools: Dict[str, Tool] = {}
-        for conn in self._connectors.values():
-            self._all_tools.update(conn.tools())
+        for cid in self._connectors:
+            self._all_tools.update(cached_tools_per_connector[cid])
 
         # 4. Resolve data_dir lazily; per spec §3.6 the directories are
         #    only materialised on first ``start_connector``.
@@ -304,29 +324,63 @@ class ConnectorRegistry:
             logger.exception("Connector %s stop() raised: %s", connector_id, exc)
 
     async def start_all(self) -> Dict[str, Optional[BaseException]]:
-        """Start every registered connector concurrently.
+        """Start every currently-READY connector concurrently.
 
-        Returns a ``{connector_id: None | exception}`` dict so callers can
-        decide whether a partial start is acceptable. Failures are logged
-        but do not abort the rest of the start-up.
+        Connectors in ``UNCONFIGURED``, ``AUTHENTICATING``,
+        ``LOGGED_OUT``, ``DEGRADED``, or ``ERROR`` are skipped — they
+        need login (or recovery) first, so calling ``start()`` on them
+        would either no-op or raise ``ConnectorNotConfiguredError``.
+
+        Phase 4.5 follow-up (rubber-duck consensus, xhigh OBSERVATION):
+        previously this method started ALL connectors regardless of
+        state, which contradicted spec §3.3 step 4 (and Engine.__aenter__
+        already filtered to READY). Aligned with Engine.__aenter__ so
+        library users calling ``start_all`` directly get the same
+        contract as the production HTTP path.
+
+        Returns a ``{connector_id: None | exception}`` dict for the
+        connectors that were *attempted* — i.e. those whose
+        ``auth_status`` reported READY. Connectors filtered out (not
+        READY) do NOT appear in the result. Failures from
+        ``start_connector`` are logged but never re-raised; failures
+        from ``auth_status`` itself are logged and the connector is
+        recorded with the exception in the dict.
+
+        To force-start every connector regardless of state (rare;
+        useful for diagnostics or after a manual credential restore)::
+
+            for conn in registry.all():
+                await registry.start_connector(conn.id)
         """
         if not self._connectors:
             return {}
-        cids = list(self._connectors.keys())
-        results = await asyncio.gather(
-            *(self.start_connector(cid) for cid in cids),
-            return_exceptions=True,
-        )
-        out: Dict[str, Optional[BaseException]] = {}
-        for cid, res in zip(cids, results):
-            if isinstance(res, BaseException):
-                out[cid] = res
+
+        results: Dict[str, Optional[BaseException]] = {}
+        for cid, conn in self._connectors.items():
+            try:
+                status = await conn.auth_status()
+            except Exception as exc:  # noqa: BLE001 - defensive
                 logger.exception(
-                    "start_connector(%s) failed: %s", cid, res, exc_info=res
+                    "start_all: auth_status(%s) failed: %s", cid, exc
                 )
-            else:
-                out[cid] = None
-        return out
+                results[cid] = exc
+                continue
+            if status.state is not ConnectorState.READY:
+                logger.debug(
+                    "start_all: skipping %s (auth_status=%s, not READY)",
+                    cid,
+                    status.state.value,
+                )
+                continue
+            try:
+                await self.start_connector(cid)
+                results[cid] = None
+            except Exception as exc:  # noqa: BLE001 - logged + recorded
+                logger.exception(
+                    "start_all: start_connector(%s) failed: %s", cid, exc
+                )
+                results[cid] = exc
+        return results
 
     async def stop_all(self, *, timeout_sec: float = 2.0) -> None:
         """Stop every registered connector concurrently.

@@ -167,7 +167,13 @@ def discover(packages: Optional[List[str]] = None) -> Dict[str, Type]:
     for pkg_name in packages:
         try:
             pkg = importlib.import_module(pkg_name)
-        except ImportError as exc:
+        except Exception as exc:
+            # Phase 4.5 follow-up (rubber-duck consensus, xhigh CONCERN):
+            # broaden ImportError → Exception so a buggy module that
+            # raises e.g. RuntimeError at top-level doesn't crash
+            # discovery. Mirrors the entry-point branch below
+            # (``_load_entry_point_tools``) which already used the broader
+            # catch. Synthesis §4 Phase 4 step 42.
             logger.warning("discover: cannot import package %r: %s", pkg_name, exc)
             continue
 
@@ -177,7 +183,9 @@ def discover(packages: Optional[List[str]] = None) -> Dict[str, Type]:
             ):
                 try:
                     mod = importlib.import_module(mod_name)
-                except ImportError as exc:
+                except Exception as exc:
+                    # Same Phase 4.5 follow-up: a single buggy module
+                    # must not abort the rest of the walk.
                     logger.warning(
                         "discover: cannot import module %r: %s", mod_name, exc
                     )
