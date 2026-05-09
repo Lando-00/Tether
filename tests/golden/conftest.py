@@ -122,20 +122,36 @@ class MinimalMemoryStore(SessionStore):
 
 # ---------------------------------------------------------------------------
 # normalize_event — scrubs volatile / non-deterministic fields.
-# Synthesis §6, B2 lines 160-190: scrub ts, session_id, time-like values.
+# Synthesis §6, B2 lines 160-190: scrub ts, session_id, turn_id,
+# tool_call_id, and time-like values.
+#
+# Updated in p5-cutover-b-clients to cover v2 envelope fields (turn_id,
+# tool_call_id) that have no v0 equivalent. Synthesis §11.3 R18.
 # ---------------------------------------------------------------------------
 
 def normalize_event(event: dict) -> dict:
     """Return a copy of *event* with volatile fields replaced by sentinels.
 
     Fields scrubbed:
-    - ``ts``         → removed (wall-clock timestamp)
-    - ``session_id`` → "<sid>"
-    - ``data.tool_result.time`` → "<time>" (TimeTool return value)
+    - ``ts``           → removed (wall-clock timestamp)
+    - ``session_id``   → "<sid>"
+    - ``turn_id``      → "<tid>"  (v2 envelope; absent in v0 events)
+    - ``tool_call_id`` → "<tcid>" (v2 ToolCall / ToolResult; absent in v0)
+    - ``result.time``  → "<time>" (TimeTool return value)
     """
     e = copy.deepcopy(event)
     e["session_id"] = "<sid>"
     e.pop("ts", None)
+    # v2 envelope fields
+    if "turn_id" in e:
+        e["turn_id"] = "<tid>"
+    if "tool_call_id" in e:
+        e["tool_call_id"] = "<tcid>"
+    # TimeTool result normalization (v2: top-level result dict)
+    result = e.get("result")
+    if isinstance(result, dict) and "time" in result:
+        result["time"] = "<time>"
+    # Legacy v0 path (keep for backward-compat in case any v0 test calls this)
     data = e.get("data", {})
     if isinstance(data.get("tool_result"), dict):
         tr = data["tool_result"]

@@ -358,12 +358,18 @@ def main(
                 continue # Go to next prompt
 
             # --- Call the streaming generate endpoint and process events ---
+            # Accept header opts into v2 NDJSON vocabulary (p5-cutover-b).
+            # Default endpoint still emits v0; version=1.0 routes the request
+            # through transport_ndjson. Synthesis §11.3 R18; §4 Phase 5 step 54.
             with requests.post(
                 f"{API_BASE_URL}/chat/stream",
                 json={
                     "session_id": session_id,
                     "prompt": user_prompt,
                     "model_name": model_name,
+                },
+                headers={
+                    "Accept": "application/x-ndjson; version=1.0",
                 },
                 stream=True,
             ) as response:
@@ -392,68 +398,81 @@ def main(
                                 console.print(f"[red]Error parsing JSON: {line.decode('utf-8', errors='replace')}[/red]")
                             continue
                         
+                        # v2 vocabulary — top-level fields only (no data wrapper).
+                        # Synthesis §4 Phase 5 step 54; §11.3 R18 (opt-in via Accept).
                         evt_type = event.get("type")
-                        evt_data = event.get("data", {})
 
                         if debug:
                             console.print(f"[dim]Received event: {event}[/dim]")
 
-                        if evt_type == "text":
-                            delta = evt_data.get("delta", "")
+                        if evt_type == "message_start":
+                            # Header event: turn is opening. No visible UI action.
+                            if debug:
+                                console.print(f"[dim]Stream started: turn_id={event.get('turn_id')}[/dim]")
+
+                        elif evt_type == "text_delta":
+                            delta = event.get("text", "")
                             assistant_response += delta
-                            
-                            # Print header on first text token
+
                             if not text_started:
                                 console.print("\n[bold green]Assistant:[/bold green]")
                                 text_started = True
-                            
-                            # Stream token immediately
+
                             console.print(delta, end="", style="green")
-                            
-                        elif evt_type == "think":
+
+                        elif evt_type == "thinking_delta":
                             if show_thinking:
-                                delta = evt_data.get("delta", "")
+                                delta = event.get("text", "")
                                 thinking_response += delta
-                                
-                                # Print thinking header on first thinking token
+
                                 if not thinking_panel_active:
                                     console.print("\n[dim italic]💭 Thinking:[/dim italic]")
                                     thinking_panel_active = True
-                                
-                                # Stream thinking token immediately
+
                                 console.print(delta, end="", style="dim italic")
-                                
-                        elif evt_type == "tool_started":
-                            # Ensure we're on a new line before printing tool panels
-                            if text_started or thinking_panel_active:
-                                console.print()  # New line
-                            tool_name = evt_data.get('tool_name')
-                            console.print(Panel(f"Calling tool: [bold yellow]{tool_name}[/bold yellow]", expand=False, border_style="yellow"))
-                            
-                        elif evt_type == "tool_completed":
-                            tool_name = evt_data.get('tool_name')
-                            tool_result = evt_data.get('tool_result')
-                            output_str = str(tool_result)
-                            console.print(Panel(f"Tool [bold yellow]{tool_name}[/bold yellow] output: {output_str[:150]}...", title="Tool Output", expand=False, border_style="dim yellow"))
-                            
-                        elif evt_type == "tool_error":
-                            if text_started or thinking_panel_active:
-                                console.print()  # New line
-                            tool_name = evt_data.get('tool_name')
-                            error = evt_data.get('error')
-                            console.print(Panel(f"Tool [bold red]{tool_name}[/bold red] error: {error}", title="Tool Error", border_style="red"))
-                            
-                        elif evt_type == "error":
-                            if text_started or thinking_panel_active:
-                                console.print()  # New line
-                            console.print(Panel(f"API Error: {evt_data.get('message')}", title="Error", border_style="bold red"))
-                            
-                        elif evt_type == "done":
-                            # Ensure we end on a new line
+
+                        elif evt_type == "tool_call":
                             if text_started or thinking_panel_active:
                                 console.print()
-                            if debug:
-                                console.print("[dim][Generation complete][/dim]")
+                            tool_name = event.get("name")
+                            console.print(Panel(f"Calling tool: [bold yellow]{tool_name}[/bold yellow]", expand=False, border_style="yellow"))
+
+                        elif evt_type == "tool_result":
+                            tool_name = event.get("name")
+                            status = event.get("status", "ok")
+                            if status == "ok":
+                                result = event.get("result", {})
+                                output_str = str(result)
+                                console.print(Panel(f"Tool [bold yellow]{tool_name}[/bold yellow] output: {output_str[:150]}...", title="Tool Output", expand=False, border_style="dim yellow"))
+                            else:
+                                error = event.get("error", "unknown")
+                                error_kind = event.get("error_kind", "")
+                                kind_str = f" ({error_kind})" if error_kind else ""
+                                if text_started or thinking_panel_active:
+                                    console.print()
+                                console.print(Panel(f"Tool [bold red]{tool_name}[/bold red] error{kind_str}: {error}", title="Tool Error", border_style="red"))
+
+                        elif evt_type == "error":
+                            if text_started or thinking_panel_active:
+                                console.print()
+                            message = event.get("message", "")
+                            console.print(Panel(f"API Error: {message}", title="Error", border_style="bold red"))
+
+                        elif evt_type == "loop_limit_reached":
+                            loops = event.get("loops", "?")
+                            console.print(Panel(f"Tool loop limit reached ({loops} iterations)", border_style="yellow"))
+
+                        elif evt_type == "hw_reset":
+                            model = event.get("model_name", "")
+                            console.print(Panel(f"Hardware reset: model '{model}' was reset", border_style="dim"))
+
+                        elif evt_type == "message_stop":
+                            stop_reason = event.get("stop_reason", "complete")
+                            if text_started or thinking_panel_active:
+                                console.print()
+                            if debug or stop_reason != "complete":
+                                label = stop_reason.replace("_", " ")
+                                console.print(f"[dim][Stream ended: {label}][/dim]")
 
         except requests.RequestException as e:
             console.print(f"\n[bold red]Error:[/bold red] Could not get response from server. {e}")

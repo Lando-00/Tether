@@ -5,6 +5,11 @@ Synthesis §6 (regression net before behavior changes), B2 lines 160-190.
 One full tool round-trip is captured and asserted against
 tests/fixtures/golden_streams/one_tool_success.json.
 
+The test uses ChattyAgentOrchestrator.run() + transport_ndjson directly
+so the fixture is v2 vocabulary (message_start / text_delta / tool_call /
+tool_result / message_stop). Updated from orchestrate() + v0_compat_serialize
+in p5-cutover-b-clients. Synthesis §11.3 R18; §4 Phase 5 step 54.
+
 Set TETHER_UPDATE_GOLDENS=1 to regenerate the fixture instead of
 asserting against it.
 """
@@ -15,9 +20,10 @@ from pathlib import Path
 import pytest
 
 from tether_service.core.types import OrchestratorConfig
-from tether_service.protocol.orchestration.orchestrator import orchestrate
+from tether_service.protocol.orchestration.chatty import ChattyAgentOrchestrator
 from tether_service.protocol.orchestration.tool_runner import ToolRunner
 from tether_service.protocol.parsers.sliding import SlidingParser
+from tether_service.protocol.wire.transport_ndjson import transport_ndjson
 from tether_service.tools.time_tool import TimeTool
 
 from tests.golden.conftest import ScriptedProvider, MinimalMemoryStore, normalize_event
@@ -49,7 +55,7 @@ _SCRIPTS = [
 
 
 async def _run_orchestrator() -> list[dict]:
-    """Drive orchestrate() end-to-end; return list of decoded event dicts."""
+    """Drive ChattyAgentOrchestrator end-to-end via v2 transport; return list of decoded event dicts."""
     provider = ScriptedProvider(_SCRIPTS)
     parser = SlidingParser()
     store = MinimalMemoryStore()
@@ -59,10 +65,7 @@ async def _run_orchestrator() -> list[dict]:
     tools = {"time_tool": tool}
 
     events = []
-    async for raw_bytes in orchestrate(
-        session_id="test-session-golden",
-        prompt="What time is it?",
-        model_name="scripted-model",
+    orch = ChattyAgentOrchestrator(
         provider=provider,
         parser=parser,
         store=store,
@@ -75,6 +78,13 @@ async def _run_orchestrator() -> list[dict]:
             include_thinking_in_history=False,
         ),
         tool_runner=ToolRunner(tools, timeout_sec=15),
+    )
+    async for raw_bytes in transport_ndjson(
+        orch.run(
+            session_id="test-session-golden",
+            prompt="What time is it?",
+            model_name="scripted-model",
+        )
     ):
         line = raw_bytes.decode("utf-8").strip()
         if line:
@@ -83,7 +93,7 @@ async def _run_orchestrator() -> list[dict]:
 
 
 async def test_one_tool_success_golden():
-    """Orchestrator emits the expected event sequence for a single tool call.
+    """Orchestrator emits the expected v2 event sequence for a single tool call.
 
     Regenerate the fixture with: TETHER_UPDATE_GOLDENS=1 pytest tests/golden/
     """
