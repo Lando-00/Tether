@@ -265,6 +265,18 @@ class Engine:
         any tools that DID start get a ``shutdown()`` call before the
         ``RuntimeError`` surfaces.
 
+        Phase 4.5 step 47d: after tool startup, schedule
+        ``start_connector(id)`` for every connector whose
+        ``auth_status()`` reports :class:`ConnectorState.READY`.
+        Connectors in any other state (UNCONFIGURED, LOGGED_OUT, ERROR)
+        stay stopped — their tools are still registered but raise
+        ``ConnectorNotConfiguredError`` until the user runs the login
+        flow via the HTTP routes (connector spec §3.3 step 4 + §3.8).
+        Started concurrently as fire-and-forget tasks tracked on
+        ``self._connector_start_tasks`` so a slow ``start()`` does not
+        block ``__aenter__``; ``aclose`` cancels any still-pending
+        tasks before invoking ``stop_all`` (connector spec §3.3 step 6).
+
         See :func:`tether_service.tools.lifecycle.startup_all` for the
         gather semantics (synthesis §13.2 R5).
         """
@@ -287,6 +299,29 @@ class Engine:
                 # accidentally invoke a half-initialized tool.
                 self.tools.pop(name, None)
                 self.tool_runner.tools.pop(name, None)
+
+        if self.connector_registry is not None:
+            # Lazy-imported because connectors module triggers no eager
+            # imports at the package level (R8 lazy-import rule).
+            from tether_service.connectors.types import ConnectorState
+
+            for conn in self.connector_registry.all():
+                try:
+                    status = await conn.auth_status()
+                except Exception as exc:  # noqa: BLE001 - defensive
+                    logger.exception(
+                        "auth_status() raised for connector %s during "
+                        "startup; skipping. (%s)",
+                        conn.id,
+                        exc,
+                    )
+                    continue
+                if status.state is ConnectorState.READY:
+                    task = asyncio.create_task(
+                        self.connector_registry.start_connector(conn.id),
+                        name=f"start_connector:{conn.id}",
+                    )
+                    self._connector_start_tasks.append(task)
         return self
 
     async def __aexit__(self, exc_type, exc, tb) -> None:
