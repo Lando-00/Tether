@@ -3,16 +3,22 @@ Integration tests for WebSearchTool.
 
 Tests tool behavior including:
 - Schema generation matches new signature
-- Deprecation warning for 'language' parameter
-- Count clamping to max_count
-- Parameter validation (empty query, invalid values)
-- Tool execution via ToolRunner with timeout
+- Tool invocation via the registry-facing API (BaseTool.invoke)
+- Pydantic validation rejecting invalid inputs (Style A)
+- Mocked tool execution
 - Contract test for normalized JSON structure
+
+Style A migration (synthesis §4 Phase 4 step 43): tests now exercise the
+public ``tool.invoke({...})`` API rather than calling the typed ``run``
+helper directly. Bounds previously checked by hand inside ``run`` are now
+enforced by ``WebSearchInputs`` (Pydantic v2) and surface as
+:class:`pydantic.ValidationError` from ``invoke``.
 """
 import pytest
-from unittest.mock import AsyncMock, patch, MagicMock
+from pydantic import ValidationError
+from unittest.mock import AsyncMock, patch
 import os
-from tether_service.tools.web_search_tool import WebSearchTool
+from tether_service.tools.web_search_tool import WebSearchTool, WebSearchInputs
 from tether_service.tools.base import BaseTool
 
 
@@ -63,123 +69,112 @@ class TestWebSearchToolSchema:
         assert len(required) == 1
     
     def test_registry_name_injection(self):
-        """Test that _registry_name is properly injected by BaseTool."""
+        """Test that the @tool decorator name is reflected in the schema."""
         tool = WebSearchTool()
-        # Registry name should be set by tool registry during loading
-        # For unit test, we can set it manually
-        tool._registry_name = "web_search"
-        assert tool._registry_name == "web_search"
-        
+        # The @tool(name="web_search") decorator on WebSearchTool sets the
+        # registry name at class definition time; no per-instance plumbing.
         schema = tool.auto_schema
         assert schema["function"]["name"] == "web_search"
 
 
 class TestWebSearchToolParameterValidation:
-    """Test parameter validation and transformations."""
-    
+    """Test parameter validation via Pydantic (Style A)."""
+
     @pytest.mark.asyncio
-    async def test_empty_query_fails(self):
-        """Test that empty query returns error."""
+    async def test_empty_query_raises_validation_error(self):
+        """Empty query must raise ValidationError (Pydantic enforces
+        ``min_length=1`` after ``_strip_query``)."""
         tool = WebSearchTool()
-        
-        result = await tool.run(query="")
-        assert "error" in result
-        assert "query" in result["error"].lower()
-    
+
+        with pytest.raises(ValidationError):
+            await tool.invoke({"query": ""})
+
     @pytest.mark.asyncio
-    async def test_count_clamping_to_max(self):
-        """Test that count > max_count is silently clamped to max_count=20."""
+    async def test_whitespace_only_query_raises_validation_error(self):
+        """Whitespace-only query is rejected (matches the previous
+        hand-rolled ``query.strip()`` + emptiness check)."""
         tool = WebSearchTool()
-        
-        # Mock BraveSearchClient to track what count is actually used
-        mock_client = AsyncMock()
-        mock_client.search.return_value = {
-            "results": [],
-            "meta": {"engine": "brave", "query": "test", "took_ms": 100}
-        }
-        
-        with patch('tether_service.tools.web_search_tool._get_client') as mock_get_client:
-            mock_get_client.return_value = mock_client
-            
-            # Request 100 results (should be clamped to 20)
-            result = await tool.run(query="test", count=100)
-            
-            # Verify search was called with clamped value
-            mock_client.search.assert_called_once()
-            call_kwargs = mock_client.search.call_args.kwargs
-            assert call_kwargs['count'] == 20  # Clamped to max_count
-    
+
+        with pytest.raises(ValidationError):
+            await tool.invoke({"query": "   "})
+
     @pytest.mark.asyncio
-    async def test_count_below_one_fails(self):
-        """Test that count < 1 returns validation error."""
+    async def test_count_above_max_raises_validation_error(self):
+        """count > 20 now raises ValidationError instead of clamping
+        silently. Pydantic ``le=20`` enforces the bound declared in
+        the schema (``maximum: 20``)."""
         tool = WebSearchTool()
-        
-        result = await tool.run(query="test", count=0)
-        assert "error" in result
-        assert "count" in result["error"].lower()
-    
+
+        with pytest.raises(ValidationError):
+            await tool.invoke({"query": "test", "count": 100})
+
+    @pytest.mark.asyncio
+    async def test_count_below_one_raises_validation_error(self):
+        """count < 1 raises ValidationError (Pydantic ``ge=1``)."""
+        tool = WebSearchTool()
+
+        with pytest.raises(ValidationError):
+            await tool.invoke({"query": "test", "count": 0})
+
     @pytest.mark.asyncio
     async def test_valid_params_accepted(self):
-        """Test that valid parameters are accepted."""
+        """Valid parameters are accepted via the invoke shim."""
         tool = WebSearchTool()
-        
+
         mock_client = AsyncMock()
         mock_client.search.return_value = {
             "results": [],
             "meta": {"engine": "brave", "query": "test", "took_ms": 100},
             "articles": []
         }
-        
+
         with patch('tether_service.tools.web_search_tool._get_client') as mock_get_client:
             mock_get_client.return_value = mock_client
-            
-            result = await tool.run(
-                query="test query",
-                count=5,
-                country="gb",
-                search_lang="en",
-                freshness="pd"
-            )
-            
-            # Should succeed without errors
+
+            result = await tool.invoke({
+                "query": "test query",
+                "count": 5,
+                "country": "gb",
+                "search_lang": "en",
+                "freshness": "pd",
+            })
+
             assert "results" in result
             mock_client.search.assert_called_once()
 
 
 class TestWebSearchToolDeprecation:
-    """Test deprecation handling for old parameters."""
-    
+    """Test handling of language-related parameters."""
+
     @pytest.mark.asyncio
     async def test_search_lang_parameter(self):
-        """Test that 'search_lang' parameter works correctly."""
+        """Verify 'search_lang' parameter is passed through to the client."""
         tool = WebSearchTool()
-        
+
         mock_client = AsyncMock()
         mock_client.search.return_value = {
             "results": [],
             "meta": {"engine": "brave", "query": "test", "took_ms": 100},
             "articles": []
         }
-        
+
         with patch('tether_service.tools.web_search_tool._get_client') as mock_get_client:
             mock_get_client.return_value = mock_client
-            
-            await tool.run(query="test", search_lang="fr")
-            
-            # Verify search_lang was passed correctly
+
+            await tool.invoke({"query": "test", "search_lang": "fr"})
+
             call_kwargs = mock_client.search.call_args.kwargs
             assert call_kwargs['search_lang'] == "fr"
 
 
 class TestWebSearchToolExecution:
     """Test actual tool execution and response handling."""
-    
+
     @pytest.mark.asyncio
     async def test_successful_search_returns_structured_format(self):
-        """Test that successful search returns results/meta structure."""
+        """Successful search returns the results/meta structure."""
         tool = WebSearchTool()
-        tool._registry_name = "web_search"
-        
+
         mock_client = AsyncMock()
         mock_client.search.return_value = {
             "results": [
@@ -196,69 +191,64 @@ class TestWebSearchToolExecution:
                 "took_ms": 123
             }
         }
-        
+
         with patch('tether_service.tools.web_search_tool._get_client') as mock_get_client:
             mock_get_client.return_value = mock_client
-            
-            result = await tool.run(query="test query", count=1)
-            
-            # Verify structured format
+
+            result = await tool.invoke({"query": "test query", "count": 1})
+
             assert "results" in result
             assert "meta" in result
-            
-            # Verify results content
+
             assert len(result["results"]) == 1
             assert result["results"][0]["url"] == "https://example.com/1"
             assert result["results"][0]["title"] == "Test Result 1"
-            
-            # Verify meta
+
             assert result["meta"]["engine"] == "brave"
             assert result["meta"]["query"] == "test query"
-    
+
     @pytest.mark.asyncio
     async def test_api_key_error_handling(self):
-        """Test that missing/invalid API key returns clear error."""
+        """Missing/invalid API key returns a clear error dict (transport
+        layer; NOT the validation layer)."""
         tool = WebSearchTool()
-        
-        # Mock _get_client to raise ValueError (simulating missing API key)
+
         with patch('tether_service.tools.web_search_tool._get_client') as mock_get_client:
             mock_get_client.side_effect = ValueError(
                 "Environment variable BRAVE_API_KEY not set. "
                 "Get your free API key at https://api-dashboard.search.brave.com/"
             )
-            
-            # Tool catches ValueError and returns error dict
-            result = await tool.run(query="test")
-            
+
+            result = await tool.invoke({"query": "test"})
+
             assert "error" in result
             error_msg = result["error"].lower()
             assert "brave_api_key" in error_msg
-    
+
     @pytest.mark.asyncio
     async def test_http_error_propagation(self):
-        """Test that HTTP errors from BraveSearchClient are propagated."""
+        """HTTP errors from BraveSearchClient surface as error dicts."""
         tool = WebSearchTool()
-        
+
         mock_client = AsyncMock()
         mock_client.search.side_effect = ValueError("Invalid API key")
-        
+
         with patch('tether_service.tools.web_search_tool._get_client') as mock_get_client:
             mock_get_client.return_value = mock_client
-            
-            # The tool catches exceptions and returns error dict
-            result = await tool.run(query="test")
+
+            result = await tool.invoke({"query": "test"})
             assert "error" in result
             assert "Invalid API key" in result["error"]
 
 
 class TestWebSearchToolContractTest:
     """Contract tests to ensure response format stability."""
-    
+
     @pytest.mark.asyncio
     async def test_response_format_contract(self):
         """Snapshot test for normalized JSON structure."""
         tool = WebSearchTool()
-        
+
         mock_client = AsyncMock()
         mock_client.search.return_value = {
             "results": [
@@ -276,88 +266,78 @@ class TestWebSearchToolContractTest:
             },
             "articles": ["Test: Description - https://example.com"]
         }
-        
+
         with patch('tether_service.tools.web_search_tool._get_client') as mock_get_client:
             mock_get_client.return_value = mock_client
-            
-            result = await tool.run(query="test")
-            
-            # Contract: response must have these exact top-level keys
+
+            result = await tool.invoke({"query": "test"})
+
             assert set(result.keys()) == {"results", "meta", "articles"}
-            
-            # Contract: results must be list of dicts with specific keys
+
             assert isinstance(result["results"], list)
             if result["results"]:
                 result_keys = set(result["results"][0].keys())
                 assert result_keys == {"url", "title", "snippet", "rank"}
-            
-            # Contract: meta must have these keys
+
             assert "engine" in result["meta"]
             assert "query" in result["meta"]
             assert "took_ms" in result["meta"]
-            
-            # Contract: articles must be list of strings (deprecated but present)
+
             assert isinstance(result["articles"], list)
             if result["articles"]:
                 assert isinstance(result["articles"][0], str)
 
 
 class TestWebSearchToolWithToolRunner:
-    """Test tool execution via ToolRunner (simulating orchestrator behavior)."""
-    
+    """Test tool execution via the registry-facing invoke API."""
+
     @pytest.mark.asyncio
     async def test_tool_execution_with_timeout(self):
-        """Test that tool respects timeout when executed via ToolRunner."""
+        """Tool completes within timeout when executed via invoke()."""
         tool = WebSearchTool()
-        tool._registry_name = "web_search"
-        
-        # Mock a slow response
+
         async def slow_search(*args, **kwargs):
             import asyncio
-            await asyncio.sleep(0.1)  # Simulate slow API
+            await asyncio.sleep(0.1)
             return {
                 "results": [],
                 "meta": {"engine": "brave", "query": "test", "took_ms": 100},
                 "articles": []
             }
-        
+
         mock_client = AsyncMock()
         mock_client.search = slow_search
-        
+
         with patch('tether_service.tools.web_search_tool._get_client') as mock_get_client:
             mock_get_client.return_value = mock_client
-            
-            # Execute tool (should complete within timeout)
-            result = await tool.run(query="test")
+
+            result = await tool.invoke({"query": "test"})
             assert "results" in result
-    
+
     @pytest.mark.asyncio
-    async def test_tool_kwargs_unpacking(self):
-        """Test that tool methods receive **kwargs correctly (not dict)."""
+    async def test_tool_args_dispatch(self):
+        """Tool methods receive the dict via the Style A invoke dispatch."""
         tool = WebSearchTool()
-        
+
         mock_client = AsyncMock()
         mock_client.search.return_value = {
             "results": [],
             "meta": {"engine": "brave", "query": "test", "took_ms": 100},
             "articles": []
         }
-        
+
         with patch('tether_service.tools.web_search_tool._get_client') as mock_get_client:
             mock_get_client.return_value = mock_client
-            
-            # Call with kwargs (as orchestrator would)
+
             args = {
                 "query": "test query",
                 "count": 5,
                 "country": "us"
             }
-            result = await tool.run(**args)
-            
-            # Should succeed (verifies kwargs unpacking works)
+            result = await tool.invoke(args)
+
             assert "results" in result
-            
-            # Verify correct params were passed to client
+
             call_kwargs = mock_client.search.call_args.kwargs
             assert call_kwargs['q'] == "test query"
             assert call_kwargs['count'] == 5
@@ -366,66 +346,68 @@ class TestWebSearchToolWithToolRunner:
 
 class TestWebSearchToolEdgeCases:
     """Test edge cases and unusual inputs."""
-    
+
     @pytest.mark.asyncio
     async def test_unicode_query(self):
-        """Test that Unicode characters in query are handled correctly."""
+        """Unicode characters in query are handled correctly."""
         tool = WebSearchTool()
-        
+
         mock_client = AsyncMock()
         mock_client.search.return_value = {
             "results": [],
             "meta": {"engine": "brave", "query": "test", "took_ms": 100},
             "articles": []
         }
-        
+
         with patch('tether_service.tools.web_search_tool._get_client') as mock_get_client:
             mock_get_client.return_value = mock_client
-            
-            # Unicode query
-            result = await tool.run(query="日本語 search 中文")
-            
+
+            result = await tool.invoke({"query": "日本語 search 中文"})
+
             assert "results" in result
             call_kwargs = mock_client.search.call_args.kwargs
             assert call_kwargs['q'] == "日本語 search 中文"
-    
+
     @pytest.mark.asyncio
     async def test_special_chars_in_query(self):
-        """Test that special characters are handled correctly."""
+        """Special characters in query are handled correctly."""
         tool = WebSearchTool()
-        
+
         mock_client = AsyncMock()
         mock_client.search.return_value = {
             "results": [],
             "meta": {"engine": "brave", "query": "test", "took_ms": 100},
             "articles": []
         }
-        
+
         with patch('tether_service.tools.web_search_tool._get_client') as mock_get_client:
             mock_get_client.return_value = mock_client
-            
-            # Query with special chars
-            result = await tool.run(query='test "quotes" & symbols <>')
-            
+
+            result = await tool.invoke({"query": 'test "quotes" & symbols <>'})
+
             assert "results" in result
-    
+
     @pytest.mark.asyncio
-    async def test_very_long_query(self):
-        """Test that very long queries are handled."""
+    async def test_long_query_within_bounds(self):
+        """Long queries (≤400 chars) are accepted; queries above the
+        bound raise ValidationError (Pydantic ``max_length=400``)."""
         tool = WebSearchTool()
-        
+
         mock_client = AsyncMock()
         mock_client.search.return_value = {
             "results": [],
             "meta": {"engine": "brave", "query": "test", "took_ms": 100},
             "articles": []
         }
-        
+
         with patch('tether_service.tools.web_search_tool._get_client') as mock_get_client:
             mock_get_client.return_value = mock_client
-            
-            # Very long query
-            long_query = "test " * 100  # 500 chars
-            result = await tool.run(query=long_query)
-            
+
+            # 300 chars — within max_length=400
+            long_query = "abc " * 75
+            result = await tool.invoke({"query": long_query.strip()})
             assert "results" in result
+
+        with pytest.raises(ValidationError):
+            # 500 chars — exceeds max_length=400
+            await tool.invoke({"query": "x" * 500})

@@ -35,7 +35,7 @@ class TestWebSearchToolRealAPI:
         tool = WebSearchTool()
         tool._registry_name = "web_search"
         
-        result = await tool.run(query="Python programming", count=3)
+        result = await tool.invoke({"query": "Python programming", "count": 3})
         
         # Verify response structure
         assert "results" in result
@@ -63,33 +63,32 @@ class TestWebSearchToolRealAPI:
         
         await asyncio.sleep(1)
         
-        result = await tool.run(
-            query="artificial intelligence news",
-            count=5,
-            country="us",
-            search_lang="en",
-            freshness="pw"  # past week
-        )
+        result = await tool.invoke({
+            "query": "artificial intelligence news",
+            "count": 5,
+            "country": "us",
+            "search_lang": "en",
+            "freshness": "pw"  # past week
+        })
         
         assert "results" in result
         assert len(result["results"]) >= 0  # May have 0 if no recent results
         
         print(f"\n✓ Full param search: {len(result['results'])} results")
     
-    async def test_count_clamping_with_real_api(self):
-        """Test that count > 20 is clamped correctly with real API."""
+    async def test_count_above_max_with_real_api(self):
+        """Style A: count > 20 raises ValidationError (Pydantic ``le=20``)
+        rather than silently clamping. Synthesis §4 Phase 4 step 43."""
+        from pydantic import ValidationError
         tool = WebSearchTool()
         tool._registry_name = "web_search"
-        
+
         await asyncio.sleep(1)
-        
-        # Request 100 results (should be clamped to 20)
-        result = await tool.run(query="technology", count=100)
-        
-        # Should get at most 20 results
-        assert len(result["results"]) <= 20
-        
-        print(f"\n✓ Count clamping: requested 100, got {len(result['results'])}")
+
+        with pytest.raises(ValidationError):
+            await tool.invoke({"query": "technology", "count": 100})
+
+        print(f"\n✓ count>20 rejected (was: silently clamped)")
     
     async def test_unicode_query_with_real_api(self):
         """Test Unicode characters in query."""
@@ -98,10 +97,10 @@ class TestWebSearchToolRealAPI:
         
         await asyncio.sleep(1)
         
-        result = await tool.run(
-            query="東京 Tokyo",
-            count=3
-        )
+        result = await tool.invoke({
+            "query": "東京 Tokyo",
+            "count": 3
+        })
         
         assert "results" in result
         
@@ -114,10 +113,10 @@ class TestWebSearchToolRealAPI:
         
         await asyncio.sleep(1)
         
-        result = await tool.run(
-            query='"Python 3.12" features',
-            count=3
-        )
+        result = await tool.invoke({
+            "query": '"Python 3.12" features',
+            "count": 3
+        })
         
         assert "results" in result
         
@@ -131,11 +130,11 @@ class TestWebSearchToolRealAPI:
         await asyncio.sleep(1)
         
         # Search with UK country filter
-        result = await tool.run(
-            query="weather",
-            count=3,
-            country="gb"
-        )
+        result = await tool.invoke({
+            "query": "weather",
+            "count": 3,
+            "country": "gb"
+        })
         
         assert "results" in result
         assert len(result["results"]) > 0
@@ -150,11 +149,11 @@ class TestWebSearchToolRealAPI:
         await asyncio.sleep(1)
         
         # Search for recent content only
-        result = await tool.run(
-            query="AI developments",
-            count=5,
-            freshness="pm"  # past month
-        )
+        result = await tool.invoke({
+            "query": "AI developments",
+            "count": 5,
+            "freshness": "pm"  # past month
+        })
         
         assert "results" in result
         # May have 0 results if nothing found in timeframe
@@ -173,13 +172,13 @@ class TestWebSearchToolRealAPI:
         await asyncio.sleep(1)
         
         # Execute with all schema params
-        result = await tool.run(
-            query="test",
-            count=2,
-            country="us",
-            search_lang="en",
-            freshness="pd"
-        )
+        result = await tool.invoke({
+            "query": "test",
+            "count": 2,
+            "country": "us",
+            "search_lang": "en",
+            "freshness": "pd"
+        })
         
         # Verify schema params are actually used
         assert "query" in params
@@ -200,7 +199,7 @@ class TestWebSearchToolRealAPI:
         
         await asyncio.sleep(1)
         
-        result = await tool.run(query="Python", count=2)
+        result = await tool.invoke({"query": "Python", "count": 2})
         
         # Contract: Must have these top-level keys
         assert set(result.keys()) == {"results", "meta", "articles"}
@@ -238,7 +237,7 @@ class TestWebSearchToolRealAPI:
         import time
         start = time.time()
         
-        result = await tool.run(query="test", count=3)
+        result = await tool.invoke({"query": "test", "count": 3})
         
         elapsed = time.time() - start
         
@@ -256,31 +255,27 @@ class TestWebSearchToolRealAPIErrors:
     """Test error handling with real API."""
     
     async def test_empty_query_validation(self):
-        """Test that empty query is rejected before API call."""
+        """Empty query raises ValidationError before any API call (Style A:
+        Pydantic ``min_length=1``)."""
+        from pydantic import ValidationError
         tool = WebSearchTool()
-        
-        # Tool returns error dict instead of raising exception
-        result = await tool.run(query="")
-        
-        assert "error" in result
-        assert "query" in result["error"].lower()
-        
+
+        with pytest.raises(ValidationError):
+            await tool.invoke({"query": ""})
+
         print(f"\n✓ Empty query validation works")
     
     async def test_invalid_count_validation(self):
-        """Test that invalid count is rejected."""
+        """Invalid count raises ValidationError (Pydantic ``ge=1``)."""
+        from pydantic import ValidationError
         tool = WebSearchTool()
-        
-        # Test count=0
-        result = await tool.run(query="test", count=0)
-        assert "error" in result
-        assert "count" in result["error"].lower()
-        
-        # Test count=-1
-        result = await tool.run(query="test", count=-1)
-        assert "error" in result
-        assert "count" in result["error"].lower()
-        
+
+        with pytest.raises(ValidationError):
+            await tool.invoke({"query": "test", "count": 0})
+
+        with pytest.raises(ValidationError):
+            await tool.invoke({"query": "test", "count": -1})
+
         print(f"\n✓ Invalid count validation works")
     
     async def test_api_key_missing_error(self):
@@ -296,7 +291,7 @@ class TestWebSearchToolRealAPIErrors:
             
             # Tool should return error dict or raise exception
             try:
-                result = await tool.run(query="test")
+                result = await tool.invoke({"query": "test"})
                 # If it returns a result, it should be an error
                 assert "error" in result
                 error_msg = result["error"].lower()
@@ -324,13 +319,13 @@ class TestWebSearchToolRealAPIOrchestration:
         tool._registry_name = "web_search"
         
         # First search
-        result1 = await tool.run(query="Python", count=2)
+        result1 = await tool.invoke({"query": "Python", "count": 2})
         assert len(result1["results"]) > 0
         
         await asyncio.sleep(1)
         
         # Second search (different query)
-        result2 = await tool.run(query="JavaScript", count=2)
+        result2 = await tool.invoke({"query": "JavaScript", "count": 2})
         assert len(result2["results"]) > 0
         
         # Results should be different
@@ -345,7 +340,7 @@ class TestWebSearchToolRealAPIOrchestration:
         
         await asyncio.sleep(1)
         
-        result = await tool.run(query="climate change", count=3)
+        result = await tool.invoke({"query": "climate change", "count": 3})
         
         # Verify results are suitable for use as context
         assert len(result["results"]) > 0
@@ -377,7 +372,7 @@ class TestWebSearchToolRealAPIOrchestration:
             "country": "us"
         }
         
-        result = await tool.run(**args)
+        result = await tool.invoke(args)
         
         assert "results" in result
         assert len(result["results"]) > 0
@@ -396,7 +391,7 @@ class TestWebSearchToolRealAPIBackwardCompatibility:
         
         await asyncio.sleep(1)
         
-        result = await tool.run(query="Python tutorial", count=3)
+        result = await tool.invoke({"query": "Python tutorial", "count": 3})
         
         # Both formats should be present
         assert "results" in result
@@ -420,7 +415,7 @@ class TestWebSearchToolRealAPIBackwardCompatibility:
         
         await asyncio.sleep(1)
         
-        result = await tool.run(query="AI", count=2)
+        result = await tool.invoke({"query": "AI", "count": 2})
         
         # New consumer: uses results/meta
         for res in result["results"]:

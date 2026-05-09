@@ -3,12 +3,23 @@ web_search_tool.py - Web search tool using Brave Search API.
 
 This module provides web search functionality via the Brave Search API,
 replacing the legacy NewsAPI implementation.
+
+Style A migration (synthesis §4 Phase 4 step 43; A2 step 5):
+A nested :class:`WebSearchInputs` model declares the validated input
+schema; ``BaseTool.invoke`` Pydantic-validates the args dict before
+calling :meth:`run`. Hand-rolled validation in the previous ``run()``
+body has been deleted — Pydantic enforces the same constraints
+declaratively (``min_length=1`` for query, ``ge=1, le=20`` for count,
+``pattern`` for country/search_lang, ``Literal`` for freshness).
 """
 
 import os
 import logging
-from typing import Any, Dict, Optional
-from tether_service.tools.base import BaseTool
+from typing import Any, Dict, Literal, Optional
+
+from pydantic import Field, field_validator
+
+from tether_service.tools.base import BaseTool, ToolInputs
 from tether_service.tools.brave_client import BraveSearchClient
 from tether_service.tools.registration import tool
 
@@ -47,36 +58,77 @@ def _get_client() -> BraveSearchClient:
     )
 
 
-def _validate_count(count: int, max_count: int = 20) -> int:
+class WebSearchInputs(ToolInputs):
+    """Validated inputs for :class:`WebSearchTool`.
+
+    All bounds and patterns previously enforced by hand inside
+    :meth:`WebSearchTool.run` are now declarative Pydantic ``Field``
+    constraints — ``BaseTool.invoke`` validates before ``run`` is
+    called. Synthesis §4 Phase 4 step 43; A2 step 5.
     """
-    Validate and clamp count parameter.
-    
-    Args:
-        count: Requested number of results
-        max_count: Maximum allowed (default 20)
-        
-    Returns:
-        Clamped count value (silently clamped if over max)
-    """
-    if not isinstance(count, int) or count < 1:
-        raise ValueError("count must be a positive integer")
-    
-    # Silently clamp to max_count (don't error)
-    if count > max_count:
-        logger.debug(f"count={count} clamped to max_count={max_count}")
-        return max_count
-    
-    return count
+
+    query: str = Field(
+        ...,
+        min_length=1,
+        max_length=400,
+        description="Search query (required, non-empty after stripping).",
+    )
+    count: int = Field(
+        default=5,
+        ge=1,
+        le=20,
+        description="Number of results to return (1-20, default 5).",
+    )
+    country: str = Field(
+        default="us",
+        min_length=2,
+        max_length=2,
+        pattern=r"^[A-Za-z]{2}$",
+        description=(
+            "2-letter ISO country code (default 'us'). "
+            "Maps to Brave's 'cc' param."
+        ),
+    )
+    search_lang: str = Field(
+        default="en",
+        min_length=2,
+        max_length=10,
+        pattern=r"^[A-Za-z-]+$",
+        description=(
+            "Language code (default 'en'). Maps to Brave's 'hl' param."
+        ),
+    )
+    freshness: Optional[Literal["pd", "pw", "pm", "py"]] = Field(
+        default=None,
+        description=(
+            "Freshness filter — 'pd' (past day), 'pw' (past week), "
+            "'pm' (past month), 'py' (past year), or None (no filter)."
+        ),
+    )
+
+    @field_validator("query", mode="before")
+    @classmethod
+    def _strip_query(cls, v: Any) -> Any:
+        """Strip surrounding whitespace before ``min_length`` validates,
+        so ``query='   '`` is rejected the same as ``query=''``.
+
+        Preserves the previous hand-rolled behavior in ``run()``."""
+        if isinstance(v, str):
+            return v.strip()
+        return v
 
 
 @tool(name="web_search")
 class WebSearchTool(BaseTool):
+    """Search the web using the Brave Search API.
+
+    Provides general web search with country, language, and freshness
+    filters. Style A: input validation lives in :class:`WebSearchInputs`
+    (synthesis §4 Phase 4 step 43; A2 step 5).
     """
-    Search the web using Brave Search API.
-    
-    Provides general web search with country, language, and freshness filters.
-    """
-    
+
+    Inputs = WebSearchInputs
+
     def __init__(self):
         super().__init__()
 
@@ -84,77 +136,30 @@ class WebSearchTool(BaseTool):
     def schema(self) -> Dict[str, Any]:
         return self.auto_schema
 
-    async def run(
-        self,
-        query: str,
-        count: int = 5,
-        country: str = "us",
-        search_lang: str = "en",
-        freshness: Optional[str] = None
-    ) -> Dict[str, Any]:
-        """
-        Search the web using Brave Search.
+    async def run(self, inputs: WebSearchInputs) -> Dict[str, Any]:
+        """Execute the search.
 
-        Args:
-            query: Search query (required).
-            count: Number of results to return (1-20, default 5).
-            country: 2-letter country code (default "us"). Maps to Brave's 'cc' param.
-            search_lang: 2-letter language code (default "en"). Maps to Brave's 'hl' param.
-            freshness: Freshness filter - 'pd' (past day), 'pw' (past week), 'pm' (past month), 'py' (past year), or None (no filter).
+        Pydantic has already validated ``inputs`` via the ``Inputs``
+        ClassVar dispatch in :meth:`BaseTool.invoke`; ``run`` here
+        only handles transport / API-call concerns.
 
         Returns:
-            Dictionary with structured format:
-            {
-                "results": [{"url", "title", "snippet", "rank"}],
-                "meta": {"took_ms", "engine", "query"}
-            }
-            
-            Or error format:
-            {
-                "error": "error message"
-            }
+            Structured result dict with ``results`` / ``meta`` /
+            ``articles`` keys, or an error dict ``{"error": "..."}``
+            for transport failures (so the orchestrator can feed the
+            error back to the model rather than crashing the loop).
         """
-        # Validate query
-        query = query.strip()
-        if not query:
-            return {"error": "query must be a non-empty string"}
-        
-        # Validate and clamp count (max 20 as per config plan)
-        try:
-            count = _validate_count(count, max_count=20)
-        except ValueError as e:
-            return {"error": str(e)}
-        
-        # Validate country code (2-letter)
-        if not isinstance(country, str) or len(country) != 2:
-            return {"error": "country must be a 2-letter ISO code"}
-        
-        # Validate search_lang (2-letter)
-        if not isinstance(search_lang, str) or len(search_lang) != 2:
-            return {"error": "search_lang must be a 2-letter ISO code"}
-        
-        # Validate freshness if provided
-        if freshness is not None:
-            valid_freshness = {"pd", "pw", "pm", "py"}
-            if freshness not in valid_freshness:
-                return {"error": f"freshness must be one of {valid_freshness} or None"}
-        
-        # Execute search
         try:
             client = _get_client()
-            result = await client.search(
-                q=query,
-                count=count,
-                country=country,  # Mapped to 'cc' in brave_client.py (line 109)
-                search_lang=search_lang,  # Mapped to 'hl' in brave_client.py (line 110)
-                freshness=freshness
+            return await client.search(
+                q=inputs.query,
+                count=inputs.count,
+                country=inputs.country,
+                search_lang=inputs.search_lang,
+                freshness=inputs.freshness,
             )
-            return result
-            
         except ValueError as e:
-            # Friendly errors (e.g., 403 auth failure)
             return {"error": str(e)}
         except Exception as e:
-            # Unexpected errors
             logger.error(f"web_search error: {type(e).__name__}: {str(e)}")
             return {"error": f"Search failed: {str(e)}"}
