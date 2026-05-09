@@ -1,39 +1,86 @@
 [
   {
-    "type": "text",
+    "protocol_version": "1.0",
     "session_id": "<sid>",
-    "data": {
-      "delta": "Here is the time "
-    }
-  },
-  {
-    "type": "tool_started",
-    "session_id": "<sid>",
-    "data": {
-      "tool_name": "time_tool",
-      "tool_args": {}
-    }
-  },
-  {
-    "type": "tool_completed",
-    "session_id": "<sid>",
-    "data": {
-      "tool_name": "time_tool",
-      "tool_result": {
-        "time": "<time>"
+    "turn_id": "<tid>",
+    "seq": 0,
+    "type": "message_start",
+    "available_tools": [
+      {
+        "name": "time",
+        "description": "Get the current time for a timezone in various formats (ISO, RFC2822, or human-readable).",
+        "parameters": {
+          "type": "object",
+          "properties": {
+            "timezone": {
+              "type": "string",
+              "description": "IANA timezone (e.g., 'Europe/Dublin', 'America/New_York', 'UTC'). Defaults to UTC.",
+              "default": "UTC"
+            },
+            "format": {
+              "type": "string",
+              "enum": [
+                "iso",
+                "rfc2822",
+                "human"
+              ],
+              "description": "Output format - 'iso' (ISO 8601), 'rfc2822' (RFC 2822), or 'human' (readable). Defaults to 'human'.",
+              "default": "human"
+            }
+          },
+          "required": []
+        }
       }
-    }
+    ]
   },
   {
-    "type": "text",
+    "protocol_version": "1.0",
     "session_id": "<sid>",
-    "data": {
-      "delta": "Done."
-    }
+    "turn_id": "<tid>",
+    "seq": 1,
+    "type": "text_delta",
+    "text": "Here is the time "
   },
   {
-    "type": "done",
+    "protocol_version": "1.0",
     "session_id": "<sid>",
-    "data": {}
+    "turn_id": "<tid>",
+    "seq": 2,
+    "type": "tool_call",
+    "tool_call_id": "<tcid>",
+    "name": "time_tool",
+    "arguments": {}
+  },
+  {
+    "protocol_version": "1.0",
+    "session_id": "<sid>",
+    "turn_id": "<tid>",
+    "seq": 3,
+    "type": "tool_result",
+    "tool_call_id": "<tcid>",
+    "name": "time_tool",
+    "status": "ok",
+    "error_kind": null,
+    "missing_capabilities": [],
+    "result": {
+      "time": "<time>"
+    },
+    "error": null
+  },
+  {
+    "protocol_version": "1.0",
+    "session_id": "<sid>",
+    "turn_id": "<tid>",
+    "seq": 4,
+    "type": "text_delta",
+    "text": "Done."
+  },
+  {
+    "protocol_version": "1.0",
+    "session_id": "<sid>",
+    "turn_id": "<tid>",
+    "seq": 5,
+    "type": "message_stop",
+    "stop_reason": "complete"
   }
 ]
