@@ -217,38 +217,32 @@ class Engine:
     ) -> AsyncGenerator[bytes, None]:
         """Drive the core orchestration to stream NDJSON bytes (v0 vocabulary).
 
-        Wraps :meth:`chat` and serializes each :class:`WireEvent` via the
-        v0 compatibility shim so the bytes wire vocabulary stays
-        UNCHANGED (``text``, ``think``, ``tool_started``,
-        ``tool_completed``, ``tool_error``, ``error``, ``done``, ``info``,
-        ``loop_limit_reached``) until ``p5-cutover-c`` flips the default
-        to v2. The legacy ``orchestrate()`` function is still exported
-        as a thin shim around this so external callers / patch-based
-        tests keep working unchanged.
+        Routes through :meth:`chat` (which performs mode-based orchestrator
+        selection via the registry) and serializes each :class:`WireEvent`
+        through the v0 compatibility shim. Mode dispatch happens at the
+        orchestrator-resolution boundary; bytes wire format is independent.
 
-        ``mode`` is passed through to :meth:`chat` for orchestrator
-        selection. Both NDJSON and SSE paths dispatch through the same
-        registry. Briefing §2 Seam B item 4.
+        Replaces the former ``orchestrate()`` shim call so that
+        ``mode`` is actually honored: callers passing ``mode="research"``
+        get :class:`NotebookOrchestrator` (which raises
+        :class:`NotImplementedError`) rather than silently falling back to
+        ``ChattyAgentOrchestrator``. Briefing §2 Seam B item 4.
         """
-        from tether_service.protocol.orchestration.orchestrator import (
-            orchestrate,
-        )
+        from tether_service.protocol.orchestration.cancel import AsyncEventCancelToken
+        from tether_service.protocol.orchestration.emitter import v0_compat_serialize
 
-        async for chunk in orchestrate(
+        cancel_token = AsyncEventCancelToken(cancel_event) if cancel_event else None
+
+        async for wire_event in self.chat(
             session_id=session_id,
             prompt=prompt,
             model_name=model_name,
-            provider=self.provider,
-            parser=self.parser,
-            store=self.store,
-            tools=self.tools,
-            system_prompt=self.system_prompt,
-            config=self.orchestrator_config,
-            tool_runner=self.tool_runner,
-            cancel_event=cancel_event,
-            hw_watchdog=self.hw_watchdog,
+            mode=mode,
+            cancel_token=cancel_token,
         ):
-            yield chunk
+            bytes_out = v0_compat_serialize(wire_event)
+            if bytes_out:  # MessageStart returns b"" — skip
+                yield bytes_out
 
     async def chat(
         self,

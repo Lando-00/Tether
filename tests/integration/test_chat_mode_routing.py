@@ -6,6 +6,8 @@ Verifies:
 - mode="research" returns 501 before streaming (both SSE and NDJSON).
 - Unknown mode returns 422 (Pydantic Literal validation).
 - Omitting mode defaults to "chat" via Pydantic default.
+- engine.stream(mode="research") dispatches via registry and surfaces
+  NotImplementedError (not silently falling back to ChattyAgent).
 
 Uses the same minimal-app pattern as test_chat_content_negotiation:
 Engine with DummyProvider + AsyncMock session store.
@@ -23,6 +25,7 @@ from fastapi.testclient import TestClient
 from tether_service.app.http.api import lifespan
 from tether_service.app.http.routers.chat import StreamRequest, router as chat_router
 from tether_service.app.http.routers.health import router as health_router
+from tether_service.config.settings import Settings
 from tether_service.engine import Engine
 from tether_service.protocol.parsers.sliding import SlidingParser
 from tether_service.providers.dummy.provider import DummyProvider
@@ -134,3 +137,63 @@ def test_default_mode_field_is_chat():
     """StreamRequest.mode defaults to 'chat' without sending the field."""
     r = StreamRequest(session_id="s", prompt="p", model_name="m")
     assert r.mode == "chat"
+
+
+# ---------------------------------------------------------------------------
+# Engine.stream mode-dispatch contract (library path)
+# ---------------------------------------------------------------------------
+
+
+def _minimal_settings(tmp_path) -> Settings:
+    """Minimal Settings using DummyProvider + in-memory sqlite store."""
+    db = tmp_path / "mode_routing_test.db"
+    return Settings.model_validate({
+        "system": {"prompt": "test"},
+        "providers": {
+            "model": {
+                "impl": "tether_service.providers.dummy.provider.DummyProvider",
+                "args": {},
+            },
+            "parser": {
+                "impl": "tether_service.protocol.parsers.sliding.SlidingParser",
+                "args": {},
+            },
+            "session_store": {
+                "impl": "tether_service.context.sqlite_store.SqliteSessionStore",
+                "args": {"dsn": f"sqlite:///{db}"},
+            },
+        },
+        "tools": {
+            "registry": [],
+            "enabled": [],
+            "disabled": ["time", "weather", "forecast", "web_search"],
+        },
+    })
+
+
+@pytest.mark.anyio
+async def test_engine_stream_research_mode_raises_not_implemented(tmp_path):
+    """Engine.stream(mode='research') must dispatch to NotebookOrchestrator
+    and surface its NotImplementedError.
+
+    This is the library-path contract: callers cannot bypass mode dispatch
+    via the v0 NDJSON path. Engine.stream routes through Engine.chat which
+    uses the registry, so mode='research' hits NotebookOrchestrator.run()
+    which raises NotImplementedError. Briefing §2 Seam B item 4.
+    """
+    settings = _minimal_settings(tmp_path)
+    engine = Engine.from_settings(settings)
+
+    with pytest.raises(NotImplementedError):
+        async for _ in engine.stream(
+            session_id="s",
+            prompt="p",
+            model_name="dummy",
+            mode="research",
+        ):
+            pass
+
+
+@pytest.fixture
+def anyio_backend():
+    return "asyncio"
