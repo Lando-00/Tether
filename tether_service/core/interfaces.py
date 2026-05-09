@@ -273,6 +273,11 @@ class Orchestrator(ABC):
     transport (NDJSON / SSE) lives in protocol/wire/transport_*.py.
     """
 
+    # Set to False in stub/unimplemented subclasses so the HTTP router
+    # can return 501 before starting to stream. Briefing §2 Seam B item 4;
+    # synthesis §3.5 (Orchestrator strategy seam).
+    is_implemented: bool = True
+
     @abstractmethod
     async def run(
         self,

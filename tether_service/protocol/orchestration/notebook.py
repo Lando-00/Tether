@@ -44,6 +44,10 @@ class NotebookOrchestrator(Orchestrator):
     docs/research/06_context_strategies.md is implemented.
     """
 
+    # Stub — not yet implemented. The HTTP router checks is_implemented
+    # before streaming to return 501 early. Briefing §2 Seam B item 4.
+    is_implemented: bool = False
+
     def __init__(
         self,
         *,
