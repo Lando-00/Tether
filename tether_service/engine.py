@@ -167,6 +167,7 @@ class Engine:
             config=self.orchestrator_config,
             tool_runner=self.tool_runner,
             cancel_event=cancel_event,
+            hw_watchdog=self.hw_watchdog,
         ):
             yield chunk
 
