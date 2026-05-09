@@ -158,12 +158,53 @@ class ObservabilitySettings(StrictModel):
     log_level: Literal["DEBUG", "INFO", "WARNING", "ERROR"] = "INFO"
 
 
-class StorageSettings(StrictModel):
-    """``storage:`` section. Phase 6 will populate (DB path, retention, etc.).
+class SqliteSettings(StrictModel):
+    """``storage.sqlite:`` sub-model.
 
-    Currently ``providers.session_store.args.dsn`` is the source of truth; this
-    placeholder anticipates the move per _synthesis.md §10.8 #2.
+    ``dsn`` (default ``None``) resolves to
+    ``platformdirs.user_data_dir('Tether')/tether.db`` via
+    :meth:`StorageSettings.resolved_dsn`. Library callers can override
+    by passing ``dsn="sqlite:///path/to/db"`` at config load time.
+
+    Synthesis §3.6, §4 Phase 6 step 60.
     """
+
+    dsn: Optional[str] = None
+
+
+class StorageSettings(StrictModel):
+    """``storage:`` section.
+
+    Phase 6 step 60: replaces the previous hardcoded
+    ``sqlite:///./data/tether.db`` with platformdirs-resolved default
+    so library users importing tether_service don't write into the
+    consumer's CWD. Synthesis §3.6, §10.8 #2.
+    """
+
+    sqlite: SqliteSettings = Field(default_factory=SqliteSettings)
+
+    def resolved_dsn(self) -> str:
+        """Return the effective SQLite DSN (configured or defaulted).
+
+        Resolves SqliteSettings.dsn ``None`` to
+        ``f"sqlite:///{platformdirs.user_data_dir('Tether')}/tether.db"``.
+        Cross-platform: on Windows ``%LOCALAPPDATA%\\Tether``; on
+        Linux/macOS XDG-compliant.
+
+        ``platformdirs`` is lazy-imported here to preserve the library-first
+        invariant: ``import tether_service`` must not trigger it.
+        """
+        if self.sqlite.dsn is not None:
+            return self.sqlite.dsn
+
+        from pathlib import Path
+
+        import platformdirs
+
+        data_dir = Path(platformdirs.user_data_dir("Tether"))
+        data_dir.mkdir(parents=True, exist_ok=True)
+        db_path = data_dir / "tether.db"
+        return f"sqlite:///{db_path.as_posix()}"
 
 
 class ConnectorSpec(StrictModel):
