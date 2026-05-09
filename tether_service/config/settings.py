@@ -15,7 +15,7 @@ from __future__ import annotations
 import os
 from importlib import resources
 from pathlib import Path
-from typing import Any, List, Literal, Optional
+from typing import Any, Dict, List, Literal, Optional
 
 import yaml
 from pydantic import Field
@@ -198,6 +198,30 @@ class ConnectorsSettings(StrictModel):
     registry: dict[str, ConnectorSpec] = Field(default_factory=dict)
 
 
+class OrchestratorSettings(StrictModel):
+    """``orchestrator:`` section — strategy registry.
+
+    Mirrors the ``tools.registry`` pattern. The registry maps mode
+    names (e.g., "chat", "research") to dotted impl paths. Engine.chat
+    resolves the requested mode at call time via
+    ``protocol.orchestration.registry.resolve_orchestrator_class``.
+
+    Briefing §2 Seam B item 4; §5 anti-pattern (no auto-routing).
+    """
+
+    default: str = Field(
+        default="chat",
+        description="Mode used when the request omits it.",
+    )
+    registry: Dict[str, str] = Field(
+        default_factory=lambda: {
+            "chat": "tether_service.protocol.orchestration.chatty.ChattyAgentOrchestrator",
+            "research": "tether_service.protocol.orchestration.notebook.NotebookOrchestrator",
+        },
+        description="Mode -> dotted impl path (e.g., 'pkg.module.Class').",
+    )
+
+
 class InboxSettings(StrictModel):
     """``inbox:`` section (per connector spec §3.7 + §3.4).
 
@@ -256,6 +280,7 @@ class Settings(BaseSettings):
     storage: StorageSettings = Field(default_factory=StorageSettings)
     connectors: ConnectorsSettings = Field(default_factory=ConnectorsSettings)
     inbox: InboxSettings = Field(default_factory=InboxSettings)
+    orchestrator: OrchestratorSettings = Field(default_factory=OrchestratorSettings)
 
 
 # ---------------------------------------------------------------------------
