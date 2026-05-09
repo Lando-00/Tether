@@ -5,7 +5,26 @@ from pydantic import BaseModel, Field
 from typing import Literal
 import asyncio
 import json
+from datetime import datetime, timezone
 from tether_service.core.logging import logger
+
+
+def _has_version_1_0(accept_lower: str) -> bool:
+    """Detect 'version=1.0' parameter on application/x-ndjson media type.
+
+    Permissive parser:
+      - Any whitespace + comma between parameters is OK.
+      - Quoted values ('version="1.0"') and unquoted ('version=1.0') both match.
+      - Case-insensitive on the parameter name (already lowercased input).
+      - Other parameters (q=, profile=, etc.) are ignored.
+
+    Returns True only if 'version=1.0' (or 'version="1.0"') appears
+    after a 'application/x-ndjson' media type token.
+
+    R6 anti-overengineering: simple substring suffices for the documented
+    contract. No RFC 7231 parser needed. Synthesis §3.4; §11.3 R18.
+    """
+    return "version=1.0" in accept_lower or 'version="1.0"' in accept_lower
 
 router = APIRouter(prefix="/chat", tags=["chat"])
 
@@ -41,9 +60,10 @@ class StreamRequest(BaseModel):
 async def stream(request: Request, body: StreamRequest):
     """Stream chat events. Content negotiation via Accept header:
 
-        text/event-stream     -> SSE-framed v2 events (typed WireEvent)
-        application/x-ndjson  -> NDJSON v0 dict events (default; back-compat)
-        (absent)              -> NDJSON v0 dict events (default)
+        text/event-stream                       -> SSE-framed v2 events (typed WireEvent)
+        application/x-ndjson; version=1.0       -> NDJSON v2 events (OPT-IN; p5-cutover-a)
+        application/x-ndjson                    -> NDJSON v0 dict events (default; back-compat)
+        (absent)                                -> NDJSON v0 dict events (default)
 
     Response carries X-Tether-Protocol-Version: 1.0 on every path.
 
@@ -52,14 +72,23 @@ async def stream(request: Request, body: StreamRequest):
     return 501 before any streaming begins. Unknown modes rejected by
     Pydantic Literal with 422. Briefing §2 Seam B item 4; synthesis §3.5.
 
-    Synthesis §4 Phase 5 step 53.
+    v2 NDJSON opt-in: 'version=1.0' parameter on application/x-ndjson drives
+    Engine.chat() + transport_ndjson (v2 typed WireEvent vocab). Default STAYS
+    v0 for back-compat. Synthesis §11.3 R18; §4 Phase 5 step 54.
     """
     accept = request.headers.get("accept", "")
-    use_sse = "text/event-stream" in accept.lower()
+    accept_lower = accept.lower()
+    use_sse = "text/event-stream" in accept_lower
+    use_ndjson_v2 = (
+        not use_sse
+        and "application/x-ndjson" in accept_lower
+        and _has_version_1_0(accept_lower)
+    )
 
     logger.info(
         f"/chat/stream called: session_id={body.session_id}, "
-        f"model_name={body.model_name}, mode={body.mode}, sse={use_sse}"
+        f"model_name={body.model_name}, mode={body.mode}, "
+        f"sse={use_sse}, ndjson_v2={use_ndjson_v2}"
     )
 
     engine = request.app.state.gen_svc
@@ -137,7 +166,60 @@ async def stream(request: Request, body: StreamRequest):
             headers=headers,
         )
 
-    # Default: NDJSON v0 dict bytes (back-compat; p5-cutover-a-dual-emit flips this).
+    if use_ndjson_v2:
+        # NDJSON v2 opt-in path: Engine.chat() yields typed WireEvents;
+        # transport_ndjson serialises them as NDJSON lines.
+        # Activated by Accept: application/x-ndjson; version=1.0.
+        # Lazy imports preserve library-first invariant. Synthesis §3.4; §11.3 R18.
+        from tether_service.protocol.orchestration.cancel import AsyncEventCancelToken
+        from tether_service.protocol.wire.transport_ndjson import transport_ndjson
+
+        async def ndjson_v2_generator():
+            cancel_token = AsyncEventCancelToken()
+            try:
+                async def cancellable_chat():
+                    async for event in engine.chat(
+                        session_id=body.session_id,
+                        prompt=body.prompt,
+                        model_name=body.model_name,
+                        mode=body.mode,
+                        cancel_token=cancel_token,
+                    ):
+                        if await request.is_disconnected():
+                            logger.info(
+                                f"Client disconnected (NDJSON v2): session_id={body.session_id}"
+                            )
+                            cancel_token.set()
+                            break
+                        yield event
+
+                async for chunk in transport_ndjson(cancellable_chat()):
+                    yield chunk
+            except Exception as e:
+                logger.exception(f"Exception in /chat/stream (NDJSON v2): {e}")
+                # Hand-rolled v2-shaped error frame. Don't construct Pydantic
+                # Error object outside orchestrator — fabricating session IDs,
+                # turn_ids, seq, ts at the wire boundary is brittle.
+                error_payload = {
+                    "protocol_version": "1.0",
+                    "session_id": body.session_id,
+                    "turn_id": "error",
+                    "seq": 0,
+                    "ts": datetime.now(timezone.utc).isoformat(),
+                    "type": "error",
+                    "message": f"Streaming error: {str(e)}",
+                    "error_type": type(e).__name__,
+                    "is_fatal": False,
+                }
+                yield (json.dumps(error_payload) + "\n").encode("utf-8")
+
+        return StreamingResponse(
+            ndjson_v2_generator(),
+            media_type="application/x-ndjson; version=1.0",
+            headers=headers,
+        )
+
+    # Default: NDJSON v0 dict bytes (back-compat; p5-cutover-c-flip-default flips this).
     async def ndjson_generator():
         cancel_event = asyncio.Event()
         try:
