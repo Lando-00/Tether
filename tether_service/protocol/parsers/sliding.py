@@ -1,19 +1,31 @@
 import json
-from typing import Any, Dict, List
+import uuid
+from typing import List
 
 from tether_service.core.interfaces import StreamParser
-from tether_service.core.types import StreamEvent
 from tether_service.core.logging import logger
+from tether_service.protocol.parsers.events import (
+    ParserEvent,
+    PParseError,
+    PText,
+    PThink,
+    PToolCallDetected,
+    PToolCallParsed,
+)
 
 
 class SlidingParser(StreamParser):
     """
     Stateful streaming parser adapted from llm_service.
-    - Streams <think>...</think> as THINK events
+    - Streams <think>...</think> as PThink events
     - Detects literal '<<function_call>>' across chunk boundaries
     - After marker, captures a balanced JSON payload
     - Keeps a small overlap buffer to recognize split tags/markers
-    - Emits TOOL_STARTED when marker is detected, TOOL_COMPLETE when JSON is captured
+    - Emits PToolCallDetected when marker is detected, PToolCallParsed when JSON is captured
+
+    Phase 5 ``p5-parser-typed-events``: returns typed ParserEvent values
+    (frozen dataclasses) rather than ``Dict[str, Any]``. Synthesis §4
+    Phase 5 step 51.
     """
 
     MARKER = "<<function_call>>"
@@ -29,17 +41,12 @@ class SlidingParser(StreamParser):
         self._json_depth = 0
         self._in_str = False
         self._esc = False
-        self._tool_started = False  # Track if we've emitted TOOL_STARTED
+        self._tool_started = False  # Track if we've emitted PToolCallDetected
         self._tick_bytes = 0
         self._tick_threshold = 128
 
-    def feed(self, chunk: str | List[Dict[str, Any]]) -> List[Dict[str, Any]]:
-        if isinstance(chunk, list):
-            # This parser expects raw text, but if it receives pre-parsed events,
-            # it should pass them through.
-            return chunk
-
-        events: List[Dict[str, Any]] = []
+    def feed(self, chunk: str) -> List[ParserEvent]:
+        events: List[ParserEvent] = []
         if not chunk:
             return events
 
@@ -52,14 +59,14 @@ class SlidingParser(StreamParser):
                 if idx != -1:
                     think_text = self.buf[:idx]
                     if think_text:
-                        events.append({"type": StreamEvent.THINK, "data": {"delta": think_text}})
+                        events.append(PThink(text=think_text))
                     self.buf = self.buf[idx + len(self.THINK_CLOSE) :]
                     self.mode = "text"
                     continue
                 else:
                     if len(self.buf) > self.OVERLAP:
                         emit = self.buf[: -self.OVERLAP]
-                        events.append({"type": StreamEvent.THINK, "data": {"delta": emit}})
+                        events.append(PThink(text=emit))
                         self.buf = self.buf[-self.OVERLAP :]
                     break
 
@@ -73,7 +80,7 @@ class SlidingParser(StreamParser):
                         self.mode = "text"
                         self._tool_started = False
                         logger.error(f"Parser: tool payload truncated (no JSON start), size={len(raw)}")
-                        events.append({"type": StreamEvent.ERROR, "data": {"message": "tool_payload_truncated", "raw": raw[:200]}})
+                        events.append(PParseError(message="tool_payload_truncated", raw=raw[:200]))
                     break
 
                 # Log any non-whitespace prefix before '{'
@@ -109,9 +116,10 @@ class SlidingParser(StreamParser):
                                 self.buf = self.buf[i + 1 :]
                                 self.mode = "text"
                                 self._tool_started = False
-                                
+
                                 logger.info(f"Parser: JSON capture complete, length={len(raw)}")
-                                
+
+                                evt: ParserEvent
                                 try:
                                     obj = json.loads(raw)
                                     tool_name = obj.get("name")
@@ -120,18 +128,27 @@ class SlidingParser(StreamParser):
                                     _args_repr = repr(tool_args)
                                     _args_safe = _args_repr[:80] + ("...[truncated]" if len(_args_repr) > 80 else "")
                                     logger.debug(f"Parser: tool call parsed: name={tool_name}, args={_args_safe}")
-                                    evt = {
-                                        "type": StreamEvent.TOOL_COMPLETE,
-                                        "data": {
-                                            "tool_name": tool_name,
-                                            "tool_args": tool_args,
-                                            "raw": raw,
-                                        },
-                                    }
+                                    if not isinstance(tool_name, str) or not tool_name:
+                                        logger.error(
+                                            f"Parser: tool call missing or non-string name: {repr(tool_name)}"
+                                        )
+                                        evt = PParseError(message="tool_call_missing_name", raw=raw)
+                                    elif not isinstance(tool_args, dict):
+                                        logger.error(
+                                            f"Parser: tool call non-dict arguments: {type(tool_args).__name__}"
+                                        )
+                                        evt = PParseError(message="tool_call_invalid_arguments", raw=raw)
+                                    else:
+                                        tool_call_id = f"call-{uuid.uuid4().hex[:12]}"
+                                        evt = PToolCallParsed(
+                                            tool_call_id=tool_call_id,
+                                            name=tool_name,
+                                            arguments=tool_args,
+                                        )
                                 except Exception as e:
                                     logger.error(f"Parser: JSON parse error: {e}, raw={raw[:100]}")
-                                    evt = {"type": StreamEvent.ERROR, "data": {"message": "json_parse_error", "raw": raw, "error": str(e)}}
-                                
+                                    evt = PParseError(message="json_parse_error", raw=raw)
+
                                 events.append(evt)
                                 break  # Exit inner loop, continue outer
                     i += 1
@@ -147,7 +164,7 @@ class SlidingParser(StreamParser):
                         self.mode = "text"
                         self._tool_started = False
                         logger.error(f"Parser: tool payload truncated, size={len(raw)}")
-                        events.append({"type": StreamEvent.ERROR, "data": {"message": "tool_payload_truncated", "raw": raw[:200]}})
+                        events.append(PParseError(message="tool_payload_truncated", raw=raw[:200]))
                     break # Exit outer loop, wait for more chunks
                 else:
                     continue # Continue outer loop
@@ -191,7 +208,7 @@ class SlidingParser(StreamParser):
                 if first_marker_pos > 0:
                     text_before = self.buf[:first_marker_pos]
                     logger.debug(f"Parser: emitting text before {marker_type} marker: {repr(text_before[:50])}")
-                    events.append({"type": StreamEvent.TEXT, "data": {"delta": text_before}})
+                    events.append(PText(text=text_before))
                 
                 # Transition to the new mode
                 if marker_type == "think":
@@ -199,12 +216,12 @@ class SlidingParser(StreamParser):
                     self.mode = "think"
                     logger.debug("Parser: entering think mode")
                 else: # tool
-                    logger.info("Parser: detected <<function_call>> marker, emitting TOOL_STARTED")
+                    logger.info("Parser: detected <<function_call>> marker, emitting PToolCallDetected")
                     self.buf = self.buf[first_marker_pos + len(self.MARKER) :]
                     self.mode = "await_payload"
-                    # Emit TOOL_STARTED event
+                    # Emit PToolCallDetected event
                     if not self._tool_started:
-                        events.append({"type": StreamEvent.TOOL_STARTED, "data": {}})
+                        events.append(PToolCallDetected())
                         self._tool_started = True
                 continue
             else:
@@ -213,31 +230,31 @@ class SlidingParser(StreamParser):
                     emit = self.buf[: -self.OVERLAP]
                     if emit:
                         logger.debug(f"Parser: emitting text chunk: {repr(emit[:50])}")
-                    events.append({"type": StreamEvent.TEXT, "data": {"delta": emit}})
+                    events.append(PText(text=emit))
                     self.buf = self.buf[-self.OVERLAP :]
                 break
 
         return events
 
-    def finalize(self) -> List[Dict[str, Any]]:
+    def finalize(self) -> List[ParserEvent]:
         """Flush any residual buffered state. Returns events for any
         incomplete tool payloads or trailing text/think — but NOT a
         terminal DONE event. The orchestrator owns terminal-event emission.
 
         Synthesis §6 row 3 / A4 PAIN-4.
         """
-        events: List[Dict[str, Any]] = []
+        events: List[ParserEvent] = []
         if self.mode == "await_payload":
             logger.warning("Parser finalize: tool marker found but no payload received")
-            events.append({"type": StreamEvent.ERROR, "data": {"message": "tool_payload_missing"}})
+            events.append(PParseError(message="tool_payload_missing"))
         elif self.mode in ("json", "py") and self.buf.strip():
             logger.warning(f"Parser finalize: incomplete tool payload: {repr(self.buf[:100])}")
-            events.append({"type": StreamEvent.ERROR, "data": {"message": "tool_payload_incomplete", "raw": self.buf}})
+            events.append(PParseError(message="tool_payload_incomplete", raw=self.buf))
         elif self.buf:
             if self.mode == "think":
-                events.append({"type": StreamEvent.THINK, "data": {"delta": self.buf}})
+                events.append(PThink(text=self.buf))
             else:
-                events.append({"type": StreamEvent.TEXT, "data": {"delta": self.buf}})
+                events.append(PText(text=self.buf))
         
         # Synthesis §6 row 3 / A4 PAIN-4:
         # finalize() flushes residual text/think/error events only.

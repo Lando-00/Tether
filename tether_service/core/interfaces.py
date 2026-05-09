@@ -1,6 +1,7 @@
 from abc import ABC, abstractmethod
 from typing import Any, AsyncGenerator, AsyncIterator, Dict, List, Optional, TYPE_CHECKING
 
+from tether_service.protocol.parsers.events import ParserEvent
 from tether_service.providers.types import ProviderCapabilities, ProviderEvent
 
 if TYPE_CHECKING:
@@ -141,13 +142,23 @@ class ModelProvider(ABC):
 
 class StreamParser(ABC):
     @abstractmethod
-    def feed(self, chunk: str | List[Dict[str, Any]]) -> List[Dict[str, Any]]:
-        """Ingest a raw model chunk and return zero or more protocol events"""
+    def feed(self, chunk: str) -> List[ParserEvent]:
+        """Ingest a raw model chunk and return zero or more typed parser events.
+
+        Phase 5 ``p5-parser-typed-events``: returns
+        :class:`tether_service.protocol.parsers.events.ParserEvent` values
+        (frozen dataclasses), not dicts. Synthesis §4 Phase 5 step 51.
+        """
         ...
 
     @abstractmethod
-    def finalize(self) -> List[Dict[str, Any]]:
-        """Flush any residual state and return final protocol events"""
+    def finalize(self) -> List[ParserEvent]:
+        """Flush any residual state and return final typed parser events.
+
+        Phase 5 ``p5-parser-typed-events``: returns
+        :class:`tether_service.protocol.parsers.events.ParserEvent` values.
+        Synthesis §4 Phase 5 step 51.
+        """
         ...
 
 

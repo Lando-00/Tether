@@ -26,9 +26,16 @@ from tether_service.core.interfaces import (
     Tool,
 )
 from tether_service.core.logging import logger
-from tether_service.core.types import OrchestratorConfig, StreamEvent, ToolExecutionContext
+from tether_service.core.types import OrchestratorConfig, ToolExecutionContext
 from tether_service.protocol.orchestration.emitter import NdjsonEmitter
 from tether_service.protocol.orchestration.tool_runner import ToolRunner
+from tether_service.protocol.parsers.events import (
+    PParseError,
+    PText,
+    PThink,
+    PToolCallDetected,
+    PToolCallParsed,
+)
 
 if TYPE_CHECKING:
     from tether_service.runtime.hw_watchdog import HardwareWatchdog
@@ -127,7 +134,7 @@ async def orchestrate(
             # 5. Stream raw text from the model provider
             full_response_text = ""
             full_thinking_text = ""
-            tool_call_to_run = None
+            tool_call_to_run: Optional[PToolCallParsed] = None
             tool_started_notified = False
             # New iteration → reset persisted flag; finally only fires if this
             # iteration didn't reach a successful inner persist site.
@@ -144,32 +151,28 @@ async def orchestrate(
                         events = parser.feed(chunk)
                         for evt in events:
                             logger.debug(f"Parser event: {evt}")
-                            evt_type = evt.get("type")
-                            evt_data = evt.get("data", {})
 
-                            if evt_type == StreamEvent.TEXT:
-                                delta = evt_data.get("delta", "")
-                                if delta:
-                                    full_response_text += delta
+                            if isinstance(evt, PText):
+                                if evt.text:
+                                    full_response_text += evt.text
                                     last_response_text = full_response_text
                                     yield emitter.emit({
                                         "type": "text",
                                         "session_id": session_id,
-                                        "data": {"delta": delta},
+                                        "data": {"delta": evt.text},
                                     })
 
-                            elif evt_type == StreamEvent.THINK:
-                                delta = evt_data.get("delta", "")
-                                if delta:
-                                    full_thinking_text += delta
+                            elif isinstance(evt, PThink):
+                                if evt.text:
+                                    full_thinking_text += evt.text
                                     last_thinking_text = full_thinking_text
                                     yield emitter.emit({
                                         "type": "think",
                                         "session_id": session_id,
-                                        "data": {"delta": delta},
+                                        "data": {"delta": evt.text},
                                     })
 
-                            elif evt_type == StreamEvent.TOOL_STARTED:
+                            elif isinstance(evt, PToolCallDetected):
                                 # Parser detected <<function_call>> marker
                                 logger.info(
                                     f"Tool call marker detected for session_id={session_id}"
@@ -182,20 +185,30 @@ async def orchestrate(
                                     })
                                     tool_started_notified = True
 
-                            elif evt_type == StreamEvent.TOOL_COMPLETE:
+                            elif isinstance(evt, PToolCallParsed):
                                 # A tool call has been fully parsed.
-                                tool_call_to_run = evt_data
-                                logger.info(f"Tool call detected: {tool_call_to_run}")
+                                tool_call_to_run = evt
+                                logger.info(
+                                    f"Tool call detected: name={evt.name}, id={evt.tool_call_id}"
+                                )
                                 # We break the inner loop to proceed with execution.
                                 break
 
-                            elif evt_type == StreamEvent.ERROR:
-                                logger.error(f"Parser error: {evt_data}")
+                            elif isinstance(evt, PParseError):
+                                logger.error(
+                                    f"Parser error: {evt.message}, raw={(evt.raw or '')[:100]}"
+                                )
                                 yield emitter.emit({
                                     "type": "error",
                                     "session_id": session_id,
-                                    "data": evt_data,
+                                    "data": {
+                                        "message": evt.message,
+                                        "raw": evt.raw or "",
+                                    },
                                 })
+
+                            # PStreamEnd / unknown: ignore (parser doesn't emit
+                            # PStreamEnd today; future-proofing).
 
                         if tool_call_to_run:
                             break
@@ -288,8 +301,8 @@ async def orchestrate(
 
             # 6. After the stream, check if a tool needs to be run
             if tool_call_to_run:
-                tool_name = tool_call_to_run.get("tool_name")
-                tool_args = tool_call_to_run.get("tool_args", {})
+                tool_name = tool_call_to_run.name
+                tool_args = tool_call_to_run.arguments
 
                 # Persist the assistant's intent to call the tool
                 await store.add_assistant_toolcall(session_id, tool_name, tool_args)
@@ -364,11 +377,29 @@ async def orchestrate(
         # 7. Finalize the stream
         for evt in parser.finalize() or []:
             logger.debug(f"Parser finalize event: {evt}")
-            yield emitter.emit({
-                "type": evt.get("type", "text"),
-                "session_id": session_id,
-                "data": evt.get("data", {}),
-            })
+            if isinstance(evt, PText):
+                yield emitter.emit({
+                    "type": "text",
+                    "session_id": session_id,
+                    "data": {"delta": evt.text},
+                })
+            elif isinstance(evt, PThink):
+                yield emitter.emit({
+                    "type": "think",
+                    "session_id": session_id,
+                    "data": {"delta": evt.text},
+                })
+            elif isinstance(evt, PParseError):
+                yield emitter.emit({
+                    "type": "error",
+                    "session_id": session_id,
+                    "data": {
+                        "message": evt.message,
+                        "raw": evt.raw or "",
+                    },
+                })
+            # PToolCallDetected / PToolCallParsed / PStreamEnd in finalize:
+            # not expected here; ignore.
 
     except Exception as e:
         logger.exception(

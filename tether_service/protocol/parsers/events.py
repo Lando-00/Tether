@@ -13,7 +13,7 @@ Synthesis §4 Phase 5 steps 49 + 51.
 from __future__ import annotations
 
 from dataclasses import dataclass, field
-from typing import Any, Dict, Optional
+from typing import Any, Dict, Optional, Union
 
 
 @dataclass(frozen=True)
@@ -61,6 +61,19 @@ class PStreamEnd:
     """Provider stream ended. Parser is being finalized."""
 
 
+# Discriminated-union alias for events emitted by ``StreamParser`` impls.
+# Consumers (orchestrator, tests) should branch on ``isinstance(evt, P*)``.
+# Phase 5 ``p5-parser-typed-events`` step.
+ParserEvent = Union[
+    PText,
+    PThink,
+    PToolCallDetected,
+    PToolCallParsed,
+    PParseError,
+    PStreamEnd,
+]
+
+
 __all__ = [
     "PText",
     "PThink",
@@ -68,4 +81,5 @@ __all__ = [
     "PToolCallParsed",
     "PParseError",
     "PStreamEnd",
+    "ParserEvent",
 ]
