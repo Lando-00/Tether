@@ -1,4 +1,5 @@
 
+import re
 from fastapi import APIRouter, HTTPException, Request
 from fastapi.responses import StreamingResponse
 from pydantic import BaseModel, Field
@@ -8,35 +9,43 @@ import json
 from datetime import datetime, timezone
 from tether_service.core.logging import logger
 
+# Compile once at module level for performance.
+# (?![\w.]) is a negative lookahead: next char must not be a word character
+# or dot, so 'version=0' matches but 'version=00', 'version=0a', 'version=0.5'
+# don't. Quoted forms ('version="0"', 'version="1.0"') also work: the closing
+# '"' is not in [\w.], satisfying the lookahead. Lowercased input expected.
+_VERSION_0_RE = re.compile(r'version="?0"?(?![\w.])')
+_VERSION_1_0_RE = re.compile(r'version="?1\.0"?(?![\w.])')
+
 
 def _has_version_1_0(accept_lower: str) -> bool:
     """Detect 'version=1.0' parameter on application/x-ndjson media type.
 
-    Permissive parser:
-      - Any whitespace + comma between parameters is OK.
-      - Quoted values ('version="1.0"') and unquoted ('version=1.0') both match.
-      - Case-insensitive on the parameter name (already lowercased input).
-      - Other parameters (q=, profile=, etc.) are ignored.
+    Boundary-aware: 'version=1.0' matches; 'version=1.00', 'version=1.01',
+    'version=1.0a' do NOT match (trailing char is a word char or dot).
 
-    Returns True only if 'version=1.0' (or 'version="1.0"') appears
-    after a 'application/x-ndjson' media type token.
+    Quoted values ('version="1.0"') and unquoted ('version=1.0') both match.
+    Lowercased input expected.
 
-    R6 anti-overengineering: simple substring suffices for the documented
-    contract. No RFC 7231 parser needed. Synthesis §3.4; §11.3 R18.
+    R6 anti-overengineering: regex with negative lookahead. Synthesis §3.4;
+    §11.3 R18.
     """
-    return "version=1.0" in accept_lower or 'version="1.0"' in accept_lower
+    return bool(_VERSION_1_0_RE.search(accept_lower))
 
 
 def _has_version_0(accept_lower: str) -> bool:
     """Detect 'version=0' parameter on application/x-ndjson media type.
 
-    Mirror of _has_version_1_0 with literal '0' / '"0"'. Lowercased
-    input expected.
+    Boundary-aware: 'version=0' matches; 'version=00', 'version=0a',
+    'version=0.5' do NOT match (trailing char is a word char or dot).
 
-    R6 anti-overengineering: simple substring suffices. Synthesis §11.3 R18;
-    §4 Phase 5 step 56 (p5-cutover-c-flip-default).
+    Quoted values ('version="0"') and unquoted ('version=0') both match.
+    Lowercased input expected.
+
+    R6 anti-overengineering: regex with negative lookahead. Synthesis §11.3
+    R18; §4 Phase 5 step 56 (p5-cutover-c-flip-default).
     """
-    return "version=0" in accept_lower or 'version="0"' in accept_lower
+    return bool(_VERSION_0_RE.search(accept_lower))
 
 router = APIRouter(prefix="/chat", tags=["chat"])
 
