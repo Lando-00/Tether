@@ -530,7 +530,13 @@ async def test_logout_transitions_to_logged_out_and_tools_raise_not_configured()
 
 
 def test_logout_via_http_transitions_state(tmp_path) -> None:
-    """The POST /logout route flips the connector to LOGGED_OUT (spec §3.1)."""
+    """The POST /logout route flips the connector to LOGGED_OUT (spec §3.1).
+
+    Phase 4.5 follow-up (gpt-5.5 BLOCKING #2): the route now also runs
+    ``registry.stop_connector(id)`` so background tasks / connections
+    are torn down — see also
+    ``test_logout_calls_stop`` for the explicit stop assertion.
+    """
     echo = EchoConnector()
     # Pre-authenticate so logout has something to undo.
     _run_coro(echo.complete_login(payload={"code": "ok"}))
@@ -540,7 +546,88 @@ def test_logout_via_http_transitions_state(tmp_path) -> None:
     resp = client.post("/api/v1/connectors/echo/logout")
     assert resp.status_code == 200
     body = resp.json()
-    assert body == {"ok": True, "id": "echo"}
+    # ``state`` field is the load-bearing assertion (Phase 4.5 follow-up);
+    # ``ok`` and ``id`` are kept for back-compat with consumers that
+    # already parse them.
+    assert body["ok"] is True
+    assert body["id"] == "echo"
+    assert body["state"] == ConnectorState.LOGGED_OUT.value
+    assert echo.state is ConnectorState.LOGGED_OUT
+
+
+def test_logout_calls_stop(tmp_path) -> None:
+    """F2: POST /logout must call BOTH ``conn.logout()`` and
+    ``registry.stop_connector(id)`` (spec §3.8).
+
+    Spy on the EchoConnector's ``stop`` to verify the stop runs in
+    addition to ``logout``. Before the fix only ``logout()`` was
+    called.
+    """
+    echo = EchoConnector()
+    _run_coro(echo.complete_login(payload={"code": "ok"}))
+
+    stop_spy = AsyncMock()
+    original_stop = echo.stop
+
+    async def _spy_stop() -> None:
+        await stop_spy()
+        await original_stop()
+
+    echo.stop = _spy_stop  # type: ignore[method-assign]
+
+    client, _ = _build_app(echo, tmp_path)
+    resp = client.post("/api/v1/connectors/echo/logout")
+    assert resp.status_code == 200
+    # Both the connector's ``logout`` (state flip) AND the registry's
+    # ``stop_connector`` (which calls ``conn.stop``) must have run.
+    stop_spy.assert_awaited_once()
+    assert echo.state is ConnectorState.LOGGED_OUT
+
+
+def test_logout_within_budget(tmp_path) -> None:
+    """F2: POST /logout must return within ~2 s even when the connector's
+    ``stop()`` is slow.
+
+    Sets ``_stop_delay_sec=0.1`` (well under the 2 s registry budget) so
+    the route returns promptly; the actual budget enforcement is covered
+    by ``test_aclose_within_2s_with_slow_stop``.
+    """
+    echo = EchoConnector()
+    _run_coro(echo.complete_login(payload={"code": "ok"}))
+    echo._stop_delay_sec = 0.1  # quick but observable
+
+    client, _ = _build_app(echo, tmp_path)
+    t0 = time.monotonic()
+    resp = client.post("/api/v1/connectors/echo/logout")
+    elapsed = time.monotonic() - t0
+
+    assert resp.status_code == 200
+    assert elapsed < 2.0, (
+        f"logout returned in {elapsed:.2f}s; expected < 2 s budget"
+    )
+    assert echo.state is ConnectorState.LOGGED_OUT
+
+
+def test_logout_idempotent(tmp_path) -> None:
+    """F2: calling POST /logout twice must succeed both times; state
+    stays LOGGED_OUT and the second call does not regress.
+
+    ``stop_connector`` is documented as idempotent (connector spec
+    §3.1); a re-logout should also be safe even though the connector
+    is already in LOGGED_OUT.
+    """
+    echo = EchoConnector()
+    _run_coro(echo.complete_login(payload={"code": "ok"}))
+
+    client, _ = _build_app(echo, tmp_path)
+
+    resp1 = client.post("/api/v1/connectors/echo/logout")
+    assert resp1.status_code == 200
+    assert echo.state is ConnectorState.LOGGED_OUT
+
+    # Second call is also fine.
+    resp2 = client.post("/api/v1/connectors/echo/logout")
+    assert resp2.status_code == 200
     assert echo.state is ConnectorState.LOGGED_OUT
 
 

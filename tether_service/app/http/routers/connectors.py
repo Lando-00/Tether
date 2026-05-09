@@ -253,16 +253,37 @@ async def oauth_callback(
 
 @router.post("/{connector_id}/logout")
 async def logout(connector_id: str, request: Request) -> Dict[str, Any]:
-    """Delete persisted creds + transition to LOGGED_OUT.
+    """Delete persisted creds + stop the connector + transition to LOGGED_OUT.
 
-    The Connector instance is preserved (re-login can re-use it). Per
-    connector spec §3.1, ``logout()`` is responsible for any internal
-    ``stop()``; the registry does not auto-stop here.
+    Per connector spec §3.8: ``logout()`` is responsible for credential
+    deletion; the registry is responsible for stopping background tasks
+    / connections owned by the connector. Both must run.
+
+    Phase 4.5 follow-up (rubber-duck consensus, gpt-5.5 BLOCKING #2):
+    previously this route only called ``conn.logout()`` and explicitly
+    skipped ``registry.stop_connector()``. That left
+    ``inbound_stream`` consumers, scheduled tasks, and any open
+    connections alive after credentials were deleted — a use-after-
+    logout hazard that future Gmail/WhatsApp connectors would hit.
+
+    Order: credentials first (so a slow stop can't keep using them),
+    then ``stop_connector`` with the registry's 2 s cooperative budget
+    (spec §3.3 step 6). ``stop_connector`` is idempotent and swallows
+    its own exceptions so a flaky stop never bubbles up here.
     """
     registry = _get_registry(request)
     conn = _resolve(registry, connector_id)
+
+    # 1. Delete credentials (transitions to LOGGED_OUT for spec-compliant
+    #    connectors).
     await conn.logout()
-    return {"ok": True, "id": connector_id}
+
+    # 2. Stop background tasks / connections under the 2 s spec §3.3
+    #    cooperative budget. Idempotent + safe even when ``logout()``
+    #    already stopped internal tasks.
+    await registry.stop_connector(connector_id)
+
+    return {"ok": True, "id": connector_id, "state": ConnectorState.LOGGED_OUT.value}
 
 
 __all__ = ["router"]

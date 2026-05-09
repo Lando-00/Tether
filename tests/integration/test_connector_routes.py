@@ -366,7 +366,11 @@ def test_post_logout_calls_logout():
     body = resp.json()
     assert body["ok"] is True
     assert body["id"] == "route_fake"
+    # Phase 4.5 follow-up (F2): the route now reports the LOGGED_OUT
+    # state and also stops the connector via registry.stop_connector.
+    assert body["state"] == ConnectorState.LOGGED_OUT.value
     conn.logout_mock.assert_awaited_once()
+    conn.stop_mock.assert_awaited_once()
 
 
 def test_post_logout_unknown_connector_returns_404():
