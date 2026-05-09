@@ -17,6 +17,7 @@ body and the legacy ``shutdown_provider_with_timeout`` path that lived in
 from __future__ import annotations
 
 import asyncio
+import logging
 from typing import Any, AsyncGenerator, Dict, List, Optional, TYPE_CHECKING
 
 from tether_service.config.settings import Settings
@@ -31,7 +32,11 @@ from tether_service.protocol.orchestration.tool_runner import ToolRunner
 from tether_service.runtime.watchdog_mode import WatchdogMode
 
 if TYPE_CHECKING:
+    from tether_service.core.connector_registry import ConnectorRegistry
     from tether_service.runtime.hw_watchdog import HardwareWatchdog
+
+
+logger = logging.getLogger(__name__)
 
 
 class Engine:
@@ -49,6 +54,7 @@ class Engine:
         orchestrator_config: Optional[OrchestratorConfig] = None,
         tool_runner: Optional[ToolRunner] = None,
         hw_watchdog: Optional["HardwareWatchdog"] = None,
+        connector_registry: Optional["ConnectorRegistry"] = None,
     ):
         """Build an Engine from already-constructed components.
 
@@ -64,6 +70,13 @@ class Engine:
         ``GenerationService`` alias) may pass ``None``, in which case
         :meth:`aclose` falls back to ``provider.shutdown_all()`` if present.
         Synthesis §4 Phase 3 step 35.
+
+        ``connector_registry`` is optional; ``from_settings`` always
+        builds one (empty when ``settings.connectors.registry`` is empty)
+        and passes it. Connector tools are merged into ``tools`` BEFORE
+        construction by ``from_settings`` so the orchestrator/ToolRunner
+        sees a single flat dict regardless of source. Per Phase 4.5
+        steps 47d-47e (synthesis §4) and connector spec §3.3.
         """
         self.provider = provider
         self.parser = parser
@@ -72,6 +85,7 @@ class Engine:
         self.system_prompt = system_prompt
         self.watchdog_mode = watchdog_mode
         self.hw_watchdog = hw_watchdog
+        self.connector_registry = connector_registry
         self.orchestrator_config = orchestrator_config or OrchestratorConfig(
             max_tool_loops=5,
             auto_reload_on_fatal_error=True,
@@ -80,6 +94,11 @@ class Engine:
         )
         self.tool_runner = tool_runner or ToolRunner(tools)
         self._closed = False
+        # Phase 4.5 step 47d: __aenter__ schedules start_connector(id) for
+        # each READY connector; __aexit__/aclose cancels any still-pending
+        # tasks before invoking stop_all so we never tear down a connector
+        # mid-start.
+        self._connector_start_tasks: List[asyncio.Task] = []
 
     @classmethod
     def from_settings(
@@ -101,9 +120,21 @@ class Engine:
         — ``aclose`` becomes a no-op, ``/readyz`` reports the empty list.
         Synthesis §4 Phase 3 step 35.
 
+        Builds a :class:`ConnectorRegistry` from
+        ``settings.connectors.registry``. Each enabled entry is
+        instantiated via ``load(spec.impl, **spec.args)``. Connector
+        tools are aggregated into the ``tools`` dict (single flat
+        registry) BEFORE the ``ToolRunner`` is built, so the orchestrator
+        sees one merged tool dict regardless of source. M5 prefix +
+        collision validation runs at registry construction (connector
+        spec §3.3); ``tool_names = set(tools.keys())`` prevents a
+        connector tool from shadowing an in-tree tool. Synthesis §4
+        Phase 4.5 step 47d.
+
         Raises ValueError / RuntimeError if any required impl path doesn't
         resolve (delegated to ``load`` and ``ToolRegistry``).
         """
+        from tether_service.core.connector_registry import ConnectorRegistry
         from tether_service.core.factory import load
         from tether_service.core.tool_registry import ToolRegistry
         from tether_service.runtime.hw_watchdog import HardwareWatchdog
@@ -121,6 +152,24 @@ class Engine:
         registry = ToolRegistry.from_settings(tools_settings)
         tools = registry.all()
 
+        # Phase 4.5 step 47d: build ConnectorRegistry from typed settings.
+        # Pass the in-tree tool names as the M5 forbidden set so connector
+        # tools cannot shadow them (connector spec §3.3).
+        connectors: List[Any] = []
+        for cid, spec in settings.connectors.registry.items():
+            if not spec.enabled:
+                continue
+            conn = load(spec.impl, **spec.args)
+            connectors.append(conn)
+        connector_registry = ConnectorRegistry(
+            connectors, tool_names=set(tools.keys())
+        )
+
+        # Merge connector tools into the flat dict the orchestrator sees.
+        # Safe to merge naively — registry construction proved no
+        # cross-connector or in-tree collisions exist.
+        tools.update(connector_registry.aggregate_tools())
+
         orchestrator_config = OrchestratorConfig.from_settings(settings)
         tool_runner = ToolRunner(tools, timeout_sec=settings.limits.tool_timeout_sec)
 
@@ -136,6 +185,7 @@ class Engine:
             orchestrator_config=orchestrator_config,
             tool_runner=tool_runner,
             hw_watchdog=hw_watchdog,
+            connector_registry=connector_registry,
         )
 
     # --- Streaming chat (the core API) ---
@@ -215,6 +265,18 @@ class Engine:
         any tools that DID start get a ``shutdown()`` call before the
         ``RuntimeError`` surfaces.
 
+        Phase 4.5 step 47d: after tool startup, schedule
+        ``start_connector(id)`` for every connector whose
+        ``auth_status()`` reports :class:`ConnectorState.READY`.
+        Connectors in any other state (UNCONFIGURED, LOGGED_OUT, ERROR)
+        stay stopped — their tools are still registered but raise
+        ``ConnectorNotConfiguredError`` until the user runs the login
+        flow via the HTTP routes (connector spec §3.3 step 4 + §3.8).
+        Started concurrently as fire-and-forget tasks tracked on
+        ``self._connector_start_tasks`` so a slow ``start()`` does not
+        block ``__aenter__``; ``aclose`` cancels any still-pending
+        tasks before invoking ``stop_all`` (connector spec §3.3 step 6).
+
         See :func:`tether_service.tools.lifecycle.startup_all` for the
         gather semantics (synthesis §13.2 R5).
         """
@@ -237,6 +299,29 @@ class Engine:
                 # accidentally invoke a half-initialized tool.
                 self.tools.pop(name, None)
                 self.tool_runner.tools.pop(name, None)
+
+        if self.connector_registry is not None:
+            # Lazy-imported because connectors module triggers no eager
+            # imports at the package level (R8 lazy-import rule).
+            from tether_service.connectors.types import ConnectorState
+
+            for conn in self.connector_registry.all():
+                try:
+                    status = await conn.auth_status()
+                except Exception as exc:  # noqa: BLE001 - defensive
+                    logger.exception(
+                        "auth_status() raised for connector %s during "
+                        "startup; skipping. (%s)",
+                        conn.id,
+                        exc,
+                    )
+                    continue
+                if status.state is ConnectorState.READY:
+                    task = asyncio.create_task(
+                        self.connector_registry.start_connector(conn.id),
+                        name=f"start_connector:{conn.id}",
+                    )
+                    self._connector_start_tasks.append(task)
         return self
 
     async def __aexit__(self, exc_type, exc, tb) -> None:
@@ -252,6 +337,19 @@ class Engine:
         risk hitting an already-closed provider. Tool shutdown is
         best-effort — failures are logged but never raised.
 
+        Phase 4.5 step 47d: connectors are stopped BEFORE tools. The
+        order is: cancel any still-pending ``_connector_start_tasks``
+        → ``connector_registry.stop_all(timeout_sec=2.0)`` → tool
+        ``shutdown_all`` → watchdog/provider shutdown. Connectors must
+        stop before tools because connector tools dispatch through the
+        connector instance (e.g. an ``echo_send`` tool that references
+        the connector's open session); tearing down the connector
+        first guarantees no in-flight tool ``invoke()`` outlives its
+        owner. The 2 s cooperative budget is the connector spec §3.3
+        step 6 contract — connectors with potentially blocking native
+        cleanup are responsible for their own daemon-thread + force-exit
+        pattern (see ``tether_service.connectors.base.Connector``).
+
         Routes through ``self.hw_watchdog.shutdown_all()`` for any
         provider implementing :class:`HardwareLifecycle` — that path
         uses :func:`tether_service.runtime.daemon_call.daemon_thread_call`
@@ -264,14 +362,30 @@ class Engine:
         is ``None`` — only direct constructor / test paths produce
         that.
 
-        Synthesis §4 Phase 3 step 35 + §4 Phase 4 step 41; supersedes
-        the §11.3 R22 placeholder.
+        Synthesis §4 Phase 3 step 35 + §4 Phase 4 step 41 + §4 Phase
+        4.5 step 47d; supersedes the §11.3 R22 placeholder.
         """
         if self._closed:
             return
         self._closed = True
 
-        # Tools first (they may still need the provider during shutdown).
+        # Phase 4.5: cancel any pending start_connector tasks first so we
+        # don't tear down a connector mid-start. ``return_exceptions=True``
+        # swallows the ``CancelledError`` we just induced.
+        if self._connector_start_tasks:
+            for task in self._connector_start_tasks:
+                if not task.done():
+                    task.cancel()
+            await asyncio.gather(
+                *self._connector_start_tasks, return_exceptions=True
+            )
+            self._connector_start_tasks.clear()
+
+        # Phase 4.5: stop connectors before tools (see docstring).
+        if self.connector_registry is not None:
+            await self.connector_registry.stop_all(timeout_sec=2.0)
+
+        # Tools next (they may still need the provider during shutdown).
         if self.tools:
             from tether_service.tools.lifecycle import shutdown_all
 

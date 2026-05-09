@@ -53,3 +53,12 @@ def test_import_tether_service_does_not_load_orchestrator():
     assert not _module_loaded_after_import_tether_service(
         "tether_service.protocol.orchestration.orchestrator"
     )
+
+
+def test_import_tether_service_does_not_load_connectors_router():
+    """Phase 4.5 step 47e: the HTTP connectors router pulls in FastAPI
+    and the connector spec types; ``import tether_service`` must NOT
+    eagerly trigger that — only :func:`create_app` does."""
+    assert not _module_loaded_after_import_tether_service(
+        "tether_service.app.http.routers.connectors"
+    )
