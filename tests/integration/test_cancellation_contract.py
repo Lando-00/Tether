@@ -23,7 +23,7 @@ import pytest
 from tether_service.core.interfaces import ModelProvider, Tool
 from tether_service.core.types import OrchestratorConfig, ToolExecutionContext
 from tether_service.protocol.orchestration.cancel import AsyncEventCancelToken
-from tether_service.protocol.orchestration.orchestrator_class import Orchestrator
+from tether_service.protocol.orchestration.chatty import ChattyAgentOrchestrator
 from tether_service.protocol.orchestration.policies import (
     LoopLimitPolicy,
     ToolErrorPolicy,
@@ -183,7 +183,7 @@ async def test_cancel_during_stream_emits_message_stop():
     provider = _CancelMidStreamProvider(token)
     store = _SlowStore()
 
-    orch = Orchestrator(
+    orch = ChattyAgentOrchestrator(
         provider=provider,
         parser=SlidingParser(),
         store=store,
@@ -216,7 +216,7 @@ async def test_cancel_persists_partial_text_within_200ms():
     provider = _CancelMidStreamProvider(token)
     store = _SlowStore()  # no artificial slowdown
 
-    orch = Orchestrator(
+    orch = ChattyAgentOrchestrator(
         provider=provider,
         parser=SlidingParser(),
         store=store,
@@ -250,7 +250,7 @@ async def test_cancel_persist_timeout_swallowed_when_store_too_slow():
     # Store sleeps 1.0s, much longer than the 200ms budget.
     store = _SlowStore(store_sleep=1.0)
 
-    orch = Orchestrator(
+    orch = ChattyAgentOrchestrator(
         provider=provider,
         parser=SlidingParser(),
         store=store,
@@ -294,7 +294,7 @@ async def test_cancel_during_tool_emits_tool_result_cancelled():
     token = AsyncEventCancelToken()
     slow_tool = _SlowTool(sleep_sec=2.0)
     tools = {"slow": slow_tool}
-    orch = Orchestrator(
+    orch = ChattyAgentOrchestrator(
         provider=_ToolCallProvider(),
         parser=SlidingParser(),
         store=MinimalMemoryStore(),
@@ -340,7 +340,7 @@ async def test_cancel_grace_for_tool_task_250ms():
     token = AsyncEventCancelToken()
     slow_tool = _SlowTool(sleep_sec=2.0)
     tools = {"slow": slow_tool}
-    orch = Orchestrator(
+    orch = ChattyAgentOrchestrator(
         provider=_ToolCallProvider(),
         parser=SlidingParser(),
         store=MinimalMemoryStore(),
@@ -375,7 +375,7 @@ async def test_audit_call_status_cancelled():
     token = AsyncEventCancelToken()
     slow_tool = _SlowTool(sleep_sec=2.0)
     tools = {"slow": slow_tool}
-    orch = Orchestrator(
+    orch = ChattyAgentOrchestrator(
         provider=_ToolCallProvider(),
         parser=SlidingParser(),
         store=MinimalMemoryStore(),

@@ -14,7 +14,7 @@ import pytest
 from tether_service.core.errors import LoopLimitReached as LoopLimitReachedError
 from tether_service.core.interfaces import ModelProvider, Tool
 from tether_service.core.types import OrchestratorConfig, ToolExecutionContext
-from tether_service.protocol.orchestration.orchestrator_class import Orchestrator
+from tether_service.protocol.orchestration.chatty import ChattyAgentOrchestrator
 from tether_service.protocol.orchestration.policies import (
     LoopLimitPolicy,
     ToolErrorPolicy,
@@ -82,7 +82,7 @@ class _AlwaysOkTool(Tool):
 
 def _build(*, max_tool_loops: int, loop_limit_policy: LoopLimitPolicy):
     tools = {"noop": _AlwaysOkTool()}
-    return Orchestrator(
+    return ChattyAgentOrchestrator(
         provider=_AlwaysToolProvider(),
         parser=SlidingParser(),
         store=MinimalMemoryStore(),

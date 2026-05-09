@@ -1,7 +1,7 @@
-"""Core orchestration loop — thin shim around :class:`Orchestrator`.
+"""Core orchestration loop — thin shim around :class:`ChattyAgentOrchestrator`.
 
 ``orchestrate()`` is the legacy function-shape entry point. It now
-delegates to :class:`tether_service.protocol.orchestration.orchestrator_class.Orchestrator`
+delegates to :class:`tether_service.protocol.orchestration.chatty.ChattyAgentOrchestrator`
 and serializes each yielded :class:`WireEvent` into legacy v0 NDJSON
 bytes via :func:`v0_compat_serialize`.
 
@@ -30,7 +30,7 @@ from tether_service.core.interfaces import (
 from tether_service.core.types import OrchestratorConfig
 from tether_service.protocol.orchestration.cancel import AsyncEventCancelToken
 from tether_service.protocol.orchestration.emitter import v0_compat_serialize
-from tether_service.protocol.orchestration.orchestrator_class import Orchestrator
+from tether_service.protocol.orchestration.chatty import ChattyAgentOrchestrator
 from tether_service.protocol.orchestration.tool_runner import ToolRunner
 
 if TYPE_CHECKING:
@@ -64,7 +64,7 @@ async def orchestrate(
     Synthesis §4 Phase 5 step 52 (orchestrator class), §11.3 R7
     (CancelToken).
     """
-    orch = Orchestrator(
+    orch = ChattyAgentOrchestrator(
         provider=provider,
         parser=parser,
         store=store,

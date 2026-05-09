@@ -1,14 +1,28 @@
-"""Thin Orchestrator class with named seams (synthesis §3.5).
+"""ChattyAgentOrchestrator — the standard tool-loop agent.
+
+Implements the Orchestrator ABC (tether_service.core.interfaces).
+The "chatty agent" mode is the default Tether experience: a user
+prompt enters; the model reasons, optionally calls tools, and produces
+a final answer; events stream to the caller.
+
+Briefing §2 Seam B: this is the concrete impl that historically lived
+as a free function (orchestrate()) and then as the unnamed Orchestrator
+class. Renamed in p5-orchestrator-abc-strategy to make the
+orchestration strategy a first-class architectural seam.
+
+Other impls under the same ABC:
+  - NotebookOrchestrator (notebook.py) — research mode, stubbed.
 
 Stateful per-turn but thread-safe across turns: the class instance can
 be reused (``Engine.chat`` constructs one per :class:`Engine`, calls
-:meth:`Orchestrator.run` per turn). State carried during a turn lives
-in the ``run()`` async generator's closure, not on ``self``.
+:meth:`ChattyAgentOrchestrator.run` per turn). State carried during a
+turn lives in the ``run()`` async generator's closure, not on ``self``.
 
 Public API:
 
-  ``Orchestrator(*, provider, parser, store, tools, system_prompt,
-                  config, tool_runner, hw_watchdog=None)``
+  ``ChattyAgentOrchestrator(*, provider, parser, store, tools,
+                             system_prompt, config, tool_runner,
+                             hw_watchdog=None)``
 
   ``async def run(*, session_id, prompt, model_name, cancel_token=None)
        -> AsyncIterator[WireEvent]``
@@ -43,6 +57,7 @@ cleanly. ``RAISE`` raises :class:`tether_service.core.errors.LoopLimitReached`.
 
 Synthesis §3.4 (Engine.chat returns AsyncIterator[WireEvent]),
 §3.5 (cancellation + policy contracts), §11.3 R1 / R3 / R6 / R7 / R10.
+Synthesis §3.5; briefing §2 item 4.
 """
 from __future__ import annotations
 
@@ -67,6 +82,7 @@ from tether_service.core.errors import (
 )
 from tether_service.core.interfaces import (
     ModelProvider,
+    Orchestrator as OrchestratorABC,
     SessionStore,
     StreamParser,
     Tool,
@@ -130,9 +146,10 @@ def _args_sha256(args: Dict[str, Any]) -> str:
     return hashlib.sha256(encoded).hexdigest()
 
 
-class Orchestrator:
+class ChattyAgentOrchestrator(OrchestratorABC):
     """Thin async orchestrator with named seams.
 
+    Implements :class:`tether_service.core.interfaces.Orchestrator`.
     Synthesis §3.5. Construct once per :class:`Engine`; call
     :meth:`run` per turn. Stateful per-turn but thread-safe across
     turns: per-turn state lives in the async generator's closure, not
