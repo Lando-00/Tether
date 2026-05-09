@@ -40,10 +40,5 @@
     "type": "done",
     "session_id": "<sid>",
     "data": {}
-  },
-  {
-    "type": "done",
-    "session_id": "<sid>",
-    "data": {}
   }
 ]

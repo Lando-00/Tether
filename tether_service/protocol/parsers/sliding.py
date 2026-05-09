@@ -220,6 +220,12 @@ class SlidingParser(StreamParser):
         return events
 
     def finalize(self) -> List[Dict[str, Any]]:
+        """Flush any residual buffered state. Returns events for any
+        incomplete tool payloads or trailing text/think — but NOT a
+        terminal DONE event. The orchestrator owns terminal-event emission.
+
+        Synthesis §6 row 3 / A4 PAIN-4.
+        """
         events: List[Dict[str, Any]] = []
         if self.mode == "await_payload":
             logger.warning("Parser finalize: tool marker found but no payload received")
@@ -233,13 +239,16 @@ class SlidingParser(StreamParser):
             else:
                 events.append({"type": StreamEvent.TEXT, "data": {"delta": self.buf}})
         
-        logger.info("Parser finalize: resetting state")
+        # Synthesis §6 row 3 / A4 PAIN-4:
+        # finalize() flushes residual text/think/error events only.
+        # The orchestrator emits the single terminal DONE event.
+        # Emitting DONE here caused a duplicate done on the wire.
+        logger.debug("Parser finalize: resetting state")
         self.buf = ""
         self.mode = "text"
         self._json_depth = 0
         self._in_str = False
         self._esc = False
         self._tool_started = False
-        
-        events.append({"type": StreamEvent.DONE})
+
         return events
