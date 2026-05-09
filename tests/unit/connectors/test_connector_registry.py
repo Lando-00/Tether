@@ -545,3 +545,121 @@ def test_default_data_dir_resolution() -> None:
 def test_tool_names_default_none(tmp_path: Path) -> None:
     """Calling ``ConnectorRegistry([])`` (no tool_names arg) must work."""
     ConnectorRegistry([], data_dir=tmp_path)  # smoke
+
+
+# ===========================================================================
+# A4. Phase 4.5 follow-up (rubber-duck consensus): tools() called once
+# ===========================================================================
+
+
+def test_tools_called_once_during_construction(tmp_path: Path) -> None:
+    """F3: a connector's ``tools()`` must be invoked exactly ONCE during
+    ``ConnectorRegistry.__init__`` (validation + aggregation share a
+    single cached call).
+
+    Before the fix, ``tools()`` was called twice — once for M5 validation
+    and once again for aggregation. A non-idempotent ``tools()`` could
+    pass validation then yield a different dict, producing inconsistent
+    registry state silently.
+    """
+    call_counter = {"count": 0}
+    fixed_tools: Dict[str, Tool] = {"echo_send": _StubTool("echo_send")}
+
+    class _CountingConnector(Connector):
+        id = "echo"
+
+        async def start(self) -> None:
+            return None
+
+        async def stop(self) -> None:
+            return None
+
+        async def logout(self) -> None:
+            return None
+
+        async def health(self) -> HealthStatus:
+            return HealthStatus(state=ConnectorState.READY)
+
+        async def auth_status(self) -> AuthStatus:
+            return AuthStatus(state=ConnectorState.READY)
+
+        async def begin_login(self) -> LoginPrompt:
+            return LoginPrompt(kind="url", payload="x")
+
+        async def complete_login(
+            self, *, payload: Dict[str, Any]
+        ) -> LoginContinueResult:
+            return LoginContinueResult(state=ConnectorState.READY)
+
+        def tools(self) -> Dict[str, Tool]:
+            call_counter["count"] += 1
+            return dict(fixed_tools)
+
+        async def inbound_stream(self) -> AsyncIterator[InboundEvent]:
+            if False:  # pragma: no cover
+                yield  # type: ignore[unreachable]
+
+    conn = _CountingConnector()
+    registry = ConnectorRegistry([conn], data_dir=tmp_path)
+
+    # Construction must have called tools() exactly once.
+    assert call_counter["count"] == 1, (
+        f"tools() called {call_counter['count']} times during construction; "
+        f"expected exactly 1 (Phase 4.5 follow-up F3)."
+    )
+
+    # The aggregated tool set still reflects what tools() returned.
+    aggregated = registry.aggregate_tools()
+    assert "echo_send" in aggregated
+    # aggregate_tools() does NOT re-invoke tools() — uses cached dict.
+    assert call_counter["count"] == 1
+
+
+def test_tools_raise_during_construction(tmp_path: Path) -> None:
+    """F3: a connector whose ``tools()`` raises must produce a
+    ``ValueError`` chained from the original exception, with a message
+    that names the offending connector.
+    """
+
+    class _BadToolsConnector(Connector):
+        id = "broken"
+
+        async def start(self) -> None:
+            return None
+
+        async def stop(self) -> None:
+            return None
+
+        async def logout(self) -> None:
+            return None
+
+        async def health(self) -> HealthStatus:
+            return HealthStatus(state=ConnectorState.READY)
+
+        async def auth_status(self) -> AuthStatus:
+            return AuthStatus(state=ConnectorState.READY)
+
+        async def begin_login(self) -> LoginPrompt:
+            return LoginPrompt(kind="url", payload="x")
+
+        async def complete_login(
+            self, *, payload: Dict[str, Any]
+        ) -> LoginContinueResult:
+            return LoginContinueResult(state=ConnectorState.READY)
+
+        def tools(self) -> Dict[str, Tool]:
+            raise RuntimeError("boom from tools()")
+
+        async def inbound_stream(self) -> AsyncIterator[InboundEvent]:
+            if False:  # pragma: no cover
+                yield  # type: ignore[unreachable]
+
+    with pytest.raises(ValueError) as excinfo:
+        ConnectorRegistry([_BadToolsConnector()], data_dir=tmp_path)
+
+    msg = str(excinfo.value)
+    assert "broken" in msg
+    assert "tools()" in msg
+    # Underlying RuntimeError chained via ``raise ... from``.
+    assert isinstance(excinfo.value.__cause__, RuntimeError)
+    assert "boom" in str(excinfo.value.__cause__)

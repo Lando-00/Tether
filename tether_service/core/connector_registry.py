@@ -157,9 +157,27 @@ class ConnectorRegistry:
         # 2. Validate each connector's tool names per M5. Forbidden set
         #    grows as we accept connectors: this catches A's tool name
         #    colliding with B's even when neither violates ``tool_names``.
+        #
+        # Phase 4.5 follow-up (rubber-duck consensus, gpt-5.5 CONCERN):
+        # cache the per-connector ``tools()`` result so we call it
+        # exactly ONCE per connector (the previous code called it twice
+        # — here for validation, and again below for aggregation). A
+        # non-idempotent or eventually-failing ``tools()`` could pass
+        # validation and then yield a different dict during aggregation,
+        # producing inconsistent registry state silently. ``tools()``
+        # raising during construction is also wrapped here with a clear
+        # ``Connector '<cid>' tools() raised: ...`` message so the
+        # boot-time failure points at the offending connector.
         accumulated_forbidden: Set[str] = set(tool_names)
+        cached_tools_per_connector: Dict[str, Dict[str, Tool]] = {}
         for cid, conn in self._connectors.items():
-            conn_tools = conn.tools()
+            try:
+                conn_tools = conn.tools()
+            except Exception as exc:
+                raise ValueError(
+                    f"Connector {cid!r} tools() raised: {exc}"
+                ) from exc
+            cached_tools_per_connector[cid] = conn_tools
             try:
                 validate_unique_names(
                     conn_tools,
@@ -172,11 +190,12 @@ class ConnectorRegistry:
                 ) from exc
             accumulated_forbidden.update(conn_tools.keys())
 
-        # 3. Aggregate. Safe to merge naively because step 2 proved no
-        #    cross-connector collisions exist.
+        # 3. Aggregate from the cached dicts (single-pass; no second
+        #    ``tools()`` call). Safe to merge naively because step 2
+        #    proved no cross-connector collisions exist.
         self._all_tools: Dict[str, Tool] = {}
-        for conn in self._connectors.values():
-            self._all_tools.update(conn.tools())
+        for cid in self._connectors:
+            self._all_tools.update(cached_tools_per_connector[cid])
 
         # 4. Resolve data_dir lazily; per spec §3.6 the directories are
         #    only materialised on first ``start_connector``.
