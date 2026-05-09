@@ -33,6 +33,8 @@ from tether_service.runtime.watchdog_mode import WatchdogMode
 
 if TYPE_CHECKING:
     from tether_service.core.connector_registry import ConnectorRegistry
+    from tether_service.protocol.orchestration.cancel import CancelToken
+    from tether_service.protocol.wire.events import WireEvent
     from tether_service.runtime.hw_watchdog import HardwareWatchdog
 
 
@@ -198,8 +200,20 @@ class Engine:
         model_name: str,
         cancel_event: Optional[asyncio.Event] = None,
     ) -> AsyncGenerator[bytes, None]:
-        """Drive the core orchestration to stream NDJSON bytes."""
-        from tether_service.protocol.orchestration.orchestrator import orchestrate
+        """Drive the core orchestration to stream NDJSON bytes (v0 vocabulary).
+
+        Wraps :meth:`chat` and serializes each :class:`WireEvent` via the
+        v0 compatibility shim so the bytes wire vocabulary stays
+        UNCHANGED (``text``, ``think``, ``tool_started``,
+        ``tool_completed``, ``tool_error``, ``error``, ``done``, ``info``,
+        ``loop_limit_reached``) until ``p5-cutover-c`` flips the default
+        to v2. The legacy ``orchestrate()`` function is still exported
+        as a thin shim around this so external callers / patch-based
+        tests keep working unchanged.
+        """
+        from tether_service.protocol.orchestration.orchestrator import (
+            orchestrate,
+        )
 
         async for chunk in orchestrate(
             session_id=session_id,
@@ -216,6 +230,44 @@ class Engine:
             hw_watchdog=self.hw_watchdog,
         ):
             yield chunk
+
+    async def chat(
+        self,
+        *,
+        session_id: str,
+        prompt: str,
+        model_name: str,
+        cancel_token: Optional["CancelToken"] = None,
+    ) -> AsyncGenerator["WireEvent", None]:
+        """Library-mode typed event stream (synthesis §3.4).
+
+        Yields typed :class:`WireEvent` Python objects. HTTP transports
+        use :meth:`stream` (which serializes to v0 NDJSON bytes via the
+        back-compat shim). Library consumers and the future SSE / dual-
+        emit transport (``p5-cutover-a-dual-emit``) iterate
+        :class:`WireEvent` directly.
+        """
+        from tether_service.protocol.orchestration.orchestrator_class import (
+            Orchestrator,
+        )
+
+        orch = Orchestrator(
+            provider=self.provider,
+            parser=self.parser,
+            store=self.store,
+            tools=self.tools,
+            system_prompt=self.system_prompt,
+            config=self.orchestrator_config,
+            tool_runner=self.tool_runner,
+            hw_watchdog=self.hw_watchdog,
+        )
+        async for wire_event in orch.run(
+            session_id=session_id,
+            prompt=prompt,
+            model_name=model_name,
+            cancel_token=cancel_token,
+        ):
+            yield wire_event
 
     # --- Session / model CRUD pass-throughs (no business logic) ---
 
