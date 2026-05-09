@@ -8,9 +8,22 @@ from tether_service.core.logging import logger
 router = APIRouter(prefix="/chat", tags=["chat"])
 
 class StreamRequest(BaseModel):
-    session_id: str = Field(..., description="The unique identifier for the session.")
-    prompt: str = Field(..., description="The user's prompt.")
-    model_name: str = Field(..., description="The name of the model to use for this generation.")
+    session_id: str = Field(
+        ...,
+        description="The unique identifier for the session.",
+        pattern=r"^[A-Za-z0-9_-]{1,128}$",
+    )
+    prompt: str = Field(
+        ...,
+        description="The user's prompt.",
+        min_length=1,
+        max_length=32768,
+    )
+    model_name: str = Field(
+        ...,
+        description="The name of the model to use for this generation.",
+        pattern=r"^[A-Za-z0-9._-]{1,128}$",
+    )
 
 
 @router.post("/stream")

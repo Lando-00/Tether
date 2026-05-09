@@ -14,6 +14,11 @@ from typing import Any, AsyncGenerator, Dict, List, Optional
 from mlc_llm import AsyncMLCEngine
 from tether_service.core.interfaces import ModelProvider
 
+# §security R-pathtraversal: model_name must be a plain directory component.
+# This pattern deliberately excludes path separators, colons, and any other
+# characters that could be used to escape the dist_root directory.
+_MODEL_NAME_RE = re.compile(r"^[A-Za-z0-9._-]{1,128}$")
+
 
 def _abort_all_requests(engine) -> int:
     """
@@ -133,6 +138,29 @@ class MLCProvider(ModelProvider):
         self._engine_cache: Dict[str, AsyncMLCEngine] = {}
         self._cache_lock = Lock()
         self._init_locks: Dict[str, asyncio.Lock] = {}
+
+    def _validate_model_name(self, name: str) -> None:
+        """
+        Validate that model_name is a safe, plain directory name.
+
+        §security R-pathtraversal (§4 Phase 0A): any model_name that contains
+        path separators, colons, or other escape characters must be rejected
+        before any filesystem access. We also resolve the resulting path to
+        confirm it remains within dist_root, catching encoded traversal strings
+        such as '..%2F'.
+
+        Raises:
+            ValueError: if name is unsafe or would escape dist_root.
+        """
+        if not isinstance(name, str) or not _MODEL_NAME_RE.match(name):
+            raise ValueError(f"invalid model_name: {name!r}")
+        # Resolve to absolute paths and verify containment (Python 3.9+).
+        # The resolved path must be a strict child of dist_root, not dist_root
+        # itself (which "." would produce).
+        resolved = (self.dist_root / name).resolve()
+        dist_root_resolved = self.dist_root.resolve()
+        if not resolved.is_relative_to(dist_root_resolved) or resolved == dist_root_resolved:
+            raise ValueError(f"invalid model_name: {name!r}")
 
     def list_models(self) -> List[str]:
         """List available models."""
@@ -282,6 +310,7 @@ class MLCProvider(ModelProvider):
         Returns:
             Context window size in tokens (defaults to 4096 if not found)
         """
+        self._validate_model_name(model_name)
         config_path = self.dist_root / model_name / "mlc-chat-config.json"
         
         if not config_path.exists():
@@ -305,6 +334,7 @@ class MLCProvider(ModelProvider):
 
     def _get_engine(self, model_name: str) -> AsyncMLCEngine:
         """Get a cached engine instance or create a new one for a specific model."""
+        self._validate_model_name(model_name)
         model_dir = self.dist_root / model_name
         if not model_dir.exists():
             raise ValueError(f"Model directory not found: {model_dir}")
@@ -329,6 +359,7 @@ class MLCProvider(ModelProvider):
 
     async def _ensure_engine(self, model_name: str) -> AsyncMLCEngine:
         """Ensure the engine for a specific model is initialized."""
+        self._validate_model_name(model_name)
         # Check if engine is already cached (fast path)
         model_dir = self.dist_root / model_name
         model_lib_path = resolve_model_lib(model_name, self.libs_dir)

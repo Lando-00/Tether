@@ -116,7 +116,10 @@ class SlidingParser(StreamParser):
                                     obj = json.loads(raw)
                                     tool_name = obj.get("name")
                                     tool_args = obj.get("arguments", {})
-                                    logger.info(f"Parser: tool call parsed: name={tool_name}, args={tool_args}")
+                                    # §13 R5: args may contain PII — redact before logging, demote to DEBUG
+                                    _args_repr = repr(tool_args)
+                                    _args_safe = _args_repr[:80] + ("...[truncated]" if len(_args_repr) > 80 else "")
+                                    logger.debug(f"Parser: tool call parsed: name={tool_name}, args={_args_safe}")
                                     evt = {
                                         "type": StreamEvent.TOOL_COMPLETE,
                                         "data": {

@@ -137,10 +137,6 @@ async def shutdown_provider_with_timeout(provider, timeout_sec: float = 3.0):
                 print("==== SHUTTING DOWN: Cleaning up models ====")
                 provider.shutdown_all()
                 print("==== SHUTDOWN COMPLETE ====")
-            elif hasattr(provider, '_engine_cache'):
-                print("==== SHUTTING DOWN: Using fallback cache cleanup ====")
-                # Can't use async here, so do sync cache swap
-                _force_cleanup_provider_sync(provider)
         except Exception as e:
             logger.exception(f"Exception during provider shutdown: {e}")
         finally:
@@ -168,37 +164,6 @@ async def shutdown_provider_with_timeout(provider, timeout_sec: float = 3.0):
     
     elapsed = time.time() - start
     print(f"==== SHUTDOWN COMPLETED IN {elapsed:.2f}s ====")
-
-
-def _force_cleanup_provider_sync(provider):
-    """
-    Synchronous version of force cleanup for use in daemon threads.
-    """
-    cache = getattr(provider, "_engine_cache", None)
-    lock = getattr(provider, "_cache_lock", None)
-
-    if cache is None or lock is None:
-        return
-
-    # Try to acquire the lock briefly; if not, skip to avoid deadlock
-    acquired = False
-    try:
-        acquired = lock.acquire(timeout=0.1)
-    except TypeError:
-        # Python <3.10 Lock may not support timeout; try non-blocking
-        acquired = lock.acquire(False)
-    
-    if not acquired:
-        print("==== FORCE CLEANUP: could not acquire cache lock quickly; skipping ====")
-        return
-
-    try:
-        # Replace the dict instead of clearing (avoid immediate destructors)
-        old = provider._engine_cache
-        provider._engine_cache = {}
-        print(f"==== FORCE CLEANUP: detached engine cache ({len(old)} engines) ====")
-    finally:
-        lock.release()
 
 
 @asynccontextmanager
