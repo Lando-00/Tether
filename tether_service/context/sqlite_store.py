@@ -122,7 +122,7 @@ class SqliteSessionStore(SessionStore):
         return count
 
     async def _ensure_session(self, session_id: str) -> None:
-        now = datetime.datetime.utcnow().isoformat()
+        now = datetime.datetime.now(datetime.timezone.utc).isoformat()
         self.conn.execute(
             "INSERT OR IGNORE INTO sessions(id, created_at, metadata) VALUES (?, ?, ?)",
             (session_id, now, "{}"),
@@ -131,7 +131,7 @@ class SqliteSessionStore(SessionStore):
 
     async def add_user(self, session_id: str, text: str) -> None:
         await self._ensure_session(session_id)
-        ts = datetime.datetime.utcnow().isoformat()
+        ts = datetime.datetime.now(datetime.timezone.utc).isoformat()
         self.conn.execute(
             "INSERT INTO messages(session_id, role, content, ts) VALUES (?, ?, ?, ?)",
             (session_id, "user", text, ts),
@@ -146,7 +146,7 @@ class SqliteSessionStore(SessionStore):
         save_thinking: bool = True,
     ) -> None:
         await self._ensure_session(session_id)
-        ts = datetime.datetime.utcnow().isoformat()
+        ts = datetime.datetime.now(datetime.timezone.utc).isoformat()
         thinking_value = thinking_text if (save_thinking and thinking_text) else None
         self.conn.execute(
             "INSERT INTO messages(session_id, role, content, thinking_text, ts) VALUES (?, ?, ?, ?, ?)",
@@ -158,7 +158,7 @@ class SqliteSessionStore(SessionStore):
         self, session_id: str, tool_name: str, args: Dict[str, Any]
     ) -> None:
         await self._ensure_session(session_id)
-        ts = datetime.datetime.utcnow().isoformat()
+        ts = datetime.datetime.now(datetime.timezone.utc).isoformat()
         self.conn.execute(
             "INSERT INTO messages(session_id, role, tool_name, args, ts) VALUES (?, ?, ?, ?, ?)",
             (session_id, "tool", tool_name, json.dumps(args or {}), ts),
@@ -169,7 +169,7 @@ class SqliteSessionStore(SessionStore):
         self, session_id: str, tool_name: str, result: Any
     ) -> None:
         await self._ensure_session(session_id)
-        ts = datetime.datetime.utcnow().isoformat()
+        ts = datetime.datetime.now(datetime.timezone.utc).isoformat()
         self.conn.execute(
             "INSERT INTO messages(session_id, role, tool_name, result, ts) VALUES (?, ?, ?, ?, ?)",
             (session_id, "tool_result", tool_name, json.dumps(result), ts),
@@ -216,7 +216,7 @@ class SqliteSessionStore(SessionStore):
             (session_id,),
         ).fetchone()["c"]
         if count == 0:
-            ts = datetime.datetime.utcnow().isoformat()
+            ts = datetime.datetime.now(datetime.timezone.utc).isoformat()
             self.conn.execute(
                 "INSERT INTO messages(session_id, role, content, ts) VALUES (?, ?, ?, ?)",
                 (session_id, "system", prompt, ts),
