@@ -1,6 +1,6 @@
 # Copilot Instructions — Tether
 
-**Tether** is a Python/FastAPI service for session-based, streaming access to MLC-LLM models with function-calling support. It uses SQLite for chat history, follows Model-Context-Protocol (MCP) architecture, and streams NDJSON events.
+**Tether** is a Python/FastAPI service for session-based, streaming access to MLC-LLM models with function-calling support. It uses SQLite for chat history, follows Model-Context-Protocol (MCP) architecture, and streams **v2 NDJSON events by default** (p5-cutover-c-flip-default). Legacy v0 NDJSON is available via `Accept: application/x-ndjson; version=0` until Phase 8.
 
 ## Quick Start
 

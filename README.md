@@ -187,7 +187,7 @@ response = requests.post("http://localhost:8080/sessions")
 session = response.json()
 session_id = session["session_id"]
 
-# 2. Stream a chat completion (v2 vocabulary — opt in via Accept header)
+# 2. Stream a chat completion (v2 vocabulary — now the DEFAULT)
 
 stream_request = {
     "session_id": session_id,
@@ -198,7 +198,6 @@ stream_request = {
 response = requests.post(
     "http://localhost:8080/chat/stream",
     json=stream_request,
-    headers={"Accept": "application/x-ndjson; version=1.0"},
     stream=True
 )
 
@@ -317,7 +316,7 @@ tether_service/
 
 4. **Tool Loop**: The orchestrator can execute multiple tool calls in sequence (up to `max_tool_loops`), allowing the model to "think with tools."
 
-5. **Event Streaming**: All outputs use a structured NDJSON event format. The v2 vocabulary (`text_delta`, `tool_call`, `tool_result`, `message_stop`) is available via `Accept: application/x-ndjson; version=1.0`.
+5. **Event Streaming**: All outputs use a structured NDJSON event format with v2 vocabulary (`text_delta`, `tool_call`, `tool_result`, `message_stop`) **by default**. Legacy v0 vocabulary is available as an opt-in via `Accept: application/x-ndjson; version=0` until it is removed in a future release.
 
 ## 📡 API Documentation
 
@@ -390,11 +389,12 @@ Stream a chat completion with function calling support.
 
 ```
 
-**Response (NDJSON stream, v2 vocabulary):**
+**Response (NDJSON stream, v2 vocabulary — default):**
 
-To receive v2 events, send `Accept: application/x-ndjson; version=1.0`. The
-default (no Accept header) is currently v0 vocabulary and will be deprecated
-in a future release.
+`/api/v1/chat/stream` now defaults to v2 NDJSON. No Accept header changes are
+needed. To opt into the legacy v0 vocabulary, send
+`Accept: application/x-ndjson; version=0` (deprecated; will be removed in a
+future release; response will include a `Warning: 299` header).
 
 ```json
 {"protocol_version": "1.0", "session_id": "...", "turn_id": "...", "seq": 0, "ts": "...", "type": "message_start", "available_tools": [...]}
@@ -405,6 +405,28 @@ in a future release.
 {"protocol_version": "1.0", "session_id": "...", "turn_id": "...", "seq": 5, "ts": "...", "type": "message_stop", "stop_reason": "complete"}
 
 ```
+
+### Wire Format Negotiation
+
+The `Accept` request header selects the response format and vocabulary:
+
+| Accept                                          | Response          | Notes                                   |
+|-------------------------------------------------|-------------------|-----------------------------------------|
+| (omitted) or `application/x-ndjson`             | NDJSON v2         | **Default** (v2 is now the default)     |
+| `application/x-ndjson; version=1.0`             | NDJSON v2         | Explicit (same as default)              |
+| `application/x-ndjson; version=0`               | NDJSON v0 (legacy)| **Deprecated**; emits `Warning: 299`    |
+| `text/event-stream`                             | SSE v2            | Per W3C SSE spec                        |
+
+All responses include `X-Tether-Protocol-Version: 1.0`. v0 responses
+additionally include `Warning: 299 - "..."` per RFC 9110 §5.6.7.
+
+The v0 NDJSON vocabulary will be removed in a future Tether release.
+Migrate to v2 (no header changes needed) at your earliest convenience.
+
+> **Legacy v0 wire format (opt-in; deprecated)**: Send
+> `Accept: application/x-ndjson; version=0` to receive v0 vocabulary
+> (`text`, `think`, `tool_started`, `tool_completed`, `tool_error`, `done`).
+> Responses on this path carry `Warning: 299`. v0 will be removed in Phase 8.
 
 ### Streaming Event Format (v2)
 
@@ -435,11 +457,6 @@ Each event has a common envelope plus type-specific fields:
 | `loop_limit_reached` | Tool-loop max hit | `loops` |
 | `hw_reset` | Hardware watchdog reset | `model_name` |
 | `message_stop` | Turn ends | `stop_reason` (complete/tool_loop_exhausted/cancelled/client_disconnect/error) |
-
-> **v0 wire format (deprecated)**: The default response (no Accept header or
-> `Accept: application/x-ndjson` without `version=1.0`) uses the legacy v0
-> vocabulary (`text`, `think`, `tool_started`, `tool_completed`, `tool_error`,
-> `done`). This default will flip to v2 in a future release.
 
 ## 🛠️ Tool System
 

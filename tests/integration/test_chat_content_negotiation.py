@@ -1,16 +1,18 @@
 """Integration tests for /api/v1/chat/stream content negotiation.
 
-Default (no Accept header): application/x-ndjson v0 dict events.
+Default (no Accept header): application/x-ndjson v2 typed events (NEW DEFAULT
+after p5-cutover-c-flip-default). v0 is legacy opt-in via version=0 parameter.
 Accept: text/event-stream: SSE-framed v2 typed events.
 
-Both responses carry X-Tether-Protocol-Version: 1.0.
+All responses carry X-Tether-Protocol-Version: 1.0. v0 legacy responses
+additionally carry Warning: 299 per RFC 9110 §5.6.7.
 
 Uses the same minimal app pattern as test_lifespan_starts_engine and
 test_stream_request_bounds: an Engine built with DummyProvider + in-memory
 session store, wired directly into the FastAPI lifespan so lifespan
 startup/shutdown run correctly.
 
-Synthesis §4 Phase 5 step 53.
+Synthesis §4 Phase 5 step 53; §11.3 R18 (p5-cutover-c-flip-default).
 """
 from __future__ import annotations
 
@@ -86,24 +88,24 @@ def _post(client: TestClient, *, accept: str | None = None, session_id: str = "t
 # ---------------------------------------------------------------------------
 
 
-def test_default_is_ndjson_v0(client):
-    """Default (no Accept) returns application/x-ndjson with v0 dict vocab."""
+def test_default_is_ndjson_v2(client):
+    """Default (no Accept) returns application/x-ndjson with v2 typed vocab (NEW DEFAULT)."""
     resp = _post(client, session_id="test-default")
     assert resp.status_code == 200
     assert resp.headers["content-type"].startswith("application/x-ndjson")
     assert resp.headers["x-tether-protocol-version"] == "1.0"
     body = resp.text
     lines = [l for l in body.splitlines() if l.strip()]
-    # At least one v0 dict line
+    # At least one v2 line
     assert len(lines) >= 1
-    # v0 vocabulary in use (not v2)
-    assert "text_delta" not in body
-    assert "message_stop" not in body
-    assert "message_start" not in body
+    # v2 vocabulary in use (not v0)
+    assert "text_delta" in body
+    assert "message_start" in body
+    assert "message_stop" in body
 
 
-def test_explicit_ndjson_is_v0(client):
-    """Accept: application/x-ndjson stays v0 (cutover-a flips the default)."""
+def test_explicit_ndjson_no_version_is_v2(client):
+    """Accept: application/x-ndjson (no version param) is v2 (same as default)."""
     resp = _post(client, accept="application/x-ndjson", session_id="test-ndjson")
     assert resp.status_code == 200
     assert resp.headers["content-type"].startswith("application/x-ndjson")
@@ -111,8 +113,8 @@ def test_explicit_ndjson_is_v0(client):
     body = resp.text
     lines = [l for l in body.splitlines() if l.strip()]
     assert len(lines) >= 1
-    # No v2 vocabulary leaked
-    assert "text_delta" not in body
+    # v2 vocabulary in use
+    assert "text_delta" in body
 
 
 def test_sse_returns_text_event_stream(client):
