@@ -75,7 +75,10 @@ async def stream(request: Request, body: StreamRequest):
     )
     try:
         orchestrator_cls = resolve_orchestrator_class(
-            body.mode, engine._orchestrator_registry
+            body.mode, getattr(engine, "_orchestrator_registry", {
+                "chat": "tether_service.protocol.orchestration.chatty.ChattyAgentOrchestrator",
+                "research": "tether_service.protocol.orchestration.notebook.NotebookOrchestrator",
+            })
         )
     except UnknownOrchestratorMode as exc:
         # Defensive: Pydantic Literal rejects unknowns at validation time,
