@@ -100,6 +100,34 @@ class LoopLimitReached(TetherError):
     """
 
 
+class ConnectorNotConfiguredError(TetherError):
+    """A connector tool was invoked while the connector is in
+    ``ConnectorState.UNCONFIGURED`` or ``ConnectorState.LOGGED_OUT``.
+
+    Tools registered by a not-yet-authenticated connector are still
+    visible to the model (so it can describe them in turn-1 responses),
+    but invoking one before login completes raises this error so the
+    orchestrator can surface a clear "please log in via begin_login"
+    message via the ``FEED_BACK_TO_MODEL`` policy.
+
+    Per connector spec §3.1 (tool methods MUST raise this in
+    UNCONFIGURED / LOGGED_OUT states).
+    """
+
+
+class ConnectorAuthError(TetherError):
+    """A connector login flow (``begin_login`` / ``complete_login``)
+    failed.
+
+    Distinct from ``ConnectorNotConfiguredError`` (which fires when tools
+    are called before login completes) — this fires when login itself
+    fails (bad QR scan, OAuth code rejected, MFA mismatch, expired
+    challenge).
+
+    Per connector spec §3.1.
+    """
+
+
 __all__ = [
     "TetherError",
     "FatalProviderError",
@@ -107,4 +135,6 @@ __all__ = [
     "ToolError",
     "CancelledByClient",
     "LoopLimitReached",
+    "ConnectorNotConfiguredError",
+    "ConnectorAuthError",
 ]

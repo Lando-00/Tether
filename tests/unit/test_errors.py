@@ -8,6 +8,8 @@ import pytest
 
 from tether_service.core.errors import (
     CancelledByClient,
+    ConnectorAuthError,
+    ConnectorNotConfiguredError,
     FatalProviderError,
     LoopLimitReached,
     TetherError,
@@ -22,6 +24,8 @@ _TETHER_SUBCLASSES = [
     ToolError,
     CancelledByClient,
     LoopLimitReached,
+    ConnectorNotConfiguredError,
+    ConnectorAuthError,
 ]
 
 
@@ -51,6 +55,9 @@ def test_distinct_classes():
         (TransientProviderError, ToolError),
         (CancelledByClient, LoopLimitReached),
         (FatalProviderError, CancelledByClient),
+        (ConnectorNotConfiguredError, ConnectorAuthError),
+        (ConnectorNotConfiguredError, ToolError),
+        (ConnectorAuthError, FatalProviderError),
     ]
     for a, b in pairs:
         assert not issubclass(a, b), f"{a.__name__} must not subclass {b.__name__}"
