@@ -8,6 +8,37 @@ def healthz():
     return {"ok": True}
 
 
+async def _connector_health_block(svc) -> list:
+    """Build the ``connectors`` array for /readyz.
+
+    Phase 4.5 step 47e (synthesis §4): inline iteration over
+    ``connector_registry.all()`` instead of adding a new method to the
+    registry — keeps the registry surface tight (R6 anti-overengineering).
+    Each connector's ``health()`` is contractually cheap (no network calls
+    per connector spec §3.1); we still defensively catch so one bad
+    connector cannot 500 readyz.
+    """
+    registry = getattr(svc, "connector_registry", None)
+    if registry is None:
+        return []
+    out = []
+    for conn in registry.all():
+        try:
+            h = await conn.health()
+            out.append(
+                {
+                    "id": conn.id,
+                    "state": h.state.value,
+                    "detail": h.detail,
+                }
+            )
+        except Exception as exc:  # noqa: BLE001 - per-connector defensive
+            out.append(
+                {"id": conn.id, "state": "error", "detail": str(exc)}
+            )
+    return out
+
+
 @router.get("/readyz")
 async def readyz(request: Request):
     """Readiness probe: verifies store and provider are functional.
@@ -25,6 +56,12 @@ async def readyz(request: Request):
         ``degraded`` until a model is loaded; that's normal).
       - Provider (fallback): no watchdog (engine constructed directly without
         ``from_settings``) → fall back to ``list_models()``.
+      - Connectors (Phase 4.5 step 47e): when ``engine.connector_registry``
+        is present, append a ``connectors`` array with each connector's
+        ``{id, state, detail}`` snapshot. Connector failures do NOT flip
+        ``ready`` — connectors in UNCONFIGURED / LOGGED_OUT / ERROR are an
+        expected steady state until the user runs the login flow (connector
+        spec §3.3).
 
     A streaming probe is still avoided: MLC engines may take 5–60s on cold
     cache. Health is reported by counting cached entries, not loading.
@@ -34,6 +71,8 @@ async def readyz(request: Request):
         _ = await svc.store.get_history("_readiness")
     except Exception as e:
         return {"ready": False, "store": False, "provider": None, "error": str(e)}
+
+    connectors_block = await _connector_health_block(svc)
 
     try:
         if getattr(svc, "hw_watchdog", None) is not None:
@@ -45,12 +84,14 @@ async def readyz(request: Request):
                     "provider": False,
                     "error": "hw_health: error",
                     "hw_health": health,
+                    "connectors": connectors_block,
                 }
             return {
                 "ready": True,
                 "store": True,
                 "provider": True,
                 "hw_health": health,
+                "connectors": connectors_block,
             }
 
         models = svc.provider.list_models()
@@ -60,12 +101,14 @@ async def readyz(request: Request):
                 "store": True,
                 "provider": False,
                 "error": "no models available",
+                "connectors": connectors_block,
             }
         return {
             "ready": True,
             "store": True,
             "provider": True,
             "models_available": len(models),
+            "connectors": connectors_block,
         }
     except Exception as e:
         return {"ready": False, "store": True, "provider": False, "error": str(e)}

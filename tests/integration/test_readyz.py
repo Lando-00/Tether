@@ -295,3 +295,175 @@ def test_readyz_no_watchdog_empty_models():
     assert body["store"] is True
     assert body["provider"] is False
     assert "no models available" in body["error"]
+
+
+# ---------------------------------------------------------------------------
+# Tests — Phase 4.5 step 47e: /readyz includes a connectors block
+# ---------------------------------------------------------------------------
+
+from typing import AsyncIterator  # noqa: E402
+
+from tether_service.connectors.base import Connector  # noqa: E402
+from tether_service.connectors.types import (  # noqa: E402
+    AuthStatus,
+    ConnectorState,
+    HealthStatus,
+    InboundEvent,
+    LoginContinueResult,
+    LoginPrompt,
+)
+from tether_service.core.connector_registry import ConnectorRegistry  # noqa: E402
+from tether_service.core.interfaces import Tool  # noqa: E402
+
+
+class _StubConnectorTool(Tool):
+    """Trivial Tool used by readyz fake connectors. startup/shutdown are
+    no-ops so :func:`tools.lifecycle.startup_all` accepts them."""
+
+    def __init__(self, name: str) -> None:
+        self._name = name
+
+    @property
+    def name(self) -> str:
+        return self._name
+
+    @property
+    def schema(self) -> Dict[str, Any]:
+        return {"name": self._name, "parameters": {"type": "object"}}
+
+    async def invoke(self, args: Dict[str, Any], *, context: Any = None) -> Any:
+        return None
+
+    async def startup(self) -> None:
+        return None
+
+    async def shutdown(self) -> None:
+        return None
+
+
+class _ReadyzConnector(Connector):
+    id = "readyz_test"
+
+    def __init__(
+        self,
+        *,
+        health_state: ConnectorState = ConnectorState.READY,
+        detail: Optional[str] = "all good",
+    ) -> None:
+        self._health_state = health_state
+        self._detail = detail
+
+    async def start(self) -> None:
+        return None
+
+    async def stop(self) -> None:
+        return None
+
+    async def logout(self) -> None:
+        return None
+
+    async def health(self) -> HealthStatus:
+        return HealthStatus(state=self._health_state, detail=self._detail)
+
+    async def auth_status(self) -> AuthStatus:
+        return AuthStatus(state=self._health_state)
+
+    async def begin_login(self) -> LoginPrompt:
+        return LoginPrompt(kind="url", payload="https://example.com")
+
+    async def complete_login(
+        self, *, payload: Dict[str, Any]
+    ) -> LoginContinueResult:
+        return LoginContinueResult(state=ConnectorState.READY)
+
+    def tools(self) -> Dict[str, Tool]:
+        return {"readyz_test_tool": _StubConnectorTool("readyz_test_tool")}
+
+    async def inbound_stream(self) -> AsyncIterator[InboundEvent]:
+        if False:  # pragma: no cover
+            yield  # type: ignore[unreachable]
+
+
+def _make_app_with_connector(
+    provider: ModelProvider,
+    store: SessionStore,
+    connector: Optional[Connector],
+    *,
+    with_watchdog: bool = True,
+) -> FastAPI:
+    """Variant of _make_app that attaches a ConnectorRegistry."""
+    from tether_service.protocol.parsers.sliding import SlidingParser
+
+    watchdog: Optional[HardwareWatchdog] = (
+        HardwareWatchdog([provider]) if with_watchdog else None
+    )
+    registry = ConnectorRegistry(
+        [connector] if connector is not None else [], data_dir=None
+    )
+    gen_svc = Engine(
+        provider=provider,
+        parser=SlidingParser(),
+        session_store=store,
+        tools=dict(registry.aggregate_tools()),
+        system_prompt="",
+        hw_watchdog=watchdog,
+        connector_registry=registry,
+    )
+    app = FastAPI()
+    v1 = APIRouter(prefix="/api/v1")
+    v1.include_router(health_router)
+    app.include_router(v1)
+    app.state.gen_svc = gen_svc
+    return app
+
+
+def test_readyz_with_connector_registry():
+    """A connector registered → /readyz body carries a ``connectors``
+    array with each connector's ``{id, state, detail}`` snapshot."""
+    conn = _ReadyzConnector(health_state=ConnectorState.READY, detail="ok")
+    client = TestClient(
+        _make_app_with_connector(_DummyProvider(), _MinimalStore(), conn)
+    )
+    resp = client.get("/api/v1/readyz")
+    assert resp.status_code == 200
+    body = resp.json()
+    assert body["ready"] is True
+    assert "connectors" in body
+    assert body["connectors"] == [
+        {"id": "readyz_test", "state": "ready", "detail": "ok"}
+    ]
+
+
+def test_readyz_with_unconfigured_connector_still_ready():
+    """An UNCONFIGURED connector does NOT flip ``ready`` to false —
+    that's the expected steady state until the user logs in (connector
+    spec §3.3)."""
+    conn = _ReadyzConnector(
+        health_state=ConnectorState.UNCONFIGURED, detail="needs login"
+    )
+    client = TestClient(
+        _make_app_with_connector(_DummyProvider(), _MinimalStore(), conn)
+    )
+    resp = client.get("/api/v1/readyz")
+    body = resp.json()
+    assert body["ready"] is True
+    assert body["connectors"] == [
+        {
+            "id": "readyz_test",
+            "state": "unconfigured",
+            "detail": "needs login",
+        }
+    ]
+
+
+def test_readyz_no_connector_registry_field_is_empty_list():
+    """Engine without a connector_registry → block is absent (not a
+    crash). The minimal _make_app helper used by older tests passes
+    ``connector_registry=None`` implicitly; verify nothing breaks."""
+    client = TestClient(_make_app(_DummyProvider(), _MinimalStore()))
+    resp = client.get("/api/v1/readyz")
+    body = resp.json()
+    # Body either omits 'connectors' OR carries [] — either is fine; it
+    # MUST NOT crash and MUST NOT flip ready.
+    assert body["ready"] is True
+    assert body.get("connectors", []) == []
