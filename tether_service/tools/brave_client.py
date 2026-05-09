@@ -286,8 +286,8 @@ class BraveSearchClient:
             "query": query
         }
         
-        # Log result count (NO full results or API key)
-        logger.info(f"Normalized {len(results)} results for query='{query}'")
+        # §13 R5: query already not leaked in results but log level was INFO — demote to DEBUG
+        logger.debug(f"Normalized {len(results)} results for query='{query}'")
         
         return {
             "results": results,
