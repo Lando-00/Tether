@@ -100,7 +100,7 @@ tests/                    # pytest tests (use anyio for async)
 ## Development Tips
 
 - **Trace a request**: `app/__main__.py` → `app/http/routers/chat.py` → `protocol/service/generation_service.py` → `protocol/orchestration/orchestrator.py`
-- **Debug tool calls**: Enable logging in `core/logging.py`, check for TOOL_STARTED/TOOL_COMPLETE events
+- **Debug tool calls**: Enable logging in `core/logging.py`, check for `tool_call` / `tool_result` events (v2 vocab)
 - **Add new tool**: Create in `tools/`, register in `config/default.yml`, restart server
 - **Test parser**: `pytest tests/protocol/parsers/test_sliding_parser.py -v` (tests chunk boundaries, nested JSON, etc.)
 - **Inspect DB**: `sqlite3 data/tether.db "SELECT * FROM messages WHERE session_id='...' ORDER BY ts"`
@@ -189,13 +189,13 @@ class WebSearchTool(BaseTool):
    │   ├─ Stream from model (MLCProvider)
    │   ├─ Parse stream for <<function_call>> markers (SlidingParser)
    │   ├─ If tool call detected:
-   │   │   ├─ Emit tool_started event
+   │   │   ├─ Emit `tool_call` event (v2 vocab; `message_start`/`text_delta`/`message_stop` per turn)
    │   │   ├─ protocol/orchestration/tool_runner.py::run()
    │   │   │   ├─ Lookup tool in ToolRegistry
    │   │   │   ├─ Call tool.run(**args) with timeout
    │   │   │   └─ Return result or error dict
    │   │   ├─ Persist tool call + result to SessionStore
-   │   │   ├─ Emit tool_completed event
+   │   │   ├─ Emit `tool_result` event (v2 vocab; status="ok"/"error" field)
    │   │   └─ Continue loop (model sees result in next iteration)
    │   └─ If no tool call: exit loop
    │
