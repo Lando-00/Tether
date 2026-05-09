@@ -15,6 +15,7 @@ the substring-grep ``is_fatal`` pattern. Synthesis §6 row 13 / §11.3 R21.
 from __future__ import annotations
 
 import asyncio
+import uuid
 from contextlib import aclosing
 from typing import Any, AsyncGenerator, Dict, Optional, TYPE_CHECKING
 
@@ -25,7 +26,7 @@ from tether_service.core.interfaces import (
     Tool,
 )
 from tether_service.core.logging import logger
-from tether_service.core.types import OrchestratorConfig, StreamEvent
+from tether_service.core.types import OrchestratorConfig, StreamEvent, ToolExecutionContext
 from tether_service.protocol.orchestration.emitter import NdjsonEmitter
 from tether_service.protocol.orchestration.tool_runner import ToolRunner
 
@@ -74,6 +75,13 @@ async def orchestrate(
             the error event is still emitted. Synthesis §4 Phase 3 step 36.
     """
     emitter = NdjsonEmitter()
+
+    # Phase 4 step 41a: one ``turn_id`` per ``orchestrate()`` call. It stays
+    # stable across all tool-loop iterations within this turn — connector
+    # tools (Phase 4.5+) can use it to de-duplicate retries triggered by
+    # the same user→assistant exchange. Synthesis §4 Phase 4 step 41a;
+    # connector spec §4 footer.
+    turn_id = uuid.uuid4().hex[:12]
 
     # Deliberate cross-iteration carry-over (synthesis §4 Phase 2 step 20):
     # `last_response_text` / `last_thinking_text` mirror the per-iteration
@@ -297,7 +305,21 @@ async def orchestrate(
 
                 # Execute the tool
                 try:
-                    result = await tool_runner.run(tool_name, tool_args)
+                    # Phase 4 step 41a: build a ToolExecutionContext per tool
+                    # call. ``user_confirmed_send`` is unconditionally False
+                    # in this refactor — the regex classifier that may flip
+                    # it ships with the WhatsApp/Gmail connectors in a
+                    # subsequent session. Synthesis §10.8 #4; connector spec
+                    # §4 footer.
+                    tool_ctx = ToolExecutionContext(
+                        session_id=session_id,
+                        turn_id=turn_id,
+                        last_user_message=prompt,
+                        user_confirmed_send=False,
+                    )
+                    result = await tool_runner.run(
+                        tool_name, tool_args, context=tool_ctx
+                    )
                     # §13 R5: result may contain PII — redact before logging, demote to DEBUG
                     logger.debug(f"Tool executed: {tool_name}, result={_redact(result)}")
                     await store.add_tool_result(session_id, tool_name, result)
