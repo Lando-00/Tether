@@ -90,5 +90,17 @@ stream:
 security: {}
 observability: {}
 storage: {}
-connectors: {}
-inbox: {}
+# Phase 4.5 (connector spec §3.7): connectors registry. Stays empty until
+# concrete connectors land (Echo: p4_5-echo-connector-tests; WhatsApp:
+# Phase 2a; Gmail: Phase 2b). The schema is live so adding a connector
+# below requires no further config-loader changes.
+connectors:
+  registry: {}  # connector_id -> {impl, args, enabled}
+# Phase 4.5 ships the schema (per connector spec §3.7); the SqliteInbox
+# impl lands in Phase 6.5. Connectors must clamp their InboundEvent
+# payloads to these caps before publishing.
+inbox:
+  enabled: true
+  retention_days: 30
+  max_payload_bytes: 64000
+  max_summary_chars: 512

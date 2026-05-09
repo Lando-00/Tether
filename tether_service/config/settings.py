@@ -154,12 +154,53 @@ class StorageSettings(StrictModel):
     """
 
 
+class ConnectorSpec(StrictModel):
+    """One entry in ``connectors.registry`` (per connector spec §3.7).
+
+    Mirrors :class:`ProviderSpec` + :class:`ToolSpec` shape: a dotted-path
+    ``impl`` plus optional ``args`` filtered against the target ``__init__``
+    by ``tether_service.core.factory.load`` (so adding a new arg doesn't
+    crash older configs). ``enabled`` defaults to True so YAML entries are
+    live unless explicitly disabled.
+
+    Phase 4.5 ships the schema; concrete ``connectors.registry`` entries
+    arrive in Phase 2a (WhatsApp) / 2b (Gmail) sessions.
+    """
+
+    impl: str
+    args: dict[str, Any] = Field(default_factory=dict)
+    enabled: bool = True
+
+
 class ConnectorsSettings(StrictModel):
-    """``connectors:`` section. Phase 4.5 will populate (connector spec §3.7)."""
+    """``connectors:`` section (per connector spec §3.7).
+
+    ``registry`` maps stable connector ids (``"whatsapp"``, ``"gmail"``,
+    ``"echo"``) to their :class:`ConnectorSpec`. The future
+    ``ConnectorRegistry`` (``p4_5-connector-registry``) consumes this map
+    at app construction.
+
+    Phase 4.5 ships the schema; concrete entries arrive in Phase 2a / 2b.
+    """
+
+    registry: dict[str, ConnectorSpec] = Field(default_factory=dict)
 
 
 class InboxSettings(StrictModel):
-    """``inbox:`` section. Phase 6.5 will populate."""
+    """``inbox:`` section (per connector spec §3.7 + §3.4).
+
+    Phase 4.5 ships the schema; the SqliteInbox impl lands in Phase 6.5.
+    The defaults match the connector spec recommendations: 30-day
+    retention, 64 KiB payload cap, 512-char summary cap. Connectors are
+    responsible for clamping to ``max_payload_bytes`` /
+    ``max_summary_chars`` when constructing :class:`InboundEvent` values
+    — the inbox layer validates as defense in depth (Phase 6.5).
+    """
+
+    enabled: bool = True
+    retention_days: int = Field(default=30, ge=1, le=3650)
+    max_payload_bytes: int = Field(default=64_000, ge=1024)
+    max_summary_chars: int = Field(default=512, ge=64)
 
 
 # ---------------------------------------------------------------------------
