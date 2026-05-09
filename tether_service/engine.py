@@ -118,11 +118,7 @@ class Engine:
         store = load(store_spec.impl, **store_spec.args)
 
         tools_settings = settings.tools
-        registry_cfg = [
-            {"name": t.name, "impl": t.impl, "args": t.args}
-            for t in tools_settings.registry
-        ]
-        registry = ToolRegistry(registry_cfg, list(tools_settings.enabled))
+        registry = ToolRegistry.from_settings(tools_settings)
         tools = registry.all()
 
         orchestrator_config = OrchestratorConfig.from_settings(settings)
