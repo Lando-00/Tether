@@ -74,9 +74,15 @@ class ToolRegistry:
         """
         self.tools: Dict[str, Any] = {}
 
-        if registry_cfg:
+        if registry_cfg is not None:
+            # Legacy path — caller provided an explicit registry list (possibly
+            # empty). Keeps ``ToolRegistry([], [])`` semantics from Phase 0A:
+            # an empty legacy registry is an empty tools dict.
             self._build_from_legacy(registry_cfg, enabled or [])
         else:
+            # Discover path — caller passed ``registry_cfg=None`` (the default
+            # for ``ToolRegistry.from_settings`` when ``settings.tools.registry``
+            # is empty). Tools come from @tool decorations + entry_points.
             self._build_from_discover(
                 disabled=disabled or [],
                 discovered=discovered,
@@ -185,7 +191,10 @@ class ToolRegistry:
           path (load by dotted-path; filter by ``enabled``). This keeps
           the existing ``default.yml`` working during the transition.
         * Otherwise, use the discover path (auto-discover via @tool +
-          entry-points; filter by ``disabled``).
+          entry-points; filter by ``disabled``). Note: this is the
+          ONLY trigger for the discover path; direct
+          ``ToolRegistry([], [])`` calls keep the legacy "empty list →
+          empty registry" semantics from Phase 0A.
         """
         if tools_settings.registry:
             registry_cfg = [
@@ -195,4 +204,4 @@ class ToolRegistry:
             return cls(registry_cfg, list(tools_settings.enabled))
 
         disabled = list(getattr(tools_settings, "disabled", []) or [])
-        return cls(disabled=disabled)
+        return cls(registry_cfg=None, disabled=disabled)

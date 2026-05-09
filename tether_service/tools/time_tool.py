@@ -1,8 +1,10 @@
 
 from tether_service.tools.base import BaseTool
+from tether_service.tools.registration import tool
 from typing import Dict, Any, Literal
 
 
+@tool(name="time")
 class TimeTool(BaseTool):
     """Get the current time for a timezone in various formats (ISO, RFC2822, or human-readable)."""
     
