@@ -1,0 +1,69 @@
+{
+  "label": "Qwen3-4B-q4f16_1 + all + /no_think",
+  "model_dir": "D:\\Dev\\TetherWorkspace\\dist\\Qwen3-4B-q4f16_1-MLC",
+  "model_lib": "D:\\Dev\\TetherWorkspace\\dist\\libs\\Qwen3-4B-q4f16_1-adreno-all.dll",
+  "mode": "interactive",
+  "warmup_s": 120.02238740000757,
+  "results": [
+    {
+      "label": "tiny",
+      "iteration": 2,
+      "prompt_tokens": 21,
+      "response_tokens": 5,
+      "response_chars": 21,
+      "ttft_s": 0.46150309999939054,
+      "total_s": 0.7149054000037722,
+      "decode_s": 0.2534023000043817,
+      "decode_toks_per_s": 19.73147047171057,
+      "prefill_toks_per_s": 45.503486325504056,
+      "response_preview": "<think>  </think>  OK",
+      "has_function_call_marker": false,
+      "error": null
+    },
+    {
+      "label": "medium",
+      "iteration": 2,
+      "prompt_tokens": 17,
+      "response_tokens": 149,
+      "response_chars": 861,
+      "ttft_s": 0.6780455999833066,
+      "total_s": 8.969534899981227,
+      "decode_s": 8.29148929999792,
+      "decode_toks_per_s": 17.970233646690875,
+      "prefill_toks_per_s": 25.07206005085578,
+      "response_preview": "<think>  </think>  TCP (Transmission Control Protocol) and UDP (User Datagram Protocol) are both internet protocols used for transmitting data over a network, but they differ in their approach and use cases. TCP is a connection-oriented pro",
+      "has_function_call_marker": false,
+      "error": null
+    },
+    {
+      "label": "long-context",
+      "iteration": 2,
+      "prompt_tokens": 173,
+      "response_tokens": 29,
+      "response_chars": 108,
+      "ttft_s": 0.5450908000057098,
+      "total_s": 2.2234988000127487,
+      "decode_s": 1.678408000007039,
+      "decode_toks_per_s": 17.27827798716306,
+      "prefill_toks_per_s": 317.378315682796,
+      "response_preview": "<think>  </think>  Apple's CEO is Tim Cook, and Apple earned $85 billion in services revenue in fiscal 2024.",
+      "has_function_call_marker": false,
+      "error": null
+    },
+    {
+      "label": "tool-call",
+      "iteration": 2,
+      "prompt_tokens": 30,
+      "response_tokens": 29,
+      "response_chars": 108,
+      "ttft_s": 0.501621300005354,
+      "total_s": 2.0907952999987174,
+      "decode_s": 1.5891739999933634,
+      "decode_toks_per_s": 18.248473735488442,
+      "prefill_toks_per_s": 59.806072827608794,
+      "response_preview": "<think>  </think>  <<function_call>>   {\"name\": \"get_current_time\", \"params\": {\"timezone\": \"Europe/Dublin\"}}",
+      "has_function_call_marker": true,
+      "error": null
+    }
+  ]
+}
