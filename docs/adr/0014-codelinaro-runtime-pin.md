@@ -19,7 +19,7 @@ The frozen working version is `2025.06.r1` (cp312-cp312-win_amd64).
 
 Pin the runtime explicitly:
 
-- `environment.yml` and `requirements.txt` reference the CodeLinaro wheel filenames or a
+- `environment-mlc-venv2.yml` (current dev env) and `environment-tether.yml` (fresh validation env) reference the CodeLinaro wheel filenames; their parent commit messages reference the pinned
   pinned URL; the version string `2025.06.r1` appears verbatim so drift is obvious.
 - `mlc-venv2` conda env documentation and any developer runbook must call out
   **"do NOT `pip upgrade mlc_llm`"** with rationale.
@@ -55,7 +55,9 @@ Pin the runtime explicitly:
 
 ## References
 
-- `environment.yml`
+- `environment-mlc-venv2.yml` + `environment-tether.yml`
+- `scripts/setup_fresh_env.ps1` (idempotent bootstrap)
+- `docs/runbooks/fresh-env-setup.md`
 - `_synthesis.md` §1 (deployment baseline) and §6 research notes
 - `docs/runbooks/shutdown-hang-fix-summary.md` (the GC-disable fix is r1-specific)
 - ADR-0003: GC-disabled daemon-thread shutdown for OpenCL

@@ -1,0 +1,33 @@
+name: tether
+channels:
+  - conda-forge
+# IMPORTANT: This env MUST be x64 Python 3.12 under Prism emulation, NOT
+# native ARM64 Python. The Qualcomm CodeLinaro MLC-LLM wheels are
+# distributed only as cp312-cp312-win_amd64 — ARM64 Python rejects them
+# with no actionable error. ADR-0014 + ADR-0016 + docs/research/05_mlc_llm_versioning.md.
+#
+# Create with x64 forced via CONDA_SUBDIR:
+#   PowerShell:  $env:CONDA_SUBDIR = "win-64"; conda env create -f environment-tether.yml
+#   cmd:         set CONDA_SUBDIR=win-64 && conda env create -f environment-tether.yml
+#
+# Then pin the env's subdir so subsequent `conda install` calls stay x64:
+#   conda activate tether
+#   conda config --env --set subdir win-64
+#
+# Or simply run scripts/setup_fresh_env.ps1 which handles all of the above.
+dependencies:
+  - python=3.12
+  - pip
+  - pip:
+      # Install the two Qualcomm CodeLinaro 2025.06.r1 wheels BEFORE the
+      # editable install below so dependency resolution sees them present:
+      #
+      #   pip install C:/Users/lovan/Downloads/tvm_adreno_cpu_clml_2025_06_r1-0.20.dev0-cp312-cp312-win_amd64.whl
+      #   pip install C:/Users/lovan/Downloads/mlc_llm_adreno_cpu_clml_2025_06_r1-0.1.dev0-cp312-cp312-win_amd64.whl
+      #
+      # JFrog fallback URLs (used by setup_fresh_env.ps1 when local files are missing):
+      #   https://codelinaro.jfrog.io/artifactory/clo-472-adreno-opensource-ai/mlc-llm/2025.06.r1/tvm_adreno_cpu_clml_2025_06_r1-0.20.dev0-cp312-cp312-win_amd64.whl
+      #   https://codelinaro.jfrog.io/artifactory/clo-472-adreno-opensource-ai/mlc-llm/2025.06.r1/mlc_llm_adreno_cpu_clml_2025_06_r1-0.1.dev0-cp312-cp312-win_amd64.whl
+      #
+      # Then editable install with the full extras matrix used by Tether:
+      - -e ".[server,cli,brave,otel,dev]"

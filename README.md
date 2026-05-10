@@ -20,8 +20,8 @@ current work-in-progress state and [`AGENTS.md`](./AGENTS.md) for AI-agent navig
 | Requirement | Notes |
 |---|---|
 | Snapdragon X Elite | Adreno 740 GPU, OpenCL backend — required for MLC/Adreno runtime |
-| Python 3.12 | via `conda` environment named `mlc-venv2` |
-| MLC-LLM runtime | Qualcomm CodeLinaro wheels (see `environment.yml`) |
+| Python 3.12 (x64 under Prism) | conda env `mlc-venv2` (current) or `tether` (fresh; see `scripts/setup_fresh_env.ps1`) |
+| MLC-LLM runtime | Qualcomm CodeLinaro `2025.06.r1` wheels (see `environment-mlc-venv2.yml` or `environment-tether.yml`) |
 | Compiled MLC model | Set `TETHER_MODELS_DIR` to parent directory (defaults to `./models/`) |
 
 ### Install
@@ -32,7 +32,9 @@ pip install -e ".[server,cli,brave]"
 ```
 
 > **Note:** Qualcomm CodeLinaro MLC-LLM wheels must be installed separately **before**
-> the above step. See `environment.yml` for version pins and wheel download instructions.
+> the above step. See `environment-mlc-venv2.yml` for version pins and wheel download instructions.
+
+For a clean fresh-env validation pass, see `docs/runbooks/fresh-env-setup.md` and run `scripts/setup_fresh_env.ps1`.
 
 For web-search tool support, copy `.env.example` to `.env` and set `BRAVE_API_KEY`.
 
