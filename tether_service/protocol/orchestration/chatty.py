@@ -212,10 +212,6 @@ class ChattyAgentOrchestrator(OrchestratorABC):
         :meth:`Engine.chat` to iterate :data:`WireEvent` directly.
         """
         turn_id = uuid.uuid4().hex[:12]
-        # Phase 7 step 69: bind turn_id to structlog contextvars so every
-        # log line emitted during this turn includes it automatically.
-        # Cleanup is in the existing finally block below.
-        structlog.contextvars.bind_contextvars(turn_id=turn_id)
         seq = 0
 
         def _next_seq() -> int:
@@ -244,18 +240,27 @@ class ChattyAgentOrchestrator(OrchestratorABC):
         # means "no terminal event yet" — the finally block decides.
         final_stop_reason: Optional[str] = None
 
-        # Seed history first; if this raises we never even get to
-        # MessageStart.
-        await self._seed_history(session_id, prompt)
-
-        # v2 turn lifecycle: open the turn row before the loop so all
-        # add_* calls below can link their v2 rows to this turn_id.
-        # complete_turn is called in the finally block. Synthesis §3.6.
-        await self.store.start_turn(
-            session_id, turn_id, model_name=model_name
-        )
-
+        # Phase 7 step 69 + RD followup (FIX 4): bind turn_id INSIDE the try
+        # block so the matching unbind in `finally` always runs even when
+        # `_seed_history` or `store.start_turn` raises. Bind FIRST (before
+        # any awaitable that can fail) so error logs from those calls still
+        # carry turn_id for forensics. The previous arrangement bound BEFORE
+        # the try, which leaked the contextvar onto the calling task if
+        # _seed_history / start_turn raised.
         try:
+            structlog.contextvars.bind_contextvars(turn_id=turn_id)
+
+            # Seed history first; if this raises we never even get to
+            # MessageStart but the bind/unbind is still symmetric.
+            await self._seed_history(session_id, prompt)
+
+            # v2 turn lifecycle: open the turn row before the loop so all
+            # add_* calls below can link their v2 rows to this turn_id.
+            # complete_turn is called in the finally block. Synthesis §3.6.
+            await self.store.start_turn(
+                session_id, turn_id, model_name=model_name
+            )
+
             # Yield message_start with available tools (synthesis §3.4).
             yield MessageStart(
                 **_envelope(),
