@@ -970,6 +970,32 @@ Solution:
 3. Check firewall settings
 ```
 
+## 🔄 Resetting Dev DBs after Phase 6
+
+Phase 6 changed how chat history is persisted (schema additions for
+`turns`/`tool_calls`/`raw_events`; thinking moved to its own `role='thinking'`
+row type). Existing development DBs are still functional but may render
+history inconsistently with the new code paths.
+
+If you have a `data/tether.db` or `data/tether_dev.db` from before this
+update, run:
+
+```powershell
+python scripts/reset_dev_dbs.py
+```
+
+The script archives existing DB files under `data/.archive/<name>.<timestamp>`
+then removes the originals. The next `python -m tether_service.app` launch
+will auto-create the clean schema via yoyo migrations.
+
+**When is this needed?** Only if you have local dev DBs from before this
+Phase 6 commit. Fresh clones are unaffected — `Engine.from_settings`
+applies migrations automatically on first launch.
+
+This is a one-time operation per local dev environment. The script is
+idempotent — safe to re-run on an already-clean data directory (each
+known path will report `[skip]`).
+
 ## 🤝 Contributing
 
 This is a personal experiment, but contributions and ideas are welcome! Areas I'm exploring:

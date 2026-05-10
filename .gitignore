@@ -22,6 +22,9 @@ mlc_llm-utils-win-x86-01_31_2025/
 *.db-wal
 *.db-shm
 
+# Phase 6: dev DB archives (created by scripts/reset_dev_dbs.py)
+data/.archive/
+
 # IDE settings
 .vscode/
 .idea/
