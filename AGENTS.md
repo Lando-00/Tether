@@ -14,7 +14,7 @@
 
 ## Operating rules
 
-1. **`legacy/` and `llm_service/` are frozen** — never modify. Reference only.
+1. **Pre-refactor reference code is archived**, not in `main`. The old `legacy/` and `llm_service/` directories live on the [`archive/pre-refactor`](https://github.com/Lando-00/Tether/tree/archive/pre-refactor) branch. Reference there if you need to understand pre-refactor behavior; do NOT restore them to `main`.
 2. **`src/tether/`** is the canonical package; `tether_service.*` is a deprecation
    alias kept for one release cycle.
 3. **Hardware backend** is the Adreno X1 **GPU** via OpenCL. Not the NPU. (NPU

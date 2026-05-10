@@ -111,7 +111,7 @@ src/tether/               # Active codebase (SOLID, config-driven)
 └── tools/                # BaseTool, @tool decorator, connectors, concrete tools
 
 # tether_service/ is a deprecation alias (MetaPathFinder, single DeprecationWarning per process)
-llm_service/              # Legacy reference implementation — DO NOT MODIFY
+# Pre-refactor `llm_service/` + `legacy/` reference code is on branch archive/pre-refactor (not in main).
 scripts/dev/              # Developer scripts (cli_chat.py, run_debug.{py,bat,ps1}, show_tool_schemas.py)
 models/                   # Model weights (override with TETHER_MODELS_DIR env var)
 tests/                    # pytest tests (use anyio for async)
@@ -130,11 +130,11 @@ tests/                    # pytest tests (use anyio for async)
 - **Inspect DB**: `sqlite3 data/tether.db "SELECT * FROM messages WHERE session_id='...' ORDER BY ts"`
 - **Dev scripts**: `scripts/dev/cli_chat.py`, `scripts/dev/show_tool_schemas.py`
 
-## Reference: Legacy vs New
-- `llm_service/`: **DO NOT MODIFY** — Original implementation kept for reference only (shows working patterns and lessons learned)
-- `src/tether/`: Active codebase — All new work happens here (interface-based with DI)
-- Use `llm_service/` to understand behavior in legacy code; feature implement/fixes only in `src/tether/`
-- `tether_service` import paths still work via a deprecation alias (MetaPathFinder) but emit a `DeprecationWarning`; new code must use `tether.*`
+## Reference: Pre-refactor code (archived)
+- Pre-refactor reference code (`llm_service/`, `legacy/`) lives on the [`archive/pre-refactor`](https://github.com/Lando-00/Tether/tree/archive/pre-refactor) branch — kept for historical reference (shows working pre-refactor patterns and lessons learned).
+- `src/tether/`: Active codebase — All new work happens here (interface-based with DI).
+- If you need to understand pre-refactor behavior, check the `archive/pre-refactor` branch on origin; do NOT restore those directories to `main`.
+- `tether_service` import paths still work via a deprecation alias (MetaPathFinder) but emit a `DeprecationWarning`; new code must use `tether.*`.
 
 ---
 
@@ -368,7 +368,7 @@ tools:
 
 4. **Test** — Create tests in `tests/tools/test_your_tool.py`
 
-**Important:** Legacy reference code exists in `llm_service/tools/` — **DO NOT MODIFY**. Only work in `src/tether/`.
+**Important:** Pre-refactor reference code (including the original `llm_service/tools/`) lives on the [`archive/pre-refactor`](https://github.com/Lando-00/Tether/tree/archive/pre-refactor) branch. New tools go under `src/tether/tools/`.
 
 ---
 

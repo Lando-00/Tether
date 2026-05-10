@@ -342,7 +342,7 @@ Authoritative: synthesis §3 + §10–§13. Quick-reference here:
 - **Runtime** = Qualcomm CodeLinaro MLC-LLM `2025.06.r1` (Prism-emulated x64 Python 3.12).
 - **GC-disable in MLC shutdown daemon thread** = load-bearing.
 - **`tether_service` import alias** = backward-compat for one release cycle; deletion deferred.
-- **Frozen paths**: `llm_service/**`, `legacy/**` — never modify.
+- **Frozen paths**: pre-refactor reference code (`llm_service/`, `legacy/`) is archived at the [`archive/pre-refactor`](https://github.com/Lando-00/Tether/tree/archive/pre-refactor) branch. Reference there if you need to understand pre-refactor behavior; never bring it back into `main`.
 - **No forbidden features**: autonomous reply, scheduled jobs, push, voice, Canvas, multi-agent routing, plugin manifests.
 
 ---
