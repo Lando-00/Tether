@@ -232,8 +232,7 @@ class Engine:
             raise
         store = load(store_spec.impl, **store_spec.args)
 
-        tools_settings = settings.tools
-        registry = ToolRegistry.from_settings(tools_settings)
+        registry = ToolRegistry.from_settings(settings)
         tools = registry.all()
 
         # Phase 4.5 step 47d: build ConnectorRegistry from typed settings.
