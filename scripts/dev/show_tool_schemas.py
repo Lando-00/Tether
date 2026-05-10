@@ -8,8 +8,10 @@ variables (e.g. ``BRAVE_API_KEY``) when running this utility directly,
 either invoke after ``set BRAVE_API_KEY=...`` or wrap the call yourself
 with ``from dotenv import load_dotenv; load_dotenv()``.
 """
+import os
 import sys
-sys.path.insert(0, '.')
+# Ensure repo root is on the path regardless of CWD
+sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), '..', '..')))
 
 from tether.core.tool_registry import ToolRegistry
 from tether.core.config import load_settings_legacy

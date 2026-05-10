@@ -26,7 +26,7 @@ def get_available_models(api_base_url: str) -> list:
         return response.json().get("models", [])
     except requests.RequestException as e:
         console.print(f"[bold red]Error:[/bold red] Could not connect to the service at {api_base_url}.")
-        console.print(f"Please ensure the MLC service is running: [bold]python -m llm_service.app[/bold]")
+        console.print(f"Please ensure the MLC service is running: [bold]python -m tether.app[/bold]")
         console.print(f"Details: {e}")
         raise typer.Exit(1)
 

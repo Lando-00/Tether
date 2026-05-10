@@ -9,7 +9,8 @@ if __name__ == "__main__":
     os.environ["MLC_DEBUG"] = "1"
     
     # Import and run the app
-    sys.path.insert(0, os.path.abspath(os.path.dirname(__file__)))
+    # __file__ is now scripts/dev/run_debug.py — go up two levels to repo root
+    sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), '..', '..')))
     
-    from llm_service.app import main
+    from tether.app.__main__ import main
     main()
