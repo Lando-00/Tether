@@ -37,6 +37,12 @@ ollama = []    # Reserved for future provider support; no implementation in this
 mlc = []       # Qualcomm CodeLinaro Adreno wheels are installed separately; see environment.yml.
 nexa = []      # Reserved for future Snapdragon NPU provider support.
 sqlcipher = [] # Reserved for optional encrypted SQLite support.
+otel = [
+    "opentelemetry-api>=1.20.0",
+    "opentelemetry-sdk>=1.20.0",
+    "opentelemetry-exporter-otlp-proto-http>=1.20.0",
+    "opentelemetry-exporter-otlp-proto-grpc>=1.20.0",
+]
 dev = ["pytest>=7", "pytest-asyncio", "ruff", "mypy", "build"]
 
 [tool.hatch.build.targets.wheel]

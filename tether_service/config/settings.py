@@ -202,11 +202,62 @@ class LogsSettings(StrictModel):
     format: str = "json"  # "json" | "console"
 
 
+class OTelSettings(StrictModel):
+    """``observability.otel:`` sub-model.
+
+    OpenTelemetry tracing adapter (Phase 7 step 76). Off by default so that
+    the OTel packages are never imported at runtime unless explicitly enabled.
+
+    Requires ``pip install tether[otel]`` when ``enabled=True``.
+
+    Synthesis §3 (observability), B3 step 10.
+    """
+
+    enabled: bool = Field(
+        default=False,
+        description=(
+            "Enable OpenTelemetry tracing adapter. Off by default. "
+            "Requires `tether[otel]` extra."
+        ),
+    )
+    service_name: str = Field(
+        default="tether",
+        description="OTel resource service.name attribute.",
+    )
+    exporter: Literal["console", "otlp_http", "otlp_grpc"] = Field(
+        default="console",
+        description=(
+            "OTel span exporter. 'console' prints spans to stdout for local "
+            "debugging; 'otlp_http'/'otlp_grpc' send to an OTel collector at "
+            "exporter_endpoint."
+        ),
+    )
+    exporter_endpoint: Optional[str] = Field(
+        default=None,
+        description=(
+            "OTLP collector endpoint when exporter is 'otlp_http' or 'otlp_grpc'. "
+            "If None and exporter requires it, raises at startup."
+        ),
+    )
+    sample_rate: float = Field(
+        default=1.0,
+        ge=0.0,
+        le=1.0,
+        description=(
+            "Span sampling rate. 1.0 = sample all, 0.0 = sample none."
+        ),
+    )
+
+
 class ObservabilitySettings(StrictModel):
     """``observability:`` section. Phase 7 structured logging foundation."""
 
     log_level: Literal["DEBUG", "INFO", "WARNING", "ERROR"] = "INFO"
     logs: LogsSettings = Field(default_factory=LogsSettings)
+    otel: OTelSettings = Field(
+        default_factory=OTelSettings,
+        description="OpenTelemetry tracing adapter. See OTelSettings.",
+    )
     provider_chunk_log_sample: int = Field(
         default=50,
         description=(
