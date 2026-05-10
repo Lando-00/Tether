@@ -50,7 +50,7 @@ flowchart TB
 
     subgraph context["Context (persistence)"]
         SessStore["SqliteSessionStore<br/>chat history"]
-        Inbox["SqliteInbox<br/>inbound_events"]
+    Inbox[":SqliteInbox (deferred)<br/>inbound_events"]:::future
         AuditDB["tool_audit table"]
         AsyncBase["AsyncSqliteStore (M2)"]
     end
@@ -177,8 +177,8 @@ implementation; adding a second impl is a config change + one new class.
 |---|---|---|---|
 | **A — ModelProvider** | `providers/types.py::ModelProvider` | Swap inference backend. Default: `MLCProvider`. Future: `NexaProvider` (NPU), `OllamaProvider` (reserved). | ✅ ABC live; MLC impl + Nexa stub |
 | **B — Orchestrator strategy** | `protocol/orchestration/types.py::Orchestrator` | Swap conversation policy. Default: `ChattyAgentOrchestrator` (ReAct-style chatty loop). Future: Ralph Loop / Notebook of Atomic Facts (small-context strategy). Selected via `mode` field on `StreamRequest` + per-session state. | ✅ ABC live; one impl |
-| **C — Practical context window** | `providers/types.py::get_practical_context_window(model_name, ram_budget_gb)` | Per-provider RAM-aware effective context. Used to clamp history before send. | ✅ ABC live; MLC impl with KV-cache math |
-| **D — Per-provider parser** | `protocol/parsers/types.py::Parser` | Per-provider tool-call detection. MLC: `<<function_call>>` marker (`SlidingParser`). Future: provider-native function-call schemas (Ollama JSON mode, NexaSDK OpenAI-compat). System prompt lives under `providers.<id>.args.system_prompt` so parsers and prompts ship together. | ✅ ABC live; one impl |
+| **C — Practical context window** | `providers/types.py::get_practical_context_window(model_name, ram_budget_gb)` | Per-provider RAM-aware effective context. Used to clamp history before send. | ❌ DEFERRED — synthesis §12.4 work; ABC method not yet on ModelProvider; tracked as a follow-up. |
+| **D — Per-provider parser** | `protocol/parsers/types.py::Parser` | Per-provider tool-call detection. MLC: `<<function_call>>` marker (`SlidingParser`). Future: provider-native function-call schemas (Ollama JSON mode, NexaSDK OpenAI-compat). System prompt lives under `providers.<id>.args.system_prompt` so parsers and prompts ship together. | ⚠️ Partial — per-turn factory wired in orchestrator; `Provider.create_parser()` ABC method NOT yet on ModelProvider. `system.prompt` still globally bound (synthesis §12.5 #2 requires moving to providers.mlc.args.system_prompt). Tracked as a follow-up. |
 
 ---
 
@@ -238,7 +238,7 @@ data/
 ├── tether.db                        # single SQLite (WAL)
 │   ├── sessions                     # session_id, created_at, …
 │   ├── messages                     # session_id, turn_id, role, content, …
-│   ├── inbound_events               # connector_id, payload, seen, …
+│   ├── inbound_events               # DEFERRED — Phase 6.5 (SqliteInbox); not yet in any migration
 │   ├── tool_audit                   # tool calls + results (256 KB cap)
 │   └── _yoyo_*                      # yoyo-migrations metadata
 ├── connectors/<id>/                 # per-connector private state
@@ -308,7 +308,15 @@ flowchart LR
 ```
 
 **Dependency direction is one-way.** Higher layers depend on lower; never the reverse.
-- `core` is the foundation; nothing under `core/` depends on anything else in `tether/`.
+
+- `core` hosts shared **types, ABCs, and registries**. It may import:
+  - `protocol.parsers.events` (for `ParserEvent` ABC consumers)
+  - `protocol.orchestration.policies` (for `LoopLimitPolicy` / `ToolErrorPolicy` enums consumed by `Settings`)
+  - `providers.types` (for `ProviderCapabilities` / `ProviderEvent` ABC consumers)
+  - `connectors.base/types` (for `ConnectorRegistry`)
+
+  It MUST NOT import implementations (`protocol.orchestration.chatty`, `connectors.echo`, `providers.mlc.provider`, etc.). The split of contracts (`*.types`, `*.events`, `*.policies`) below the implementation files is what makes this acyclic.
+
 - `runtime` is hardware-adjacent; only `providers` may depend on it.
 - `protocol`, `tools`, `connectors` may depend on `context` + `providers` + `core`.
 - `engine` wires everything; `adapters` only see `engine` and serialization types.
@@ -322,8 +330,8 @@ These exist to dedup logic and keep the layering honest:
 | ID | Path | Purpose | Used by |
 |---|---|---|---|
 | **M1** | `runtime/daemon_call.py::daemon_thread_call` | GC-disabled daemon thread for blocking native cleanup | HardwareWatchdog · MLC `_terminate_bounded` · future native-cleanup connectors |
-| **M2** | `context/_async_sqlite_base.py::AsyncSqliteStore` | aiosqlite + WAL + yoyo-migrations base | SqliteSessionStore · SqliteInbox |
-| **M3** | `runtime/task_supervisor.py::SupervisedTask` | structured-concurrency wrapper for long-running tasks | Connector drain tasks · future Gmail polling |
+| **M2** | `context/_async_sqlite_base.py::AsyncSqliteStore` | aiosqlite + WAL + yoyo-migrations base | ⏳ DEFERRED — not yet implemented; will base SqliteSessionStore · SqliteInbox (Phase 6.5) |
+| **M3** | `runtime/task_supervisor.py::SupervisedTask` | structured-concurrency wrapper for long-running tasks | ⏳ DEFERRED — not yet implemented; planned for Connector drain tasks · future Gmail polling |
 | **M4** | `runtime/spans.py::async_span` | structlog span helper | tool spans · provider spans · connector spans |
 | **M5** | `core/registry_validator.py::validate_unique_names` | uniqueness + forbidden-name + required-prefix checks at boot | ToolRegistry · ConnectorRegistry |
 | **M6** | `config/_strict.py::StrictModel` | Pydantic base with `extra='forbid'` and frozen | every Settings sub-model (~12) |

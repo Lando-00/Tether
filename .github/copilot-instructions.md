@@ -30,7 +30,7 @@ python -m pytest -m hardware tests/hardware/   # opt-in hardware tests
 - Implements `ModelProvider` interface from `core/interfaces.py`
 
 ### 2. Context (`src/tether/context/`)
-- `sqlite_store.py`: `AsyncSqliteStore` base + `SqliteSessionStore` + `SqliteInbox` (aiosqlite + WAL + yoyo-migrations)
+- `sqlite_store.py`: `SqliteSessionStore` (Phase 6.5 will extract `AsyncSqliteStore` + add `SqliteInbox`) (aiosqlite + WAL + yoyo-migrations)
 - **Critical**: `get_history()` must include tool calls and results for multi-turn tool execution
 - `tool_audit` table stores per-call results (capped at 256 KB)
 
@@ -38,7 +38,7 @@ python -m pytest -m hardware tests/hardware/   # opt-in hardware tests
 - `orchestration/orchestrator.py`: Main loop coordinating model → parser → tool execution
 - `parsers/sliding.py`: Stateful parser detecting `<<function_call>>` markers in streams
 - `orchestration/tool_runner.py`: Executes tools with timeout
-- `events.py`: Typed v2 NDJSON event dataclasses (`message_start`, `text_delta`, `tool_call`, `tool_result`, `message_stop`)
+- `events.py`: Typed v2 NDJSON event dataclasses (`message_start`, `text_delta`, `tool_call`, `tool_result`, `message_stop`) — **actual path**: `src/tether/protocol/wire/events.py`
 
 ### 4. Tools (`src/tether/tools/`)
 - `base.py`: `BaseTool` abstract class with auto-schema generation (`list[T]` and `Optional[T]` supported)
@@ -100,11 +100,11 @@ src/tether/               # Active codebase (SOLID, config-driven)
 ├── app/                  # FastAPI app + HTTP routers (console script: tether-server)
 ├── cli/                  # CLI entry point main.py (console script: tether-cli)
 ├── config/               # YAML configs (default.yml, testing.yml)
-├── context/              # AsyncSqliteStore base; SqliteSessionStore + SqliteInbox (WAL + yoyo-migrations)
+├── context/              # SqliteSessionStore (Phase 6.5 will extract AsyncSqliteStore + add SqliteInbox) (WAL + yoyo-migrations)
 ├── core/                 # Interfaces, types, factory, logging, tool registry
 ├── observability/        # structlog + RequestId middleware + optional OTel adapter
 ├── protocol/             # Orchestration, parsers, service layer
-│   ├── events.py         # Typed v2 NDJSON event dataclasses
+│   ├── wire/events.py    # Typed v2 NDJSON event dataclasses (src/tether/protocol/wire/events.py)
 │   ├── orchestration/    # orchestrator.py, tool_runner.py
 │   └── parsers/          # sliding.py (<<function_call>> detection)
 ├── providers/            # Model providers (mlc/, dummy/)
@@ -316,7 +316,7 @@ tools:
 - **Weather Tool** (`src/tether/tools/weather_tool.py`): Get weather information
 
 #### Connector Framework (Phase 4.5)
-- `Connector` ABC in `src/tether/tools/connectors/base.py`
+- `Connector` ABC in `src/tether/connectors/base.py`
 - `ConnectorRegistry`: all tools registered by a connector must carry a mandatory `{connector_id}_` name prefix
 - `ToolExecutionContext`: draft+confirm send-safety pattern (prevents accidental sends during tool preview)
 - Test fixture: `tests/fixtures/echo_connector.py::EchoConnector`

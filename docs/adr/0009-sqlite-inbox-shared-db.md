@@ -1,8 +1,13 @@
 # ADR-0009: `SqliteInbox` in shared `data/tether.db` (deviates from spec §3.6)
 
-- **Status**: Accepted (Phase 6.5 of refactor)
+- **Status**: Proposed (deferred — Phase 6.5 implementation pending; tracked as todo p65-implement)
 - **Date**: 2026-05 (Phase 6.5)
 - **Synthesis citation**: §10 (especially §10.8 #5), §11.6, §4 Phase 6.5 (steps 66a–66d)
+
+> **Status note**: **This ADR ratifies the design but the code has not yet shipped.** As of HEAD `0e01b85`,
+> `src/tether/context/inbox_store.py` does not exist; `/api/v1/connectors/{id}/inbox` returns HTTP 501.
+> The implementation follows synthesis §4 steps 66a–66d. Once the `SqliteInbox` class lands, flip this
+> status back to **Accepted**.
 
 ## Context
 
