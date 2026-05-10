@@ -944,6 +944,46 @@ class ChattyAgentOrchestrator(OrchestratorABC):
             logger.debug(
                 f"Tool executed: {tool_name}, result={_redact(result)}"
             )
+
+            # Phase 7 step 77: ToolRunner returns a structured error dict for
+            # oversized results rather than raising. Route it through the
+            # execution-error branch so the wire event carries status="error"
+            # and the model receives it via FEED_BACK_TO_MODEL (synthesis §3.5).
+            if (
+                isinstance(result, dict)
+                and result.get("error") == "tool_result_oversized"
+            ):
+                error_msg = (
+                    f"Tool '{tool_name}' result too large: "
+                    f"{result.get('size_bytes')} bytes "
+                    f"(limit {result.get('limit_bytes')} bytes)"
+                )
+                logger.warning(error_msg)
+                await self.store.add_tool_result(
+                    session_id, tool_name, result,
+                    turn_id=turn_id, tool_call_id=tool_call_id,
+                    status="error", error=error_msg,
+                )
+                yield ToolResult(
+                    **envelope_factory(),
+                    tool_call_id=tool_call_id,
+                    name=tool_name,
+                    status="error",
+                    error_kind="execution",
+                    error=error_msg,
+                )
+                await self._audit_tool_call(
+                    session_id=session_id,
+                    turn_id=turn_id,
+                    tool_name=tool_name,
+                    args_sha256=sha,
+                    status="error",
+                    error_kind="execution",
+                )
+                if self.config.tool_error_policy is ToolErrorPolicy.BREAK_LOOP:
+                    dispatch_state["should_break"] = True
+                return
+
             await self.store.add_tool_result(
                 session_id, tool_name, result,
                 turn_id=turn_id, tool_call_id=tool_call_id, status="ok",

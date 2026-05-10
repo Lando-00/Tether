@@ -165,6 +165,15 @@ class SecuritySettings(StrictModel):
 
     capability_allowlist: Optional[List[str]] = None
     audit_log: AuditLogSettings = Field(default_factory=AuditLogSettings)
+    tool_result_max_bytes: int = Field(
+        default=256 * 1024,  # 256 KB
+        description=(
+            "Reject tool results exceeding this byte size; replaces with a "
+            "structured error so the model can retry with smaller args. "
+            "Phase 7 step 77."
+        ),
+        ge=1024,  # at least 1 KB
+    )
 
 
 class LogFileSettings(StrictModel):
