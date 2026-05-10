@@ -201,6 +201,73 @@ class AuditLogSettings(StrictModel):
     store_args: bool = False
 
 
+class CSRFTokenSettings(StrictModel):
+    """``security.csrf_token:`` sub-model.
+
+    When enabled, requests must carry an ``X-Tether-CSRF`` header matching
+    the token printed at server startup. Off by default (single-user local
+    deployment doesn't need it). Phase 7 step 79.
+    """
+
+    enabled: bool = Field(
+        default=False,
+        description=(
+            "Enable CSRF-token auth on /api/v1/* mutating requests "
+            "(POST/PUT/PATCH/DELETE). Off by default."
+        ),
+    )
+    header_name: str = Field(
+        default="X-Tether-CSRF",
+        description="Request header carrying the token.",
+    )
+    token: Optional[str] = Field(
+        default=None,
+        description=(
+            "Static token. If None and enabled=True, server generates a "
+            "fresh secrets.token_urlsafe(32) at startup and logs it once."
+        ),
+    )
+    exempt_paths: list[str] = Field(
+        default_factory=lambda: ["/api/v1/healthz", "/api/v1/readyz", "/api/v1/protocol/schema"],
+        description=(
+            "Paths exempt from CSRF check (typically read-only health/info "
+            "endpoints). GET requests are also exempt regardless of path."
+        ),
+    )
+
+
+class CORSSettings(StrictModel):
+    """``security.cors:`` sub-model. Phase 7 step 79."""
+
+    enabled: bool = Field(default=False, description="Enable CORS middleware.")
+    allow_origins: list[str] = Field(
+        default_factory=list,
+        description="Allowed Origin header values (literal or '*').",
+    )
+    allow_methods: list[str] = Field(
+        default_factory=lambda: ["GET", "POST", "OPTIONS"],
+        description="Allowed methods.",
+    )
+    allow_headers: list[str] = Field(
+        default_factory=lambda: ["Content-Type", "X-Request-ID", "X-Tether-CSRF"],
+        description="Allowed request headers.",
+    )
+    allow_credentials: bool = Field(default=False, description="Allow credentialed requests.")
+
+
+class TrustedHostSettings(StrictModel):
+    """``security.trusted_host:`` sub-model. Phase 7 step 79."""
+
+    enabled: bool = Field(default=False, description="Enable TrustedHost middleware.")
+    allowed_hosts: list[str] = Field(
+        default_factory=lambda: ["localhost", "127.0.0.1"],
+        description=(
+            "Allowed Host header values. '*' matches any. Wildcards like "
+            "'*.example.com' supported per Starlette TrustedHostMiddleware."
+        ),
+    )
+
+
 class SecuritySettings(StrictModel):
     """``security:`` section. Phase 4/7 hardening hooks."""
 
@@ -218,6 +285,18 @@ class SecuritySettings(StrictModel):
             "Phase 7 step 77."
         ),
         ge=1024,  # at least 1 KB
+    )
+    csrf_token: CSRFTokenSettings = Field(
+        default_factory=CSRFTokenSettings,
+        description="CSRF token policy. See CSRFTokenSettings.",
+    )
+    cors: CORSSettings = Field(
+        default_factory=CORSSettings,
+        description="CORS policy. See CORSSettings.",
+    )
+    trusted_host: TrustedHostSettings = Field(
+        default_factory=TrustedHostSettings,
+        description="TrustedHost policy. See TrustedHostSettings.",
     )
 
 
