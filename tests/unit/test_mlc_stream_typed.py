@@ -30,10 +30,10 @@ def _make_provider(tmp_path: Path) -> MLCProvider:
     constructor doesn't load any engines, so as long as we don't trigger
     ``_ensure_engine`` / ``_get_engine`` we don't need real MLC libs.
     """
-    dist_root = tmp_path / "dist"
-    dist_root.mkdir()
-    (dist_root / "libs").mkdir()
-    return MLCProvider(dist_root=str(dist_root), device="auto", max_tokens=1024)
+    models_root = tmp_path / "models"
+    models_root.mkdir()
+    (models_root / "libs").mkdir()
+    return MLCProvider(models_root=str(models_root), device="auto", max_tokens=1024)
 
 
 # ---------------------------------------------------------------------------

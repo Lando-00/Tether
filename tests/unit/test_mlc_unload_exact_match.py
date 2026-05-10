@@ -27,10 +27,10 @@ def _make_provider(tmp_path: Path) -> MLCProvider:
     """Construct an MLCProvider rooted at tmp_path. Mirrors the helper
     in ``tests/unit/test_mlc_provider_hwlifecycle.py`` — ``__init__``
     only stores paths, no MLC native libs are touched."""
-    dist_root = tmp_path / "dist"
-    dist_root.mkdir()
-    (dist_root / "libs").mkdir()
-    return MLCProvider(dist_root=str(dist_root), device="auto", max_tokens=1024)
+    models_root = tmp_path / "models"
+    models_root.mkdir()
+    (models_root / "libs").mkdir()
+    return MLCProvider(models_root=str(models_root), device="auto", max_tokens=1024)
 
 
 class _FakeEngine:
@@ -90,17 +90,17 @@ def test_unload_model_exact_match_only(tmp_path: Path, monkeypatch):
     provider = _make_provider(tmp_path)
 
     fake_libs = {
-        "Qwen3-4B": str(tmp_path / "dist" / "libs" / "qwen3-4b.dll"),
-        "Qwen3-4B-Instruct": str(tmp_path / "dist" / "libs" / "qwen3-4b-instruct.dll"),
+        "Qwen3-4B": str(tmp_path / "models" / "libs" / "qwen3-4b.dll"),
+        "Qwen3-4B-Instruct": str(tmp_path / "models" / "libs" / "qwen3-4b-instruct.dll"),
     }
     _patch_resolve_model_lib(monkeypatch, fake_libs)
 
     # Build canonical keys exactly as MLCProvider does.
     key_4b = (
-        f"{provider.dist_root / 'Qwen3-4B'}:{provider.device}:{fake_libs['Qwen3-4B']}"
+        f"{provider.models_root / 'Qwen3-4B'}:{provider.device}:{fake_libs['Qwen3-4B']}"
     )
     key_4b_instruct = (
-        f"{provider.dist_root / 'Qwen3-4B-Instruct'}:{provider.device}:"
+        f"{provider.models_root / 'Qwen3-4B-Instruct'}:{provider.device}:"
         f"{fake_libs['Qwen3-4B-Instruct']}"
     )
 
@@ -135,7 +135,7 @@ def test_unload_model_returns_false_for_unknown(tmp_path: Path, monkeypatch):
     provider = _make_provider(tmp_path)
     _patch_resolve_model_lib(
         monkeypatch,
-        {"NotLoaded-Model": str(tmp_path / "dist" / "libs" / "notloaded.dll")},
+        {"NotLoaded-Model": str(tmp_path / "models" / "libs" / "notloaded.dll")},
     )
 
     assert provider.unload_model("NotLoaded-Model") is False
@@ -213,11 +213,11 @@ def test_unload_model_leaves_cache_intact_on_unknown(tmp_path: Path, monkeypatch
     """
     provider = _make_provider(tmp_path)
     fake_libs = {
-        "Loaded-Model": str(tmp_path / "dist" / "libs" / "loaded.dll"),
+        "Loaded-Model": str(tmp_path / "models" / "libs" / "loaded.dll"),
     }
     _patch_resolve_model_lib(monkeypatch, fake_libs)
 
-    key = f"{provider.dist_root / 'Loaded-Model'}:{provider.device}:{fake_libs['Loaded-Model']}"
+    key = f"{provider.models_root / 'Loaded-Model'}:{provider.device}:{fake_libs['Loaded-Model']}"
     engine = _FakeEngine(label="loaded")
     with provider._cache_lock:
         provider._engine_cache[key] = engine
@@ -226,7 +226,7 @@ def test_unload_model_leaves_cache_intact_on_unknown(tmp_path: Path, monkeypatch
     # if it happened to be a prefix of "Loaded-Model"'s key, we must NOT
     # touch the loaded engine. We verify by passing a name whose canonical
     # key differs from the only loaded key.
-    fake_libs["Loaded"] = str(tmp_path / "dist" / "libs" / "different.dll")
+    fake_libs["Loaded"] = str(tmp_path / "models" / "libs" / "different.dll")
     _patch_resolve_model_lib(monkeypatch, fake_libs)
     result = provider.unload_model("Loaded")
 

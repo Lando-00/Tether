@@ -35,10 +35,10 @@ def _make_provider(tmp_path: Path) -> MLCProvider:
     uses the public ``__init__`` rather than ``object.__new__`` since
     we need real attributes for ``_engine_cache`` and ``_cache_lock``.
     """
-    dist_root = tmp_path / "dist"
-    dist_root.mkdir()
-    (dist_root / "libs").mkdir()
-    return MLCProvider(dist_root=str(dist_root), device="auto", max_tokens=1024)
+    models_root = tmp_path / "models"
+    models_root.mkdir()
+    (models_root / "libs").mkdir()
+    return MLCProvider(models_root=str(models_root), device="auto", max_tokens=1024)
 
 
 # ---------------------------------------------------------------------------
@@ -170,7 +170,7 @@ async def test_hw_reset_validates_model_name(tmp_path: Path):
     """Path-traversal guard from Phase 0A still applies in the recovery
     path. A FatalProviderError surfaced from anywhere with an attacker-
     influenced model_name would otherwise let hw_reset wander outside
-    dist_root."""
+    models_root."""
     provider = _make_provider(tmp_path)
     with pytest.raises(ValueError):
         await provider.hw_reset("../../../etc/passwd")

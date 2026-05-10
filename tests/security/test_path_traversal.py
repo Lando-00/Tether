@@ -2,7 +2,7 @@
 Security tests: path-traversal prevention in MLCProvider.
 
 §security R-pathtraversal (§4 Phase 0A):
-Any model_name that could traverse outside dist_root must raise ValueError
+Any model_name that could traverse outside models_root must raise ValueError
 BEFORE any filesystem access occurs.
 """
 
@@ -15,10 +15,10 @@ from tether.providers.mlc.provider import MLCProvider
 
 def _make_provider(tmp_path: Path) -> MLCProvider:
     """Return an MLCProvider rooted at tmp_path (no real GPU needed)."""
-    # We deliberately do NOT create any dist layout — the validation must
+    # We deliberately do NOT create any models layout — the validation must
     # fire before any filesystem touch.
     provider = object.__new__(MLCProvider)
-    provider.dist_root = tmp_path
+    provider.models_root = tmp_path
     provider.libs_dir = tmp_path / "libs"
     provider.device = "auto"
     provider.max_tokens = 1024
@@ -66,7 +66,7 @@ def test_validate_model_name_rejects_traversal(tmp_path, bad_name):
 
 @pytest.mark.parametrize("good_name", VALID_NAMES)
 def test_validate_model_name_accepts_valid(tmp_path, good_name):
-    """Clean model names that resolve within dist_root must pass validation."""
+    """Clean model names that resolve within models_root must pass validation."""
     provider = _make_provider(tmp_path)
     # Should not raise; no return value
     provider._validate_model_name(good_name)
@@ -98,8 +98,8 @@ async def test_ensure_engine_rejects_traversal(tmp_path, bad_name):
 
 
 def test_absolute_path_rejected(tmp_path):
-    """Absolute paths must always be rejected regardless of dist_root location."""
+    """Absolute paths must always be rejected regardless of models_root location."""
     provider = _make_provider(tmp_path)
-    abs_path = str(tmp_path)  # Even a path that IS dist_root — it contains a separator
+    abs_path = str(tmp_path)  # Even a path that IS models_root — it contains a separator
     with pytest.raises(ValueError, match="invalid model_name"):
         provider._validate_model_name(abs_path)

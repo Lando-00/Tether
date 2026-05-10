@@ -31,12 +31,12 @@ async def test_model_shutdown_completes(model_name: str):
     """
     from tether.providers.mlc.provider import MLCProvider
 
-    dist_root = Path(__file__).parent.parent.parent / "dist"
-    model_dir = dist_root / model_name
+    models_root = Path(__file__).parent.parent.parent / "models"
+    model_dir = models_root / model_name
     if not model_dir.exists():
         pytest.skip(f"Model directory not found: {model_dir}")
 
-    provider = MLCProvider(dist_root=str(dist_root), device="auto", max_tokens=100)
+    provider = MLCProvider(models_root=str(models_root), device="auto", max_tokens=100)
     available = provider.list_models()
     if model_name not in available:
         pytest.skip(f"Model {model_name} not in provider.list_models(): {available}")
