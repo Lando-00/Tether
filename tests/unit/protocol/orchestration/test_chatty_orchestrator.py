@@ -64,6 +64,8 @@ class _ScriptedProvider(ModelProvider):
         model_name: str,
         messages: List[Dict[str, Any]],
         tools: Optional[List[Dict[str, Any]]] = None,
+        *,
+        request_id: Optional[str] = None,
     ) -> AsyncGenerator[str, None]:
         if self._call_index >= len(self._scripts):
             raise RuntimeError(

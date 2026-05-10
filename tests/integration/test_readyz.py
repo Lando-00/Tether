@@ -82,6 +82,8 @@ class _DummyProvider(ModelProvider):
         model_name: str,
         messages: List[Dict[str, Any]],
         tools: Optional[List[Dict[str, Any]]] = None,
+        *,
+        request_id: Optional[str] = None,
     ) -> AsyncGenerator[str, None]:
         yield "ok"
 
@@ -103,6 +105,8 @@ class _EmptyModelProvider(ModelProvider):
         model_name: str,
         messages: List[Dict[str, Any]],
         tools: Optional[List[Dict[str, Any]]] = None,
+        *,
+        request_id: Optional[str] = None,
     ) -> AsyncGenerator[str, None]:
         yield "ok"
 
@@ -139,6 +143,8 @@ class _FakeHWProvider(ModelProvider, HardwareLifecycle):
         model_name: str,
         messages: List[Dict[str, Any]],
         tools: Optional[List[Dict[str, Any]]] = None,
+        *,
+        request_id: Optional[str] = None,
     ) -> AsyncGenerator[str, None]:
         yield "ok"
 

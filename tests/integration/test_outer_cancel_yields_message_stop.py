@@ -58,6 +58,8 @@ class _SlowProvider(ModelProvider):
         model_name: str,
         messages: List[Dict[str, Any]],
         tools: Optional[List[Dict[str, Any]]] = None,
+        *,
+        request_id: Optional[str] = None,
     ) -> AsyncGenerator[str, None]:
         for i in range(20):
             await asyncio.sleep(0.02)

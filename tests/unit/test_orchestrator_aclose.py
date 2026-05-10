@@ -35,7 +35,9 @@ def _make_scripted_provider(chunks: List[str], *, raise_after: Optional[int] = N
             model_name: str,
             messages: List[Dict[str, Any]],
             tools: Optional[List[Dict[str, Any]]] = None,
-        ) -> AsyncGenerator[str, None]:
+        *,
+        request_id: Optional[str] = None,
+    ) -> AsyncGenerator[str, None]:
             try:
                 for i, chunk in enumerate(chunks):
                     if raise_after is not None and i >= raise_after:

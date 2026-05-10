@@ -61,6 +61,8 @@ class _OneToolThenDoneProvider(ModelProvider):
         model_name: str,
         messages: List[Dict[str, Any]],
         tools: Optional[List[Dict[str, Any]]] = None,
+        *,
+        request_id: Optional[str] = None,
     ) -> AsyncGenerator[str, None]:
         self._calls += 1
         if self._calls == 1:
@@ -96,6 +98,8 @@ class _TwoToolsThenDoneProvider(ModelProvider):
         model_name: str,
         messages: List[Dict[str, Any]],
         tools: Optional[List[Dict[str, Any]]] = None,
+        *,
+        request_id: Optional[str] = None,
     ) -> AsyncGenerator[str, None]:
         self._calls += 1
         if self._calls == 1:

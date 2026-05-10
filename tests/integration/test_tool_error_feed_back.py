@@ -52,7 +52,7 @@ class _ToolThenDoneProvider(ModelProvider):
         self._tool_name = tool_name
 
     async def stream(
-        self, model_name, messages, tools=None
+        self, model_name, messages, tools=None, **kwargs
     ) -> AsyncGenerator[str, None]:
         self._calls += 1
         if self._calls == 1:
@@ -80,7 +80,7 @@ class _AlwaysToolProvider(ModelProvider):
         self._tool_name = tool_name
 
     async def stream(
-        self, model_name, messages, tools=None
+        self, model_name, messages, tools=None, **kwargs
     ) -> AsyncGenerator[str, None]:
         yield (
             "Long enough preamble to flush parser overlap. "

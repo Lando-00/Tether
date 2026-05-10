@@ -48,7 +48,7 @@ class _ToolThenDoneProvider(ModelProvider):
         self._tool_args = tool_args or {}
 
     async def stream(
-        self, model_name, messages, tools=None
+        self, model_name, messages, tools=None, **kwargs
     ) -> AsyncGenerator[str, None]:
         self._calls += 1
         if self._calls == 1:
@@ -74,7 +74,7 @@ class _RaisingProvider(ModelProvider):
     """Always emits a tool call (triggers error path)."""
 
     async def stream(
-        self, model_name, messages, tools=None
+        self, model_name, messages, tools=None, **kwargs
     ) -> AsyncGenerator[str, None]:
         yield (
             'Long enough preamble. '
