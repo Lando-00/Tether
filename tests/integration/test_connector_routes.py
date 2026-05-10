@@ -114,17 +114,32 @@ class _RouteFakeConnector(Connector):
             yield  # type: ignore[unreachable]
 
 
-def _make_app(connector: Optional[_RouteFakeConnector]) -> tuple[FastAPI, ConnectorRegistry]:
+def _make_app(
+    connector: Optional[_RouteFakeConnector],
+    *,
+    inbox=None,
+    tmp_path=None,
+) -> tuple[FastAPI, ConnectorRegistry]:
     """Build a FastAPI app wired to a ConnectorRegistry.
 
     Mounts only the connectors router under ``/api/v1`` (other routers
     aren't needed for these tests). Returns ``(app, registry)`` so tests
     can manipulate ``registry.oauth_state`` directly.
+
+    Phase 6.5 step 66h: ``inbox`` may be provided explicitly. When
+    omitted but ``tmp_path`` is given, a fresh
+    :class:`tether.context.inbox_store.SqliteInbox` is constructed
+    against ``tmp_path / "inbox.db"`` so tests that exercise the
+    inbox routes don't need to manually wire one. Passing
+    ``inbox=None`` (and ``tmp_path=None``) reproduces the legacy
+    "no inbox configured" path which now surfaces as 503.
     """
     from tether.protocol.parsers.sliding import SlidingParser
 
     registry = ConnectorRegistry(
-        [connector] if connector is not None else [], data_dir=None
+        [connector] if connector is not None else [],
+        data_dir=None,
+        inbox=inbox,
     )
     engine = Engine(
         provider=AsyncMock(),
@@ -133,6 +148,7 @@ def _make_app(connector: Optional[_RouteFakeConnector]) -> tuple[FastAPI, Connec
         tools=dict(registry.aggregate_tools()),
         system_prompt="",
         connector_registry=registry,
+        inbox=inbox,
     )
     app = FastAPI()
     v1 = APIRouter(prefix="/api/v1")
@@ -174,26 +190,245 @@ def test_get_list_empty_registry():
 
 
 # ---------------------------------------------------------------------------
-# A2.2 — GET /connectors/{id}/inbox returns 501
+# A2.2 — GET /connectors/{id}/inbox (Phase 6.5)
 # ---------------------------------------------------------------------------
 
 
-def test_get_inbox_returns_501():
+def _build_inbox(tmp_path):
+    """Construct a fresh :class:`SqliteInbox` rooted at ``tmp_path``."""
+    from tether.context.inbox_store import SqliteInbox
+
+    db_path = (tmp_path / "inbox.db").as_posix()
+    return SqliteInbox(f"sqlite:///{db_path}")
+
+
+def _seed_events(inbox, events):
+    """Helper to run ``inbox.append_many`` synchronously in a private loop."""
+    import asyncio
+
+    async def _go():
+        await inbox.connect()
+        try:
+            return await inbox.append_many(list(events))
+        finally:
+            await inbox.aclose()
+
+    loop = asyncio.new_event_loop()
+    try:
+        return loop.run_until_complete(_go())
+    finally:
+        loop.close()
+
+
+def test_get_inbox_returns_503_when_inbox_unconfigured():
+    """When the engine was built without an inbox, the route surfaces 503.
+
+    Phase 6.5 (replaces the prior 501 stub): the route now actually
+    queries an inbox; if none is wired the response is 503 "Inbox not
+    configured" rather than the old 501 "not implemented yet".
+    """
     conn = _RouteFakeConnector()
     app, _ = _make_app(conn)
     client = TestClient(app)
     resp = client.get("/api/v1/connectors/route_fake/inbox")
-    assert resp.status_code == 501
+    assert resp.status_code == 503
     body = resp.json()
-    assert "not implemented" in body["detail"].lower()
+    assert "inbox" in body["detail"].lower()
 
 
-def test_get_inbox_unknown_connector_returns_404():
+def test_get_inbox_unknown_connector_returns_404(tmp_path):
+    """Unknown connector id 404s before the inbox is queried."""
     conn = _RouteFakeConnector()
-    app, _ = _make_app(conn)
+    inbox = _build_inbox(tmp_path)
+    app, _ = _make_app(conn, inbox=inbox)
     client = TestClient(app)
     resp = client.get("/api/v1/connectors/does_not_exist/inbox")
     assert resp.status_code == 404
+
+
+def test_get_inbox_unread_returns_only_unread_events(tmp_path):
+    """``unread=true`` returns only inbox_seen=0 events, oldest first."""
+    import datetime
+
+    from tether.connectors.types import InboundEvent
+
+    conn = _RouteFakeConnector()
+    inbox = _build_inbox(tmp_path)
+    now = datetime.datetime.now(datetime.timezone.utc)
+    events = [
+        InboundEvent(
+            event_id=f"e{i}",
+            connector_id="route_fake",
+            kind="msg",
+            received_at=now + datetime.timedelta(seconds=i),
+            payload={"i": i},
+            summary=f"summary {i}",
+        )
+        for i in range(3)
+    ]
+    inserted = _seed_events(inbox, events)
+    assert inserted == 3
+
+    app, _ = _make_app(conn, inbox=inbox)
+    client = TestClient(app)
+    resp = client.get(
+        "/api/v1/connectors/route_fake/inbox",
+        params={"unread": "true", "limit": "50"},
+    )
+    assert resp.status_code == 200
+    body = resp.json()
+    assert isinstance(body, list)
+    assert len(body) == 3
+    # Oldest unread first.
+    assert [e["event_id"] for e in body] == ["e0", "e1", "e2"]
+    # Wire-shape sanity check.
+    first = body[0]
+    assert first["connector_id"] == "route_fake"
+    assert first["kind"] == "msg"
+    assert first["payload"] == {"i": 0}
+    assert first["summary"] == "summary 0"
+    assert "received_at" in first
+
+
+def test_get_inbox_default_returns_recent_newest_first(tmp_path):
+    """``unread=false`` (default) returns all events, newest first."""
+    import datetime
+
+    from tether.connectors.types import InboundEvent
+
+    conn = _RouteFakeConnector()
+    inbox = _build_inbox(tmp_path)
+    now = datetime.datetime.now(datetime.timezone.utc)
+    events = [
+        InboundEvent(
+            event_id=f"r{i}",
+            connector_id="route_fake",
+            kind="msg",
+            received_at=now + datetime.timedelta(seconds=i),
+            payload={"i": i},
+            summary=None,
+        )
+        for i in range(3)
+    ]
+    _seed_events(inbox, events)
+
+    app, _ = _make_app(conn, inbox=inbox)
+    client = TestClient(app)
+    resp = client.get("/api/v1/connectors/route_fake/inbox")
+    assert resp.status_code == 200
+    body = resp.json()
+    assert [e["event_id"] for e in body] == ["r2", "r1", "r0"]
+
+
+def test_get_inbox_limit_query_param(tmp_path):
+    """``limit`` clamps the response size."""
+    import datetime
+
+    from tether.connectors.types import InboundEvent
+
+    conn = _RouteFakeConnector()
+    inbox = _build_inbox(tmp_path)
+    now = datetime.datetime.now(datetime.timezone.utc)
+    events = [
+        InboundEvent(
+            event_id=f"l{i}",
+            connector_id="route_fake",
+            kind="msg",
+            received_at=now + datetime.timedelta(seconds=i),
+            payload={"i": i},
+        )
+        for i in range(5)
+    ]
+    _seed_events(inbox, events)
+
+    app, _ = _make_app(conn, inbox=inbox)
+    client = TestClient(app)
+    resp = client.get(
+        "/api/v1/connectors/route_fake/inbox", params={"limit": "2"}
+    )
+    assert resp.status_code == 200
+    assert len(resp.json()) == 2
+
+
+def test_post_mark_seen_flips_inbox_seen(tmp_path):
+    """``POST /inbox/mark-seen`` flips inbox_seen and is idempotent."""
+    import datetime
+
+    from tether.connectors.types import InboundEvent
+
+    conn = _RouteFakeConnector()
+    inbox = _build_inbox(tmp_path)
+    now = datetime.datetime.now(datetime.timezone.utc)
+    events = [
+        InboundEvent(
+            event_id=f"m{i}",
+            connector_id="route_fake",
+            kind="msg",
+            received_at=now + datetime.timedelta(seconds=i),
+            payload={"i": i},
+        )
+        for i in range(3)
+    ]
+    _seed_events(inbox, events)
+
+    app, _ = _make_app(conn, inbox=inbox)
+    client = TestClient(app)
+
+    # Confirm 3 unread.
+    resp = client.get(
+        "/api/v1/connectors/route_fake/inbox", params={"unread": "true"}
+    )
+    assert len(resp.json()) == 3
+
+    # Mark first 2 seen.
+    resp = client.post(
+        "/api/v1/connectors/route_fake/inbox/mark-seen",
+        json={"event_ids": ["m0", "m1"]},
+    )
+    assert resp.status_code == 200
+    assert resp.json() == {"affected": 2}
+
+    # Only m2 should remain unread.
+    resp = client.get(
+        "/api/v1/connectors/route_fake/inbox", params={"unread": "true"}
+    )
+    body = resp.json()
+    assert [e["event_id"] for e in body] == ["m2"]
+
+    # Re-marking same ids is idempotent — affected count is 0 the
+    # second time because inbox_seen is already 1.
+    resp = client.post(
+        "/api/v1/connectors/route_fake/inbox/mark-seen",
+        json={"event_ids": ["m0", "m1"]},
+    )
+    assert resp.json() == {"affected": 0}
+
+
+def test_post_mark_seen_unknown_connector_returns_404(tmp_path):
+    """Unknown connector id 404s before the inbox is touched."""
+    conn = _RouteFakeConnector()
+    inbox = _build_inbox(tmp_path)
+    app, _ = _make_app(conn, inbox=inbox)
+    client = TestClient(app)
+    resp = client.post(
+        "/api/v1/connectors/missing/inbox/mark-seen",
+        json={"event_ids": ["x"]},
+    )
+    assert resp.status_code == 404
+
+
+def test_post_mark_seen_empty_body_is_noop(tmp_path):
+    """Empty event_ids list returns affected=0 without error."""
+    conn = _RouteFakeConnector()
+    inbox = _build_inbox(tmp_path)
+    app, _ = _make_app(conn, inbox=inbox)
+    client = TestClient(app)
+    resp = client.post(
+        "/api/v1/connectors/route_fake/inbox/mark-seen",
+        json={"event_ids": []},
+    )
+    assert resp.status_code == 200
+    assert resp.json() == {"affected": 0}
 
 
 # ---------------------------------------------------------------------------

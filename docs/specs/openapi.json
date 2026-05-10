@@ -26,6 +26,21 @@
         "title": "LoginCompleteBody",
         "type": "object"
       },
+      "MarkSeenBody": {
+        "description": "Request body for ``POST /{id}/inbox/mark-seen`` (Phase 6.5).",
+        "properties": {
+          "event_ids": {
+            "description": "Event ids to mark seen. Idempotent.",
+            "items": {
+              "type": "string"
+            },
+            "title": "Event Ids",
+            "type": "array"
+          }
+        },
+        "title": "MarkSeenBody",
+        "type": "object"
+      },
       "Message": {
         "properties": {
           "content": {
@@ -228,7 +243,7 @@
     },
     "/api/v1/connectors/{connector_id}/inbox": {
       "get": {
-        "description": "Return inbox events for ``connector_id``.\n\nPhase 6.5 lands :class:`tether.context.inbox_store.SqliteInbox`\nalong with the connector inbound-stream drain task (connector spec\n§3.4); for now this route returns 501 NOT IMPLEMENTED with a 404\npre-check so unknown ids still surface clearly.",
+        "description": "Return inbox events for ``connector_id``.\n\nPhase 6.5 step 66g (synthesis §4): replaces the prior 501 stub\nwith the actual :class:`tether.context.inbox_store.SqliteInbox`\nquery path. The 404 pre-check via :func:`_resolve` keeps the\nbehaviour consistent with the other connector routes — unknown\nids surface clearly even before the inbox is consulted.\n\nPer connector spec §3.4 + ADR-0009.",
         "operationId": "get_inbox_api_v1_connectors__connector_id__inbox_get",
         "parameters": [
           {
@@ -239,6 +254,32 @@
               "title": "Connector Id",
               "type": "string"
             }
+          },
+          {
+            "description": "When true, return only events with inbox_seen=0 ordered by received_at ASC (oldest unread first); when false (default), return all events newest-first.",
+            "in": "query",
+            "name": "unread",
+            "required": false,
+            "schema": {
+              "default": false,
+              "description": "When true, return only events with inbox_seen=0 ordered by received_at ASC (oldest unread first); when false (default), return all events newest-first.",
+              "title": "Unread",
+              "type": "boolean"
+            }
+          },
+          {
+            "description": "Max events to return (1-500).",
+            "in": "query",
+            "name": "limit",
+            "required": false,
+            "schema": {
+              "default": 50,
+              "description": "Max events to return (1-500).",
+              "maximum": 500,
+              "minimum": 1,
+              "title": "Limit",
+              "type": "integer"
+            }
           }
         ],
         "responses": {
@@ -246,9 +287,12 @@
             "content": {
               "application/json": {
                 "schema": {
-                  "additionalProperties": true,
+                  "items": {
+                    "additionalProperties": true,
+                    "type": "object"
+                  },
                   "title": "Response Get Inbox Api V1 Connectors  Connector Id  Inbox Get",
-                  "type": "object"
+                  "type": "array"
                 }
               }
             },
@@ -266,6 +310,61 @@
           }
         },
         "summary": "Get Inbox",
+        "tags": [
+          "connectors"
+        ]
+      }
+    },
+    "/api/v1/connectors/{connector_id}/inbox/mark-seen": {
+      "post": {
+        "description": "Mark inbox events as seen by the orchestrator.\n\nPhase 6.5 step 66g: idempotent flip of ``inbox_seen=0 -> 1`` for\nthe listed event ids. Returns ``{\"affected\": N}`` where ``N`` is\nthe number of rows actually updated (events already at\n``inbox_seen=1`` do not contribute). Empty ``event_ids`` is a\nno-op returning ``{\"affected\": 0}``.",
+        "operationId": "mark_inbox_seen_api_v1_connectors__connector_id__inbox_mark_seen_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "connector_id",
+            "required": true,
+            "schema": {
+              "title": "Connector Id",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/MarkSeenBody"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "additionalProperties": true,
+                  "title": "Response Mark Inbox Seen Api V1 Connectors  Connector Id  Inbox Mark Seen Post",
+                  "type": "object"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Mark Inbox Seen",
         "tags": [
           "connectors"
         ]
