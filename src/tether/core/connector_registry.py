@@ -18,15 +18,31 @@ cleanup needs are expected to mirror the daemon-thread + force-exit pattern
 documented on :class:`tether.connectors.base.Connector` (Phase 3
 ``HardwareWatchdog``).
 
+Phase 6.5 step 66e (synthesis §4): the registry now owns per-connector
+**inbound drain tasks**. When :meth:`start_connector` succeeds, a
+:class:`tether.runtime.task_supervisor.SupervisedTask` is spawned that
+iterates ``connector.inbound_stream()`` and persists each event to the
+configured :class:`tether.context.inbox_store.InboundInbox` via
+``append_many`` (one event per call today; batched APIs may land later).
+:meth:`stop_connector` cancels the drain task BEFORE invoking
+``Connector.stop()`` so the stream is not iterated against a connector
+mid-teardown. Per-event exceptions are logged + skipped — a single bad
+event MUST NOT kill the drain task.
+
+If no inbox is configured (legacy direct-construction paths, tests that
+don't need drain coverage), ``inbound_stream`` is not iterated and
+drain tasks are never spawned — the connector's outbound + login surface
+still works.
+
 OAuth state for the spec §3.8 callback handshake is held in a small
 in-memory TTL cache (``maxsize=8``, ``ttl=300 s``); stdlib only — no
 ``cachetools`` dependency (R6 anti-overengineering).
 
 Citations:
-    - Synthesis §4 Phase 4.5 steps 47b-47c, §13.4 M5, §13.5 M5 callers,
-      R6.
-    - Connector spec §3.3 (registry validation + lifecycle), §3.6 (data
-      layout), §3.8 (OAuth callback).
+    - Synthesis §4 Phase 4.5 steps 47b-47c, Phase 6.5 step 66e,
+      §13.4 M3 + M5, §13.5 M5 callers, R6.
+    - Connector spec §3.3 (registry validation + lifecycle), §3.4
+      (inbound stream), §3.6 (data layout), §3.8 (OAuth callback).
 """
 from __future__ import annotations
 
@@ -34,12 +50,16 @@ import asyncio
 import logging
 import time
 from pathlib import Path
-from typing import Any, Dict, List, Optional, Set
+from typing import Any, Dict, List, Optional, Set, TYPE_CHECKING
 
 from tether.connectors.base import Connector
-from tether.connectors.types import ConnectorState
+from tether.connectors.types import ConnectorState, InboundEvent
 from tether.core.interfaces import Tool
 from tether.core.registry_validator import validate_unique_names
+
+if TYPE_CHECKING:
+    from tether.context.inbox_store import InboundInbox
+    from tether.runtime.task_supervisor import SupervisedTask
 
 logger = logging.getLogger(__name__)
 
@@ -123,6 +143,14 @@ class ConnectorRegistry:
             "connectors"`` when ``platformdirs`` is importable; otherwise
             ``./data/connectors``. Directories are lazy-created on first
             :meth:`start_connector` call (connector spec §3.6).
+        inbox: Optional :class:`InboundInbox` to drain
+            ``connector.inbound_stream()`` into. When provided,
+            :meth:`start_connector` spawns a per-connector
+            :class:`SupervisedTask` that iterates the stream and persists
+            events via :meth:`InboundInbox.append_many`. ``None`` (the
+            legacy default) skips drain wiring entirely — useful for tests
+            that exercise lifecycle without DB coverage. Phase 6.5 step 66e
+            (synthesis §4 + §13.4 M3).
 
     Validation at construction (connector spec §3.3):
         * ``connectors`` ids are unique.
@@ -139,6 +167,7 @@ class ConnectorRegistry:
         tool_names: Optional[Set[str]] = None,
         *,
         data_dir: Optional[Path] = None,
+        inbox: Optional["InboundInbox"] = None,
     ) -> None:
         if tool_names is None:
             tool_names = set()
@@ -215,10 +244,21 @@ class ConnectorRegistry:
         #    individual connector instances.
         self._oauth_state = _OAuthStateCache(maxsize=8, ttl=300.0)
 
+        # 6. Phase 6.5 step 66e: per-connector inbound-drain tasks +
+        #    optional inbox handle. Drain tasks are spawned in
+        #    :meth:`start_connector` and cancelled in
+        #    :meth:`stop_connector`. ``self._inbox is None`` means the
+        #    drain machinery is dormant — connectors still serve
+        #    outbound tools; nothing iterates ``inbound_stream()``.
+        self._inbox: Optional["InboundInbox"] = inbox
+        self._drain_tasks: Dict[str, "SupervisedTask"] = {}
+
         logger.info(
-            "ConnectorRegistry: %d connector(s), %d aggregated tool(s)",
+            "ConnectorRegistry: %d connector(s), %d aggregated tool(s), "
+            "inbox=%s",
             len(self._connectors),
             len(self._all_tools),
+            "yes" if inbox is not None else "no",
         )
 
     # ------------------------------------------------------------------
@@ -290,6 +330,16 @@ class ConnectorRegistry:
         for OAuth connectors that lazily build an authenticated client.
         Aligns the contract for both code paths so callers (HTTP /
         callbacks / tests) get the same behaviour.
+
+        Phase 6.5 step 66e (synthesis §4 + §13.4 M3): on successful
+        ``start()``, spawns a per-connector inbound-drain
+        :class:`SupervisedTask` that iterates ``conn.inbound_stream()``
+        and persists each event via ``inbox.append_many``. Drain tasks
+        are stored in ``self._drain_tasks[connector_id]`` so
+        :meth:`stop_connector` can cancel them. If the registry was
+        constructed without an inbox, drain wiring is skipped — the
+        connector still starts and serves outbound tools, but
+        ``inbound_stream()`` is not iterated.
         """
         conn = self.get(connector_id)
         try:
@@ -312,6 +362,15 @@ class ConnectorRegistry:
         await conn.start()
         logger.info("Started connector: %s", connector_id)
 
+        # Phase 6.5: spawn the drain task AFTER ``start()`` so the
+        # connector's ``inbound_stream()`` only runs once the connector
+        # is fully initialised. Skipped when no inbox is configured.
+        # An existing drain task for this id is replaced — covers the
+        # restart case (e.g. after re-auth → start again).
+        if self._inbox is not None:
+            await self._stop_drain_task(connector_id, timeout_sec=2.0)
+            self._spawn_drain_task(connector_id, conn)
+
     async def stop_connector(
         self, connector_id: str, *, timeout_sec: float = 2.0
     ) -> None:
@@ -328,8 +387,21 @@ class ConnectorRegistry:
         Exceptions raised by ``stop()`` are logged but never re-raised so
         one failing connector cannot block shutdown of the others when
         called via :meth:`stop_all`.
+
+        Phase 6.5 step 66e: cancels the per-connector inbound-drain
+        :class:`SupervisedTask` BEFORE invoking ``conn.stop()`` so
+        ``inbound_stream()`` is not iterated against a connector that
+        is mid-teardown. Each drain task gets the same ``timeout_sec``
+        budget; abandoned drains are logged but never block the stop
+        path.
         """
         conn = self.get(connector_id)
+
+        # Phase 6.5: cancel the drain task first so the connector's
+        # ``inbound_stream()`` is no longer being iterated when
+        # ``stop()`` runs.
+        await self._stop_drain_task(connector_id, timeout_sec=timeout_sec)
+
         try:
             await asyncio.wait_for(conn.stop(), timeout=timeout_sec)
             logger.info(
@@ -424,6 +496,85 @@ class ConnectorRegistry:
             ),
             return_exceptions=True,
         )
+
+    # ------------------------------------------------------------------
+    # Phase 6.5 step 66e: inbound drain tasks
+    # ------------------------------------------------------------------
+
+    def _spawn_drain_task(
+        self, connector_id: str, conn: Connector
+    ) -> None:
+        """Create + start the per-connector drain :class:`SupervisedTask`.
+
+        The drain coroutine iterates ``conn.inbound_stream()`` and
+        appends each :class:`InboundEvent` to ``self._inbox`` one-at-a-
+        time. Per-event exceptions are logged but never break the loop
+        — a single bad event MUST NOT kill the drain (connector spec
+        §3.4 contract: "drain task must be resilient to per-event
+        errors"). The loop exits cleanly when:
+
+        * the iterator naturally ends (e.g. echo connector returns
+          after its sentinel),
+        * the task is cancelled (registry stop_connector),
+        * the inbox raises (logged; loop continues to drain remaining
+          events so a transient SQLite error doesn't lose subsequent
+          events).
+        """
+        # Lazy import to keep tether.runtime out of the import graph
+        # for direct-construction paths that don't use drain tasks.
+        from tether.runtime.task_supervisor import SupervisedTask
+
+        async def _drain() -> None:
+            assert self._inbox is not None  # invariant: only spawned with inbox
+            async for event in conn.inbound_stream():
+                # Connectors that yield events with the wrong
+                # ``connector_id`` would corrupt the inbox; force the
+                # registry-side id so a misconfigured connector cannot
+                # poison another connector's inbox view.
+                if event.connector_id != connector_id:
+                    logger.warning(
+                        "drain(%s): connector yielded event with "
+                        "connector_id=%r; rewriting to %r before persist",
+                        connector_id,
+                        event.connector_id,
+                        connector_id,
+                    )
+                    event = InboundEvent(
+                        event_id=event.event_id,
+                        connector_id=connector_id,
+                        kind=event.kind,
+                        received_at=event.received_at,
+                        payload=event.payload,
+                        summary=event.summary,
+                    )
+                try:
+                    await self._inbox.append_many([event])
+                except Exception as exc:  # noqa: BLE001 - logged + skipped
+                    logger.exception(
+                        "drain(%s): inbox.append_many failed for "
+                        "event_id=%r kind=%r: %s",
+                        connector_id,
+                        event.event_id,
+                        event.kind,
+                        exc,
+                    )
+                    # Continue draining — losing one event is better
+                    # than dropping the rest of the stream.
+                    continue
+            logger.debug("drain(%s): inbound_stream exhausted", connector_id)
+
+        task = SupervisedTask(_drain, name=f"connector-drain:{connector_id}")
+        task.start()
+        self._drain_tasks[connector_id] = task
+
+    async def _stop_drain_task(
+        self, connector_id: str, *, timeout_sec: float = 2.0
+    ) -> None:
+        """Cancel + reap the per-connector drain task. Idempotent."""
+        task = self._drain_tasks.pop(connector_id, None)
+        if task is None:
+            return
+        await task.stop(timeout=timeout_sec)
 
 
 __all__ = ["ConnectorRegistry"]

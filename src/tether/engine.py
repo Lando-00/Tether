@@ -32,6 +32,7 @@ from tether.protocol.orchestration.tool_runner import ToolRunner
 from tether.runtime.watchdog_mode import WatchdogMode
 
 if TYPE_CHECKING:
+    from tether.context.inbox_store import InboundInbox
     from tether.core.connector_registry import ConnectorRegistry
     from tether.protocol.orchestration.cancel import CancelToken
     from tether.protocol.wire.events import WireEvent
@@ -58,6 +59,7 @@ class Engine:
         tool_runner: Optional[ToolRunner] = None,
         hw_watchdog: Optional["HardwareWatchdog"] = None,
         connector_registry: Optional["ConnectorRegistry"] = None,
+        inbox: Optional["InboundInbox"] = None,
         orchestrator_registry: Optional[Dict[str, str]] = None,
         orchestrator_default_mode: str = "chat",
     ):
@@ -130,6 +132,12 @@ class Engine:
         self.watchdog_mode = watchdog_mode
         self.hw_watchdog = hw_watchdog
         self.connector_registry = connector_registry
+        # Phase 6.5 step 66e (synthesis §4 + ADR-0009): the inbox is
+        # held on Engine so :meth:`__aenter__` / :meth:`aclose` can
+        # sequence its connect / aclose alongside the session store.
+        # The ConnectorRegistry has its own non-owning reference for
+        # drain-task wiring; Engine owns the lifecycle here.
+        self.inbox = inbox
         self.orchestrator_config = orchestrator_config or OrchestratorConfig(
             max_tool_loops=5,
             auto_reload_on_fatal_error=True,
@@ -232,6 +240,21 @@ class Engine:
             raise
         store = load(store_spec.impl, **store_spec.args)
 
+        # Phase 6.5 step 66e (synthesis §4 + ADR-0009): SqliteInbox
+        # shares the session-store DSN — one DB file, one connection
+        # lifecycle, one migration track. The inbox is constructed here
+        # rather than in ConnectorRegistry so Engine.aclose can sequence
+        # its lifecycle alongside the session store.
+        inbox: Optional["InboundInbox"] = None
+        if settings.inbox.enabled:
+            from tether.context.inbox_store import SqliteInbox
+
+            inbox = SqliteInbox(
+                _store_dsn,
+                max_payload_bytes=settings.inbox.max_payload_bytes,
+                max_summary_chars=settings.inbox.max_summary_chars,
+            )
+
         registry = ToolRegistry.from_settings(settings)
         tools = registry.all()
 
@@ -245,7 +268,7 @@ class Engine:
             conn = load(spec.impl, **spec.args)
             connectors.append(conn)
         connector_registry = ConnectorRegistry(
-            connectors, tool_names=set(tools.keys())
+            connectors, tool_names=set(tools.keys()), inbox=inbox
         )
 
         # Merge connector tools into the flat dict the orchestrator sees.
@@ -292,6 +315,7 @@ class Engine:
             tool_runner=tool_runner,
             hw_watchdog=hw_watchdog,
             connector_registry=connector_registry,
+            inbox=inbox,
             orchestrator_registry=registry_dict,
             orchestrator_default_mode=settings.orchestrator.default,
         )
@@ -485,6 +509,18 @@ class Engine:
                 await self.aclose()
                 raise
 
+        # Phase 6.5 step 66e: open the SqliteInbox alongside the store
+        # so the connector drain tasks (spawned below in
+        # ``start_connector``) have a live aiosqlite connection to
+        # write into. Independently lifecycled — a missing inbox is
+        # not fatal; the connector registry simply skips drain wiring.
+        if self.inbox is not None and hasattr(self.inbox, "connect"):
+            try:
+                await self.inbox.connect()
+            except Exception:
+                await self.aclose()
+                raise
+
         if self.tools:
             from tether.tools.lifecycle import startup_all
 
@@ -615,5 +651,21 @@ class Engine:
             except Exception as exc:  # noqa: BLE001 - defensive
                 logger.exception(
                     "SessionStore.aclose() raised during Engine teardown: %s",
+                    exc,
+                )
+
+        # Phase 6.5 step 66e: close the SqliteInbox connection AFTER
+        # the connectors stopped (which already cancelled their drain
+        # tasks above) and AFTER the session store. The inbox shares
+        # the same DB file as the session store but holds an
+        # independent aiosqlite worker thread; closing both is
+        # required to release the WAL lock cleanly. Failure is logged
+        # but never raised — aclose must always complete.
+        if self.inbox is not None and hasattr(self.inbox, "aclose"):
+            try:
+                await self.inbox.aclose()
+            except Exception as exc:  # noqa: BLE001 - defensive
+                logger.exception(
+                    "SqliteInbox.aclose() raised during Engine teardown: %s",
                     exc,
                 )

@@ -259,6 +259,13 @@ class EchoConnector(Connector):
     #: instance level if they want to simulate a different secret.
     expected_code: str = "ok"
 
+    #: Number of synthetic events queued on :meth:`start` so the Phase
+    #: 6.5 inbox-drain test (and ``test_connector_inbox_drain``) sees
+    #: deterministic events appear without needing to call
+    #: :meth:`emit_event` from the test body. Override at instance
+    #: level (e.g. ``echo._initial_event_count = 0``) to suppress.
+    _initial_event_count: int = 3
+
     def __init__(self) -> None:
         self._state: ConnectorState = ConnectorState.UNCONFIGURED
         self._user_id: Optional[str] = None
@@ -270,6 +277,20 @@ class EchoConnector(Connector):
 
         # Slow-stop knob — see :meth:`stop` and the lifecycle test.
         self._stop_delay_sec: float = 0.0
+
+        # Phase 6.5 step 66f (synthesis §4): inbound stream is now
+        # fed by an asyncio.Queue so tests can pump synthetic events
+        # post-start via :meth:`emit_event`. The queue is created
+        # lazily on first use because ``__init__`` runs outside the
+        # event loop in some test paths (Connector instances are
+        # constructed in fixtures before any loop is running).
+        self._inbound_queue: Optional[asyncio.Queue["InboundEvent | None"]] = None
+        self._inbound_seq: int = 0
+        # Whether the synthetic-event seeding ran already; ``start``
+        # is idempotent per the spec, so the seed must run AT MOST
+        # once even if start() is invoked more than once (e.g. after
+        # stop+start in tests).
+        self._seeded_initial_events: bool = False
 
         # Per-instance tool dict so the side-effect storage is shared
         # between the connector and its tools without singletons.
@@ -312,6 +333,16 @@ class EchoConnector(Connector):
         creds first or are mid-login).
         Otherwise transition to READY iff a user is set; preserves
         DEGRADED / ERROR if the test pre-set them.
+
+        Phase 6.5 (synthesis §4 step 66f): on the FIRST call once the
+        connector is READY (independent of whether start() was the
+        thing that flipped state — ``complete_login`` may have already
+        set READY), queue ``_initial_event_count`` synthetic events
+        into the inbound stream so the spec §8.3 acceptance test for
+        the inbox drain path observes events within 1 s of start.
+        Setting ``_initial_event_count = 0`` before ``start()``
+        suppresses this. The seed runs at most once (``_seeded_initial_events``
+        guard) so a second start() after stop() does not re-queue.
         """
         if self._state in (
             ConnectorState.UNCONFIGURED,
@@ -322,19 +353,53 @@ class EchoConnector(Connector):
         if self._user_id is not None and self._state is not ConnectorState.READY:
             self._state = ConnectorState.READY
 
+        # Seed the inbound queue once on the first start() that lands
+        # us in READY. Lazy-construct the queue inside the event loop
+        # so it binds to the current loop.
+        if (
+            self._state is ConnectorState.READY
+            and not self._seeded_initial_events
+        ):
+            self._ensure_inbound_queue()
+            for i in range(self._initial_event_count):
+                await self.emit_event(
+                    kind="echo.test",
+                    payload={"i": i},
+                    summary=f"echo synthetic event {i}",
+                )
+            self._seeded_initial_events = True
+
     async def stop(self) -> None:
         """Idempotent stop. Optionally slow per ``_stop_delay_sec``.
 
         State is preserved across stop/start (per spec §3.1: ``stop()``
         keeps creds; only :meth:`logout` deletes them).
+
+        Phase 6.5 (synthesis §4 step 66f): also push a sentinel onto
+        the inbound queue so :meth:`inbound_stream` exits cleanly when
+        the registry's drain task has not yet been cancelled. This is
+        belt-and-braces — :class:`tether.runtime.task_supervisor.SupervisedTask`
+        already cancels the drain task during ``stop_connector``, but
+        a sentinel makes the generator exit immediately if a test
+        iterates the stream directly without supervisor wrapping.
         """
         if self._stop_delay_sec > 0:
             await asyncio.sleep(self._stop_delay_sec)
+        if self._inbound_queue is not None:
+            try:
+                self._inbound_queue.put_nowait(None)
+            except asyncio.QueueFull:  # pragma: no cover - unbounded queue
+                pass
 
     async def logout(self) -> None:
         """Delete creds + transition to ``LOGGED_OUT`` (spec §3.1)."""
         self._user_id = None
         self._state = ConnectorState.LOGGED_OUT
+        if self._inbound_queue is not None:
+            try:
+                self._inbound_queue.put_nowait(None)
+            except asyncio.QueueFull:  # pragma: no cover
+                pass
 
     # ------------------------------------------------------------------
     # Connector ABC: status (cheap; no network)
@@ -383,15 +448,91 @@ class EchoConnector(Connector):
         return dict(self._tools)
 
     async def inbound_stream(self) -> AsyncIterator[InboundEvent]:
-        """Empty inbound stream.
+        """Yield events drained from the per-instance asyncio queue.
 
-        Phase 6.5 will land real inbound-event production + the SqliteInbox
-        drain task (spec §3.4). The Phase 4.5 harness only needs the
-        async-generator shape so registry wiring + lifecycle tests run
-        end-to-end without producing events.
+        Phase 6.5 step 66f (synthesis §4): the prior empty-generator
+        body has been replaced with a queue-backed implementation so
+        the spec §8.3 acceptance test for the connector inbox drain
+        path (``tests/integration/test_connector_inbox_drain.py``)
+        observes events end-to-end:
+
+            connector.start()              # queues N synthetic events
+            registry.start_connector(id)   # spawns drain SupervisedTask
+            ...                            # events land in SqliteInbox
+            registry.stop_connector(id)    # cancels drain task
+
+        Tests can pump additional events post-start via :meth:`emit_event`.
+        ``stop()`` and :meth:`logout` push a ``None`` sentinel so direct
+        iteration (test code that reads ``async for event in
+        echo.inbound_stream()`` without going through the registry) gets
+        a clean shutdown without needing to call ``Task.cancel()``.
+
+        The generator MUST be cancellable via standard task cancellation
+        per connector spec §3.1. ``asyncio.Queue.get()`` is a cancellation
+        point — when the registry's :class:`SupervisedTask` cancels the
+        drain coroutine, this method propagates the ``CancelledError``
+        cleanly.
         """
-        if False:  # pragma: no cover - empty stream
-            yield  # type: ignore[unreachable]
+        queue = self._ensure_inbound_queue()
+        while True:
+            try:
+                event = await queue.get()
+            except asyncio.CancelledError:
+                # Re-raise so SupervisedTask sees a clean cancel.
+                raise
+            if event is None:
+                # Sentinel from stop() / logout() — exit cleanly.
+                return
+            yield event
+
+    # ------------------------------------------------------------------
+    # Phase 6.5 helpers — exercised by tests/integration/test_connector_inbox_drain.py
+    # ------------------------------------------------------------------
+
+    def _ensure_inbound_queue(self) -> "asyncio.Queue[InboundEvent | None]":
+        """Lazy-build the inbound queue bound to the running loop."""
+        if self._inbound_queue is None:
+            # Unbounded so a slow drain task never deadlocks the
+            # producer; this is a test fixture, the production guard
+            # against unbounded growth is per-connector retention.
+            self._inbound_queue = asyncio.Queue()
+        return self._inbound_queue
+
+    async def emit_event(
+        self,
+        *,
+        kind: str,
+        payload: Dict[str, Any],
+        summary: Optional[str] = None,
+        event_id: Optional[str] = None,
+    ) -> InboundEvent:
+        """Push a synthetic :class:`InboundEvent` onto the inbound queue.
+
+        ``event_id`` defaults to a deterministic monotonically-increasing
+        identifier (``echo-<n>``). Callers (tests) can pass an explicit
+        id to exercise idempotency. ``received_at`` is stamped with the
+        current UTC instant so insertion ordering matches monotonic
+        time.
+        """
+        import datetime as _dt
+
+        if self._inbound_queue is None:
+            self._ensure_inbound_queue()
+        if event_id is None:
+            event_id = f"echo-{self._inbound_seq}"
+            self._inbound_seq += 1
+
+        event = InboundEvent(
+            event_id=event_id,
+            connector_id=self.id,
+            kind=kind,
+            received_at=_dt.datetime.now(_dt.timezone.utc),
+            payload=dict(payload),
+            summary=summary,
+        )
+        assert self._inbound_queue is not None  # for type-checkers
+        await self._inbound_queue.put(event)
+        return event
 
 
 __all__ = [
