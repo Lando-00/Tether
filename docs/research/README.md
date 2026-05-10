@@ -49,6 +49,20 @@ head-to-head on GPU vs NPU."
 | [`05_mlc_llm_versioning.md`](./05_mlc_llm_versioning.md) | **Runtime version audit.** What MLC-LLM/TVM version is actually installed, where it came from (Qualcomm's CodeLinaro distribution, `2025.06.r1`), and the recheck/upgrade recipe. Confirms `mlc-venv2` is on the latest published release. |
 | [`05_codelinaro_catalog.md`](./05_codelinaro_catalog.md) / [`.json`](./05_codelinaro_catalog.json) | Auto-generated listing of every file in the CodeLinaro `clo-472-adreno-opensource-ai/mlc-llm` repo. Regenerate via `python scripts/research/jfrog_clo_catalog.py --repo clo-472-adreno-opensource-ai --path mlc-llm --out-md docs/research/05_codelinaro_catalog.md --out-json docs/research/05_codelinaro_catalog.json`. |
 | [`06_context_strategies.md`](./06_context_strategies.md) | Architecture/orchestration research: **Ralph loops** (Geoffrey Huntley) and **Graph-Reader / Ralph-for-reading** (Steve Hanov, `smhanov/laconic`). Counters Tether's practical-context-window squeeze on small-RAM hardware by replacing the chatty-agent ReAct loop with a Notebook-of-atomic-facts pattern. Sketches a `NotebookOrchestrator` that would slot into the existing `MLCProvider`/`NexaProvider` interface. |
+| [`07_tuning_sweep.md`](./07_tuning_sweep.md) | **Live-tested tuning findings on Qwen3-4B-q4f16_1 / Adreno X Elite.** The Qwen3 `/no_think` directive is the highest-leverage win (2.6×–4.6× on tool-call / long-context paths). Compile-flag tweaks (`openclml=1`, `adrenoaccl=1`) only add 0–10%, often within noise. Backed by 6 raw bench reports under [`artifacts/`](./artifacts/). |
+| [`08_clml_compilation.md`](./08_clml_compilation.md) | **Why CLML compile flags don't help LLMs in our stack** — pattern matchers in `tvm/relax/backend/adreno/clml.py` require static `tir.IntImm(1)` for the batch dim, but MLC's Relax serving pipeline keeps `batch_size` symbolic. Verified via `--debug-dump`: zero CLML annotations across all phases. Recommendation: drop `--opt openclml=1` / `adrenoaccl=1` from any compile pipeline. |
+| [`09_nexa_npu_experimentation.md`](./09_nexa_npu_experimentation.md) | **NexaSDK NPU experiment (May 2026).** Native ARM64 CLI v0.2.73 installs and runs; NPU inference is **blocked upstream** by a Qualcomm/Nexa license-server outage following their March 2026 acquisition. Includes recheck recipe + an HTTP-targeting `NexaProvider` skeleton at [`reference/nexa_provider_skeleton.py`](./reference/nexa_provider_skeleton.py). |
+
+## What's in `scripts/`
+
+Standalone tools that DO touch `dist/` and the running `mlc_llm`
+runtime (different from `scripts/research/` below — those are
+read-only research helpers):
+
+| Script | Purpose |
+|--------|---------|
+| [`setup_model.py`](../../scripts/setup_model.py) | End-to-end pipeline for adding a new MLC model: download from HF, optionally patch the conv_template (e.g. graft `qwen3-openai-tools-min` onto a freshly-pulled vanilla qwen3 build), compile to an Adreno DLL via `mlc_llm compile --device windows:adreno_x86`, and optionally run a smoke test. Reusable for future model adds. |
+| [`bench_model.py`](../../scripts/bench_model.py) | 4-prompt cold/warm bench harness for any compiled MLC model. Has `--no-think` (Qwen3 `/no_think` directive), `--skip-cold` (faster reruns once shapes are JIT'd), `--out-md` / `--out-json` for comparable runs across models. The data behind [`07_tuning_sweep.md`](./07_tuning_sweep.md). |
 
 ## What's in `scripts/research/`
 
@@ -107,10 +121,26 @@ python scripts\research\jfrog_clo_catalog.py `
   --path mlc-llm `
   --out-md   docs\research\05_codelinaro_catalog.md `
   --out-json docs\research\05_codelinaro_catalog.json
+
+# 5. Bench an existing compiled model (warm-only, fast iteration)
+python scripts\bench_model.py `
+  --model-dir dist\Qwen3-4B-q4f16_1-MLC `
+  --model-lib dist\libs\Qwen3-4B-q4f16_1-adreno.dll `
+  --label "Qwen3-4B-q4f16_1 (recheck)" `
+  --no-think --skip-cold `
+  --out-md docs\research\artifacts\bench_q4f16_1_recheck.md `
+  --out-json docs\research\artifacts\bench_q4f16_1_recheck.json
+
+# 6. Add a brand-new candidate model from the shortlist
+python scripts\setup_model.py `
+  --hf-repo mlc-ai/Hermes-3-Llama-3.2-3B-q4f16_1-MLC `
+  --dist dist `
+  --conv-template-from dist\Qwen3-4B-q4f16_0-MLC `
+  --verify
 ```
 
 The hand-written narrative documents (`01_current_inventory_notes.md`,
 `02_adreno_mlc_landscape.md`, `03_npu_hexagon_landscape.md`,
-`04_candidate_shortlist.md`) are *not* auto-regenerated. Update them
-manually when the underlying ecosystem changes meaningfully — start
-with the auto-generated catalog, then revise the narrative.
+`04_candidate_shortlist.md`, `07`-`09`) are *not* auto-regenerated.
+Update them manually when the underlying ecosystem changes meaningfully
+— start with the auto-generated catalog, then revise the narrative.
