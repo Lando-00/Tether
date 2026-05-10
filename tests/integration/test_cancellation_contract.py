@@ -410,3 +410,86 @@ async def test_audit_call_status_cancelled():
     assert len(cancelled_calls) == 1
     assert cancelled_calls[0]["error_kind"] == "cancelled"
     assert cancelled_calls[0]["tool_name"] == "slow"
+
+
+# ---------------------------------------------------------------------------
+# FIX 5 — RD followup: complete_turn() in finally has a 200ms write budget.
+# Symmetric to the _persist_partial budget. Without this, a slow store can
+# stall the orchestrator's `finally` block well past the cancel deadline and
+# leave the request hanging.
+# ---------------------------------------------------------------------------
+
+
+class _SlowCompleteTurnStore(MinimalMemoryStore):
+    """SessionStore whose ``complete_turn`` sleeps for ``sleep_sec``."""
+
+    def __init__(self, sleep_sec: float):
+        super().__init__()
+        self._sleep_sec = sleep_sec
+        self.complete_called = 0
+        self.complete_completed = 0
+
+    async def complete_turn(
+        self, turn_id, *, status="completed", stop_reason=None, error_json=None
+    ) -> None:
+        self.complete_called += 1
+        await asyncio.sleep(self._sleep_sec)
+        self.complete_completed += 1
+
+
+@pytest.mark.anyio
+async def test_complete_turn_timeout_swallowed_when_store_too_slow():
+    """If ``store.complete_turn`` exceeds ``_PARTIAL_PERSIST_TIMEOUT_SEC``,
+    the wait_for fires, the exception is swallowed (with a structured
+    ``turn.complete_timeout`` warning emitted via structlog), and the
+    orchestrator still emits its terminal MessageStop within the budget.
+    FIX 5.
+
+    Mirrors :func:`test_cancel_persist_timeout_swallowed_when_store_too_slow`
+    structure — asserts elapsed time and that the slow store's coroutine
+    was cancelled before completing.
+    """
+    token = AsyncEventCancelToken()
+    provider = _CancelMidStreamProvider(token)
+    # complete_turn sleeps 1.0s — 5x the 0.2s budget.
+    store = _SlowCompleteTurnStore(sleep_sec=1.0)
+
+    orch = ChattyAgentOrchestrator(
+        provider=provider,
+        parser=SlidingParser(),
+        store=store,
+        tools={},
+        system_prompt="sys",
+        config=_config(),
+        tool_runner=ToolRunner({}, timeout_sec=5),
+    )
+
+    start = time.monotonic()
+    events = []
+    async for evt in orch.run(
+        session_id="sid-slow-complete",
+        prompt="hi",
+        model_name="scripted",
+        cancel_token=token,
+    ):
+        events.append(evt)
+    elapsed = time.monotonic() - start
+
+    # Final event is still MessageStop. Total runtime is bounded by the
+    # 200ms complete_turn budget (plus the 200ms persist_partial budget,
+    # plus minor jitter — should be well under 1.0s, the unbounded sleep).
+    assert isinstance(events[-1], MessageStop)
+    assert elapsed < 0.9, (
+        f"complete_turn timeout should bound runtime; observed {elapsed:.2f}s"
+    )
+
+    # complete_turn was called but did NOT complete (asyncio.wait_for cancelled
+    # it before the inner sleep finished).
+    assert store.complete_called == 1
+    assert store.complete_completed == 0, (
+        "store.complete_turn should have been cancelled by wait_for; "
+        f"got complete_completed={store.complete_completed}"
+    )
+
+
+

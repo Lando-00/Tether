@@ -577,10 +577,24 @@ class ChattyAgentOrchestrator(OrchestratorABC):
             if cancelled:
                 _final_turn_status = "cancelled"
             try:
-                await self.store.complete_turn(
-                    turn_id,
-                    status=_final_turn_status,
-                    stop_reason=final_stop_reason or ("cancelled" if cancelled else "complete"),
+                # Phase 7 RD followup (FIX 5): bound complete_turn with the
+                # same _PARTIAL_PERSIST_TIMEOUT_SEC budget used for partial-text
+                # persistence. The whole `finally` block runs on cancel paths,
+                # so a slow store can stall outer cancel — symmetric to the
+                # _persist_partial budget above.
+                await asyncio.wait_for(
+                    self.store.complete_turn(
+                        turn_id,
+                        status=_final_turn_status,
+                        stop_reason=final_stop_reason or ("cancelled" if cancelled else "complete"),
+                    ),
+                    timeout=_PARTIAL_PERSIST_TIMEOUT_SEC,
+                )
+            except asyncio.TimeoutError:
+                logger.warning(
+                    "turn.complete_timeout",
+                    turn_id=turn_id,
+                    timeout_sec=_PARTIAL_PERSIST_TIMEOUT_SEC,
                 )
             except Exception as ct_exc:
                 logger.warning(
