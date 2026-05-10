@@ -188,6 +188,12 @@ class Engine:
         from tether_service.core.tool_registry import ToolRegistry
         from tether_service.runtime.hw_watchdog import HardwareWatchdog
 
+        # Configure logging FIRST so any subsequent setup logs flow through
+        # the structured pipeline. Idempotent — safe to call multiple times.
+        # Citations: _synthesis.md §3 (observability), §4 Phase 7 step 67.
+        from tether_service.core.logging import configure_logging
+        configure_logging(settings)
+
         model_spec = settings.providers.model
         provider = load(model_spec.impl, **model_spec.args)
 
