@@ -21,6 +21,10 @@ supersedes the old one.
 | [0011](./0011-outbound-url-allowlist.md) | Outbound URL allowlist + `assert_safe_url` | Accepted |
 | [0012](./0012-csrf-cors-trustedhost-middleware-ordering.md) | CSRF + CORS + TrustedHost middleware ordering | Accepted |
 | [0013](./0013-src-layout-and-tether-service-alias.md) | `src/` layout + `tether_service` deprecation alias | Accepted |
+| [0014](./0014-codelinaro-runtime-pin.md) | Pin Qualcomm CodeLinaro MLC-LLM `2025.06.r1` runtime | Accepted |
+| [0015](./0015-single-user-outbound-send-doctrine.md) | Single-user, outbound-send + inbound-read doctrine | Accepted |
+| [0016](./0016-mlc-isolation-rule.md) | MLC isolation rule — no imports outside factory | Accepted |
+| [0017](./0017-practical-context-window-seam-c.md) | Practical context window — Seam C (deferred) | Accepted in principle |
 
 ## Format
 
