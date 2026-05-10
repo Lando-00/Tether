@@ -66,6 +66,8 @@ import hashlib
 import json
 import uuid
 from contextlib import aclosing
+
+import structlog
 from datetime import datetime, timezone
 from typing import (
     Any,
@@ -204,12 +206,19 @@ class ChattyAgentOrchestrator(OrchestratorABC):
         :meth:`Engine.chat` to iterate :data:`WireEvent` directly.
         """
         turn_id = uuid.uuid4().hex[:12]
+        # Phase 7 step 69: bind turn_id to structlog contextvars so every
+        # log line emitted during this turn includes it automatically.
+        # Cleanup is in the existing finally block below.
+        structlog.contextvars.bind_contextvars(turn_id=turn_id)
         seq = 0
 
         def _next_seq() -> int:
             nonlocal seq
             n = seq
             seq += 1
+            # Phase 7 step 69: update seq contextvar so logs between yields
+            # carry the seq of the most recently emitted event.
+            structlog.contextvars.bind_contextvars(seq=n)
             return n
 
         def _envelope() -> Dict[str, Any]:
@@ -567,6 +576,12 @@ class ChattyAgentOrchestrator(OrchestratorABC):
                     "complete_turn failed (non-fatal): turn_id=%s error=%s",
                     turn_id, ct_exc,
                 )
+
+            # Phase 7 step 69: unbind turn_id (and seq) from structlog
+            # contextvars to prevent leaking across turns on the same
+            # event-loop task. Must be last in finally so turn_id is
+            # present in all cleanup log lines above.
+            structlog.contextvars.unbind_contextvars("turn_id", "seq")
 
         # Outside the try/finally: emit terminal MessageStop. The
         # CancelledError path doesn't reach here (it re-raised), so
