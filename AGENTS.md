@@ -34,7 +34,7 @@
 - All connectors subclass `Connector` (ABC) and tools they expose carry the
   mandatory `{connector_id}_` prefix.
 - All wire-protocol events are typed Pydantic models in
-  `tether.protocol.events` (v2 NDJSON: `message_start`, `text_delta`,
+  `tether.protocol.wire.events` (v2 NDJSON: `message_start`, `text_delta`,
   `tool_call`, `tool_result`, `message_stop`).
 
 ## Sub-agent prompt templates
