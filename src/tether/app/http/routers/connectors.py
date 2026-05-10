@@ -1,24 +1,26 @@
 """Connector lifecycle HTTP routes (per connector spec §3.8).
 
-Mounted under ``/api/v1/connectors`` in :func:`create_app`; six routes
-matching the spec table verbatim:
+Mounted under ``/api/v1/connectors`` in :func:`create_app`; seven routes
+matching the spec table verbatim plus the Phase 6.5 inbox routes:
 
-* ``GET    /``                    — list every connector + state.
-* ``GET    /{id}/inbox``          — 501 stub (Phase 6.5 lands SqliteInbox).
-* ``POST   /{id}/login/begin``    — :meth:`Connector.begin_login`.
-* ``POST   /{id}/login/complete`` — :meth:`Connector.complete_login`;
-                                    on READY, ``start_connector(id)``.
-* ``GET    /{id}/oauth/callback`` — OAuth redirect target; consumes
-                                    ``state`` from registry.oauth_state,
-                                    forwards to ``complete_login``;
-                                    on READY, ``start_connector(id)``.
-* ``POST   /{id}/logout``         — :meth:`Connector.logout`.
+* ``GET    /``                       — list every connector + state.
+* ``GET    /{id}/inbox``             — list events (Phase 6.5).
+* ``POST   /{id}/inbox/mark-seen``   — flip ``inbox_seen`` (Phase 6.5).
+* ``POST   /{id}/login/begin``       — :meth:`Connector.begin_login`.
+* ``POST   /{id}/login/complete``    — :meth:`Connector.complete_login`;
+                                       on READY, ``start_connector(id)``.
+* ``GET    /{id}/oauth/callback``    — OAuth redirect target; consumes
+                                       ``state`` from registry.oauth_state,
+                                       forwards to ``complete_login``;
+                                       on READY, ``start_connector(id)``.
+* ``POST   /{id}/logout``            — :meth:`Connector.logout`.
 
 The OAuth callback route returns a JSON body for now (matching the
 ``login/complete`` shape) — Phase 2a/2b WhatsApp/Gmail sessions will
 refine this to a friendly redirect to a UI page.
 
-References: connector spec §3.8; synthesis §4 Phase 4.5 step 47e.
+References: connector spec §3.8; synthesis §4 Phase 4.5 step 47e +
+Phase 6.5 step 66g.
 """
 from __future__ import annotations
 
@@ -32,9 +34,11 @@ from tether.connectors.types import (
     AuthStatus,
     ConnectorState,
     HealthStatus,
+    InboundEvent,
     LoginContinueResult,
     LoginPrompt,
 )
+from tether.context.inbox_store import InboundInbox
 from tether.core.connector_registry import ConnectorRegistry
 
 router = APIRouter(prefix="/connectors", tags=["connectors"])
@@ -60,6 +64,25 @@ def _get_registry(request: Request) -> ConnectorRegistry:
             detail="Connector registry not configured on this engine",
         )
     return registry
+
+
+def _get_inbox(request: Request) -> InboundInbox:
+    """Pull the :class:`InboundInbox` off the engine.
+
+    Phase 6.5 step 66g: 503 when the engine was constructed without an
+    inbox (legacy direct-constructor paths, tests that don't need
+    inbox coverage). 503 not 500 because the HTTP surface is
+    structurally not configured for inbox reads — same reasoning as
+    :func:`_get_registry`.
+    """
+    svc = request.app.state.gen_svc
+    inbox: Optional[InboundInbox] = getattr(svc, "inbox", None)
+    if inbox is None:
+        raise HTTPException(
+            status_code=503,
+            detail="Inbox not configured on this engine",
+        )
+    return inbox
 
 
 def _resolve(registry: ConnectorRegistry, connector_id: str) -> Connector:
@@ -109,6 +132,23 @@ def _serialize_result(r: LoginContinueResult) -> Dict[str, Any]:
     }
 
 
+def _serialize_event(e: InboundEvent) -> Dict[str, Any]:
+    """Serialize an :class:`InboundEvent` for the inbox HTTP response.
+
+    ``received_at`` is ISO-8601 UTC; ``payload`` is passed through as
+    a JSON-compatible dict (the inbox layer guarantees it round-trips
+    through ``json.dumps`` cleanly).
+    """
+    return {
+        "event_id": e.event_id,
+        "connector_id": e.connector_id,
+        "kind": e.kind,
+        "received_at": e.received_at.isoformat(),
+        "payload": e.payload,
+        "summary": e.summary,
+    }
+
+
 # ---------------------------------------------------------------------------
 # Models
 # ---------------------------------------------------------------------------
@@ -124,6 +164,15 @@ class LoginCompleteBody(BaseModel):
     """
 
     payload: Dict[str, Any] = Field(default_factory=dict)
+
+
+class MarkSeenBody(BaseModel):
+    """Request body for ``POST /{id}/inbox/mark-seen`` (Phase 6.5)."""
+
+    event_ids: List[str] = Field(
+        default_factory=list,
+        description="Event ids to mark seen. Idempotent.",
+    )
 
 
 # ---------------------------------------------------------------------------
@@ -158,23 +207,63 @@ async def list_connectors(request: Request) -> List[Dict[str, Any]]:
 
 
 @router.get("/{connector_id}/inbox")
-async def get_inbox(connector_id: str, request: Request) -> Dict[str, Any]:
+async def get_inbox(
+    connector_id: str,
+    request: Request,
+    unread: bool = Query(
+        False,
+        description=(
+            "When true, return only events with inbox_seen=0 ordered "
+            "by received_at ASC (oldest unread first); when false "
+            "(default), return all events newest-first."
+        ),
+    ),
+    limit: int = Query(
+        50,
+        ge=1,
+        le=500,
+        description="Max events to return (1-500).",
+    ),
+) -> List[Dict[str, Any]]:
     """Return inbox events for ``connector_id``.
 
-    Phase 6.5 lands :class:`tether.context.inbox_store.SqliteInbox`
-    along with the connector inbound-stream drain task (connector spec
-    §3.4); for now this route returns 501 NOT IMPLEMENTED with a 404
-    pre-check so unknown ids still surface clearly.
+    Phase 6.5 step 66g (synthesis §4): replaces the prior 501 stub
+    with the actual :class:`tether.context.inbox_store.SqliteInbox`
+    query path. The 404 pre-check via :func:`_resolve` keeps the
+    behaviour consistent with the other connector routes — unknown
+    ids surface clearly even before the inbox is consulted.
+
+    Per connector spec §3.4 + ADR-0009.
     """
     registry = _get_registry(request)
     _resolve(registry, connector_id)
-    raise HTTPException(
-        status_code=501,
-        detail=(
-            "Inbox routes are not implemented yet (Phase 6.5 lands "
-            "SqliteInbox + drain task per connector spec §3.4)."
-        ),
-    )
+    inbox = _get_inbox(request)
+    if unread:
+        events = await inbox.list_unread(connector_id, limit=limit)
+    else:
+        events = await inbox.list_recent(connector_id, limit=limit)
+    return [_serialize_event(e) for e in events]
+
+
+@router.post("/{connector_id}/inbox/mark-seen")
+async def mark_inbox_seen(
+    connector_id: str,
+    body: MarkSeenBody,
+    request: Request,
+) -> Dict[str, Any]:
+    """Mark inbox events as seen by the orchestrator.
+
+    Phase 6.5 step 66g: idempotent flip of ``inbox_seen=0 -> 1`` for
+    the listed event ids. Returns ``{"affected": N}`` where ``N`` is
+    the number of rows actually updated (events already at
+    ``inbox_seen=1`` do not contribute). Empty ``event_ids`` is a
+    no-op returning ``{"affected": 0}``.
+    """
+    registry = _get_registry(request)
+    _resolve(registry, connector_id)
+    inbox = _get_inbox(request)
+    affected = await inbox.mark_seen(connector_id, body.event_ids)
+    return {"affected": affected}
 
 
 @router.post("/{connector_id}/login/begin")

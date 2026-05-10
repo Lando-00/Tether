@@ -50,7 +50,7 @@ flowchart TB
 
     subgraph context["Context (persistence)"]
         SessStore["SqliteSessionStore<br/>chat history"]
-    Inbox[":SqliteInbox (deferred)<br/>inbound_events"]:::future
+    Inbox["SqliteInbox<br/>inbound_events"]
         AuditDB["tool_audit table"]
         AsyncBase["AsyncSqliteStore (M2)"]
     end
@@ -238,7 +238,7 @@ data/
 ├── tether.db                        # single SQLite (WAL)
 │   ├── sessions                     # session_id, created_at, …
 │   ├── messages                     # session_id, turn_id, role, content, …
-│   ├── inbound_events               # DEFERRED — Phase 6.5 (SqliteInbox); not yet in any migration
+│   ├── inbound_events               # connector inbound events (Phase 6.5; SqliteInbox)
 │   ├── tool_audit                   # tool calls + results (256 KB cap)
 │   └── _yoyo_*                      # yoyo-migrations metadata
 ├── connectors/<id>/                 # per-connector private state
@@ -330,8 +330,8 @@ These exist to dedup logic and keep the layering honest:
 | ID | Path | Purpose | Used by |
 |---|---|---|---|
 | **M1** | `runtime/daemon_call.py::daemon_thread_call` | GC-disabled daemon thread for blocking native cleanup | HardwareWatchdog · MLC `_terminate_bounded` · future native-cleanup connectors |
-| **M2** | `context/_async_sqlite_base.py::AsyncSqliteStore` | aiosqlite + WAL + yoyo-migrations base | ⏳ DEFERRED — not yet implemented; will base SqliteSessionStore · SqliteInbox (Phase 6.5) |
-| **M3** | `runtime/task_supervisor.py::SupervisedTask` | structured-concurrency wrapper for long-running tasks | ⏳ DEFERRED — not yet implemented; planned for Connector drain tasks · future Gmail polling |
+| **M2** | `context/_async_sqlite_base.py::AsyncSqliteStore` | aiosqlite + WAL + yoyo-migrations base | SqliteSessionStore · SqliteInbox |
+| **M3** | `runtime/task_supervisor.py::SupervisedTask` | structured-concurrency wrapper for long-running tasks | Connector drain tasks · future Gmail polling |
 | **M4** | `runtime/spans.py::async_span` | structlog span helper | tool spans · provider spans · connector spans |
 | **M5** | `core/registry_validator.py::validate_unique_names` | uniqueness + forbidden-name + required-prefix checks at boot | ToolRegistry · ConnectorRegistry |
 | **M6** | `config/_strict.py::StrictModel` | Pydantic base with `extra='forbid'` and frozen | every Settings sub-model (~12) |
