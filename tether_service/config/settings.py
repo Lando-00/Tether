@@ -146,6 +146,47 @@ class StreamSettings(StrictModel):
     parser: StreamParserSettings = Field(default_factory=StreamParserSettings)
 
 
+class OutboundAllowlistSettings(StrictModel):
+    """``security.outbound_allowlist:`` sub-model.
+
+    Restricts outbound HTTP(S) URLs that tools may fetch.
+
+    When ``enabled=False`` (default), assert_safe_url is a no-op
+    (Tether's default deployment is single-user local; no hardening needed).
+    When ``enabled=True``, only URLs matching one of the patterns in
+    ``allowed_hosts`` (literal or wildcard) are permitted. Schemes are
+    always restricted to http(s); private network ranges are always
+    blocked unless ``allow_private=True``.
+
+    Synthesis Section 3 (security), Section 4 Phase 7 step 78.
+    """
+
+    enabled: bool = Field(
+        default=False,
+        description=(
+            "Enable outbound URL allowlist enforcement. Off by default; "
+            "Tether's local-only deployment doesn't require this."
+        ),
+    )
+    allowed_hosts: list[str] = Field(
+        default_factory=list,
+        description=(
+            "Allowed host patterns. Each may be a literal hostname "
+            "('api.example.com') or a wildcard ('*.example.com'). When "
+            "enabled=True, requests to hosts not matching any pattern are "
+            "rejected."
+        ),
+    )
+    allow_private: bool = Field(
+        default=False,
+        description=(
+            "Allow private/loopback IP ranges (RFC 1918 + 127.0.0.0/8 + "
+            "link-local). Off by default to prevent SSRF against "
+            "internal services."
+        ),
+    )
+
+
 class AuditLogSettings(StrictModel):
     """``security.audit_log:`` sub-model.
 
@@ -161,10 +202,14 @@ class AuditLogSettings(StrictModel):
 
 
 class SecuritySettings(StrictModel):
-    """``security:`` section. Phase 4 will populate ``capability_allowlist``."""
+    """``security:`` section. Phase 4/7 hardening hooks."""
 
     capability_allowlist: Optional[List[str]] = None
     audit_log: AuditLogSettings = Field(default_factory=AuditLogSettings)
+    outbound_allowlist: OutboundAllowlistSettings = Field(
+        default_factory=OutboundAllowlistSettings,
+        description="Outbound URL allowlist policy. See OutboundAllowlistSettings.",
+    )
     tool_result_max_bytes: int = Field(
         default=256 * 1024,  # 256 KB
         description=(
