@@ -41,7 +41,7 @@ def reset_dev_dbs(repo_root: Path) -> int:
             continue
 
         # Build a non-clobbering archive filename
-        ts = datetime.now(timezone.utc).strftime("%Y%m%dT%H%M%SZ")
+        ts = datetime.now(timezone.utc).strftime("%Y%m%dT%H%M%S_%fZ")
         archive_name = f"{src.name}.{ts}"
         archive_path = archive_dir / archive_name
 
