@@ -353,6 +353,10 @@ Authoritative: synthesis §3 + §10–§13. Quick-reference here:
 - **Frozen paths**: pre-refactor reference code (`llm_service/`, `legacy/`) is archived at the [`archive/pre-refactor`](https://github.com/Lando-00/Tether/tree/archive/pre-refactor) branch. Reference there if you need to understand pre-refactor behavior; never bring it back into `main`.
 - **No forbidden features**: autonomous reply, scheduled jobs, push, voice, Canvas, multi-agent routing, plugin manifests.
 
+### Environment
+
+The refactor was developed in conda env `mlc-venv2`. A fresh env `tether` exists for end-of-refactor validation. Both coexist; `mlc-venv2` is the active dev env, `tether` is created from scratch via `scripts/setup_fresh_env.ps1`. Full step-by-step in [`docs/runbooks/fresh-env-setup.md`](./runbooks/fresh-env-setup.md). Env specs at `environment-mlc-venv2.yml` and `environment-tether.yml`. Both pin CodeLinaro `2025.06.r1` per ADR-0014.
+
 ---
 
 ## 10. Pointers

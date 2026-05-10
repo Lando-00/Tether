@@ -11,7 +11,8 @@
 ```powershell
 conda activate mlc-venv2
 pip install -e ".[server,cli,brave,dev]"
-# MLC CodeLinaro wheels are installed separately; see environment.yml.
+# MLC CodeLinaro wheels are installed separately; see environment-mlc-venv2.yml.
+# Or for a clean validation env: see scripts/setup_fresh_env.ps1 + environment-tether.yml.
 
 # Run service
 python -m tether.app                       # canonical (http://localhost:8000)
