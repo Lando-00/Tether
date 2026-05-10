@@ -12,6 +12,7 @@ from fastapi import FastAPI
 from fastapi.testclient import TestClient
 
 from tether_service.app.http.csrf_middleware import CSRFTokenMiddleware
+from tether_service.app.http.middleware import RequestIdMiddleware
 from tether_service.config.settings import CSRFTokenSettings
 
 
@@ -19,14 +20,20 @@ from tether_service.config.settings import CSRFTokenSettings
 # Helpers
 # ---------------------------------------------------------------------------
 
-def _make_app(settings: CSRFTokenSettings) -> FastAPI:
+def _make_app(settings: CSRFTokenSettings, *, with_request_id: bool = False) -> FastAPI:
     """Minimal FastAPI app, conditionally adding CSRFTokenMiddleware.
 
-    Mirrors the api.py factory: middleware is only wired when enabled=True.
+    Mirrors the api.py factory: security middleware is only wired when
+    enabled=True; RequestIdMiddleware is added LAST (outermost) when
+    ``with_request_id=True`` so ordering tests can assert every response
+    carries X-Request-ID.
     """
     app = FastAPI()
     if settings.enabled:
         app.add_middleware(CSRFTokenMiddleware, settings=settings)
+    if with_request_id:
+        # Added last = outermost, mirroring the fixed api.py ordering.
+        app.add_middleware(RequestIdMiddleware)
 
     @app.get("/test")
     def get_test():
@@ -122,15 +129,39 @@ def test_generated_token_when_no_static_token():
     assert len(mw._token) > 10  # token_urlsafe(32) is ~43 chars
 
 
-def test_generated_token_logged_once(caplog):
-    """When token=None and enabled=True, startup logs the generated token."""
+def test_generated_token_logged_without_value(caplog):
+    """Structured log has source/token_chars but NOT the raw token value.
+
+    The token must not appear in the log record — it's a long-lived secret
+    and the JSON log file is append-only.  The actual token should only
+    appear in stderr (tested separately).
+    """
     settings = CSRFTokenSettings(enabled=True, token=None)
     app = _make_app(settings)
     with caplog.at_level(logging.INFO, logger="tether_service.app.http.csrf_middleware"):
         with TestClient(app) as client:
             # First request triggers middleware stack instantiation.
             client.get("/test")
-    assert any("csrf.token_generated" in r.message for r in caplog.records)
+
+    log_records = [r for r in caplog.records if "csrf.token_generated" in r.message]
+    assert log_records, "Expected csrf.token_generated log record"
+    record = log_records[0]
+    # Metadata present
+    assert record.__dict__.get("source") == "secrets.token_urlsafe(32)"
+    assert record.__dict__.get("token_chars") == 43  # token_urlsafe(32) → 43 chars
+    # Raw token value must NOT appear in the log
+    assert "token" not in record.__dict__ or record.__dict__.get("token") is None
+
+
+def test_generated_token_printed_to_stderr(capsys):
+    """The actual token value is printed to stderr (not logged) on startup."""
+    settings = CSRFTokenSettings(enabled=True, token=None)
+    from unittest.mock import MagicMock
+    mw = CSRFTokenMiddleware(app=MagicMock(), settings=settings)
+    captured = capsys.readouterr()
+    assert mw._token in captured.err, "Token must appear in stderr"
+    assert "[Tether] CSRF token generated:" in captured.err
+    assert "X-Tether-CSRF" in captured.err  # header name hint
 
 
 def test_custom_header_name():
@@ -145,3 +176,22 @@ def test_custom_header_name():
         # With the custom header → passes
         resp = client.post("/test", headers={"X-My-CSRF": "tok"})
         assert resp.status_code == 200
+
+
+def test_csrf_403_carries_x_request_id():
+    """CSRF 403 responses include X-Request-ID (RequestId is outermost).
+
+    Locks the middleware ordering fix: RequestIdMiddleware must wrap CSRF
+    so that even rejected requests get a correlation ID. Phase 7 step 79.
+    """
+    settings = CSRFTokenSettings(enabled=True, token="some-tok")
+    with TestClient(_make_app(settings, with_request_id=True)) as client:
+        # Missing token → 403
+        resp = client.post("/test")
+    assert resp.status_code == 403
+    assert "x-request-id" in resp.headers, (
+        "403 response must carry X-Request-ID — "
+        "RequestIdMiddleware must be outermost (added last)."
+    )
+    assert resp.headers["x-request-id"].startswith("req-")
+
