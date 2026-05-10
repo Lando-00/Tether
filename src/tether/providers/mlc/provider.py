@@ -71,27 +71,41 @@ def _terminate_bounded(engine, timeout: float = 0.75):
 
 
 def base_key_from_model_name(model_name: str) -> str:
-    """Extract the base key from a model name for DLL matching."""
-    s = model_name
-    s = re.sub(r"([_-]mlc)$", "", s, flags=re.IGNORECASE)
-    s = re.split(r"-q\d+f?\d*[_-]?\d*-?mlc", model_name, flags=re.IGNORECASE)
-    return s[0] if s else model_name
+    """Build a precise match key for DLL lookup.
+
+    Strips ONLY the trailing ``-MLC`` marker (case-insensitive) so that the
+    quantization suffix is preserved. ``Qwen3-4B-q4f16_1-MLC`` becomes
+    ``Qwen3-4B-q4f16_1`` — distinct from the q4f16_0 sibling. Two model
+    variants that share a family but differ in quant produce different
+    keys, so the resolver can pick the right compiled library.
+
+    Pre-fix this function dropped the quant via a regex split and both
+    quant variants collapsed to ``Qwen3-4B``; loading then picked the
+    alphabetically-first DLL and TVM raised a weight-shape mismatch.
+    """
+    return re.sub(r"[-_]mlc$", "", model_name, flags=re.IGNORECASE)
 
 
 def match_model_dlls(model_name: str, dlls):
-    """Match model name with available DLLs using pattern matching."""
-    base_key = base_key_from_model_name(model_name).lower()
-    matches = []
-    for dll in dlls:
-        name = dll.name.lower()
-        if base_key and base_key in name:
-            matches.append(dll)
-    if not matches:
-        loose_key = model_name.split("-q")[0].lower()
-        for dll in dlls:
-            if loose_key in dll.name.lower():
-                matches.append(dll)
-    return matches
+    """Match a model name against available compiled libraries.
+
+    Two-pass match:
+
+    1. Precise: DLL filename contains the full match key (family + quant).
+       Catches the common case where compiled DLLs encode the quant in
+       their filename (``Qwen3-4B-q4f16_1-adreno.dll``).
+    2. Loose family fallback: if the precise pass finds nothing, drop the
+       quant and match on the family alone. Supports the legacy case where
+       a single DLL covers multiple quant variants of the same family
+       (e.g. ``mymodel.dll`` without quant in the name).
+    """
+    precise_key = base_key_from_model_name(model_name).lower()
+    matches = [d for d in dlls if precise_key in d.name.lower()]
+    if matches:
+        return matches
+
+    loose_key = model_name.split("-q")[0].lower()
+    return [d for d in dlls if loose_key in d.name.lower()]
 
 
 def find_models(models_root: Path = Path("models")) -> List[Dict[str, str]]:
