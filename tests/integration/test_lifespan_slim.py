@@ -65,7 +65,7 @@ def test_create_app_no_force_exit_handler():
 
 
 def test_api_py_loc():
-    """api.py size cap: target ~50 lines, allow up to 110.
+    """api.py size cap: target ~50 lines, allow up to 160.
 
     The pre-Phase 3 api.py was 214 LOC (most of it dead helpers we just
     deleted). If this drifts back over the cap, the slim contract has
@@ -78,12 +78,13 @@ def test_api_py_loc():
     accommodate that growth without losing the regression signal. The
     Phase 5 ``p5-event-types-schema-endpoint`` step added the
     ``protocol`` router (introspection endpoints), bumping the cap from
-    100 → 110.
+    100 → 110. Phase 7 step 79 added three conditional middleware blocks
+    (CSRF / CORS / TrustedHost), bumping from 110 → 160.
     """
     src = inspect.getsource(api_mod)
     line_count = len(src.splitlines())
-    assert line_count <= 110, (
-        f"api.py is {line_count} lines; expected <=110 (target ~50). "
+    assert line_count <= 160, (
+        f"api.py is {line_count} lines; expected <=160 (target ~50). "
         "The lifespan slim contract has drifted."
     )
 
