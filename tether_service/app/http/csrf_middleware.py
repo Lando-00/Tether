@@ -5,7 +5,7 @@ Phase 7 step 79. Synthesis Section 3 (security), B5 steps 11-12.
 When enabled, requires an ``X-Tether-CSRF`` header (configurable name) on
 state-changing requests (POST/PUT/PATCH/DELETE). Token is matched in
 constant time against a configured static value or a server-generated
-session token logged once at startup.
+session token printed to stderr once at startup.
 
 GET/HEAD/OPTIONS requests are exempt (CSRF doesn't apply to safe methods).
 Configured exempt paths (e.g., healthz) are also bypassed for both GETs
@@ -17,6 +17,7 @@ from __future__ import annotations
 import hmac
 import logging
 import secrets
+import sys
 from typing import TYPE_CHECKING, Callable, Optional
 
 from starlette.middleware.base import BaseHTTPMiddleware
@@ -43,10 +44,23 @@ class CSRFTokenMiddleware(BaseHTTPMiddleware):
         else:
             self._token = secrets.token_urlsafe(32)
             self._token_source = "generated"
-            # Log ONCE at startup so the user can copy it.
+            # Log existence (not the value) for ops auditing.  The token
+            # itself must not reach log files — it's a long-lived secret and
+            # the JSON log is append-only.  Print to stderr instead; stderr
+            # is not captured by the file handlers in core/logging.py.
             logger.info(
                 "csrf.token_generated",
-                extra={"token": self._token, "source": "secrets.token_urlsafe(32)"},
+                extra={
+                    "source": "secrets.token_urlsafe(32)",
+                    "token_chars": len(self._token),
+                },
+            )
+            print(
+                f"\n[Tether] CSRF token generated: {self._token}\n"
+                f"[Tether] Pass it as the {settings.header_name!r} header"
+                " on POST/PUT/PATCH/DELETE requests.\n",
+                file=sys.stderr,
+                flush=True,
             )
 
         self._exempt = {p.rstrip("/") for p in settings.exempt_paths}
