@@ -207,6 +207,15 @@ class SessionStore(ABC):
         turn_id: Optional[str] = None,
         seq_start: Optional[int] = None,
     ) -> None:
+        """Persist an assistant turn, optionally including thinking content.
+
+        Note: starting with Phase 6 step 65, ``thinking_text`` is persisted as
+        a separate ``role='thinking'`` row in the messages table, not as a column
+        on the assistant row. ``get_history(include_thinking=True)`` merges
+        consecutive thinking + assistant rows into the canonical output shape
+        ``{"role": "assistant", "content": <thinking><content>}``.
+        Implementations MUST preserve this output shape. Synthesis §3.6.
+        """
         ...
 
     @abstractmethod
