@@ -27,15 +27,25 @@ inside ``__init__`` against a short-lived stdlib ``sqlite3`` connection
 
 Important: ``aiosqlite.Connection`` starts a *non-daemon* worker
 thread on first use. If a process exits without ``aclose()``-ing the
-store, those threads block process termination. We register a
-``weakref.finalize`` per store to push aiosqlite's STOP sentinel
-synchronously when the store is garbage-collected, so a forgotten
-``aclose`` does not hang pytest's exit. Production paths still call
-``aclose`` via ``Engine.aclose``; the finalizer is a safety net only.
+store, those threads block process termination. We register two
+safety nets:
+
+* ``weakref.finalize`` per store — pushes aiosqlite's STOP sentinel
+  on garbage collection (catches forgotten ``aclose`` while the
+  process is still running).
+* Module-level ``atexit`` handler — at interpreter shutdown, walks
+  the WeakSet of live stores and stops any still-open aiosqlite
+  worker thread synchronously. Without this, leaked connections in
+  test suites (Engine fixtures that don't use ``async with``) block
+  pytest exit beyond the SignalSupervisor's force-exit budget.
+
+Production paths still call ``aclose`` via ``Engine.aclose``; these
+finalizers are safety nets only.
 """
 from __future__ import annotations
 
 import asyncio
+import atexit
 import datetime
 import json
 import weakref
@@ -48,35 +58,63 @@ from tether_service.core.interfaces import SessionStore
 from tether_service.core.logging import logger
 
 
-def _emergency_close_aiosqlite(conn_ref: "weakref.ref[aiosqlite.Connection]") -> None:
+# Module-level WeakSet of live stores. Used by the atexit handler to
+# stop any aiosqlite worker thread that survives until interpreter
+# shutdown (e.g., tests that construct ``Engine.from_settings`` without
+# ``async with`` and never call ``aclose``). WeakSet so a properly
+# closed store is auto-removed when GC runs.
+_LIVE_STORES: "weakref.WeakSet[SqliteSessionStore]" = weakref.WeakSet()
+
+
+def _stop_aiosqlite_worker_sync(conn: aiosqlite.Connection) -> None:
     """Push aiosqlite's STOP sentinel onto the worker queue synchronously.
 
-    Used as a finalizer when a store is GC'd without an explicit
-    ``aclose``. The worker thread responds to the sentinel by closing
-    its underlying ``sqlite3.Connection`` and exiting, which lets the
-    Python interpreter shut down cleanly. Touches private aiosqlite
-    internals; gated on attribute presence so a future aiosqlite
-    refactor degrades to a logged no-op rather than an exception.
+    Touches private aiosqlite internals; gated on attribute presence
+    so a future aiosqlite refactor degrades to a logged no-op rather
+    than an exception.
     """
-    conn = conn_ref()
-    if conn is None:
-        return
     try:
         from aiosqlite.core import _STOP_RUNNING_SENTINEL  # type: ignore[attr-defined]
 
         if not getattr(conn, "_running", False):
             return
         conn._running = False  # type: ignore[attr-defined]
-        # ``_tx`` is aiosqlite's SimpleQueue; ``put_nowait`` is safe
-        # from any thread (including the GC thread).
+        # ``_tx`` is a SimpleQueue; ``put_nowait`` is safe from any
+        # thread, including the GC thread and the atexit thread.
         conn._tx.put_nowait((None, lambda: _STOP_RUNNING_SENTINEL))  # type: ignore[attr-defined]
     except Exception:  # noqa: BLE001 - finalizer must never raise
         # Logged at DEBUG because this fires only on the leaked-store
         # path — production code always calls aclose explicitly.
         logger.debug(
-            "SqliteSessionStore finalizer could not stop aiosqlite worker",
+            "Could not stop aiosqlite worker via private API",
             exc_info=True,
         )
+
+
+def _emergency_close_aiosqlite(conn_ref: "weakref.ref[aiosqlite.Connection]") -> None:
+    """``weakref.finalize`` callback for a store's aiosqlite connection."""
+    conn = conn_ref()
+    if conn is None:
+        return
+    _stop_aiosqlite_worker_sync(conn)
+
+
+def _atexit_close_all() -> None:
+    """Stop every still-live aiosqlite worker at interpreter shutdown.
+
+    Iterates a snapshot of the WeakSet so concurrent finalization can't
+    mutate it under us. Each connection is signalled to stop; the
+    non-daemon worker thread exits, allowing the process to terminate.
+    """
+    # ``list(...)`` snapshots the WeakSet; iterating it directly while
+    # finalizers fire would raise RuntimeError.
+    for store in list(_LIVE_STORES):
+        conn = getattr(store, "_conn", None)
+        if conn is not None:
+            _stop_aiosqlite_worker_sync(conn)
+
+
+atexit.register(_atexit_close_all)
 
 
 class SqliteSessionStore(SessionStore):
@@ -131,7 +169,24 @@ class SqliteSessionStore(SessionStore):
             if self._conn is not None:
                 return
 
-            conn = await aiosqlite.connect(self._path)
+            # ``aiosqlite.connect()`` returns a Connection whose worker
+            # thread is *created but not yet started*; the thread is
+            # only started inside ``Connection.__await__``. We mark the
+            # thread daemon BEFORE awaiting so a leaked store (test
+            # forgetting ``aclose``) cannot hang process exit. Once the
+            # thread is running, ``Thread.daemon`` is read-only.
+            conn = aiosqlite.connect(self._path)
+            try:
+                conn._thread.daemon = True  # type: ignore[attr-defined]
+            except Exception:  # noqa: BLE001 - degrade gracefully
+                # If a future aiosqlite refactor renames the attribute,
+                # we still get a working connection — the atexit /
+                # finalize safety nets below cover the leak path.
+                logger.debug(
+                    "Could not set aiosqlite worker thread daemon=True",
+                    exc_info=True,
+                )
+            conn = await conn
             conn.row_factory = aiosqlite.Row
             # PRAGMAs identical to the prior _init_pragmas: WAL journal
             # for concurrent readers, NORMAL fsync for performance,
@@ -141,14 +196,14 @@ class SqliteSessionStore(SessionStore):
             await conn.execute("PRAGMA foreign_keys=ON;")
             await conn.commit()
             self._conn = conn
-            # Safety net: if the store is GC'd without an explicit
-            # aclose(), push aiosqlite's STOP sentinel synchronously
-            # so the non-daemon worker thread exits and pytest can
-            # actually terminate. Production paths always call aclose
-            # via Engine.aclose(); this only fires for leaks.
+            # Safety net 1: GC-triggered finalizer per store.
             self._finalizer = weakref.finalize(
                 self, _emergency_close_aiosqlite, weakref.ref(conn)
             )
+            # Safety net 2: register in the module-level WeakSet so
+            # the atexit handler can find this connection if neither
+            # aclose nor GC fires before interpreter shutdown.
+            _LIVE_STORES.add(self)
 
     async def aclose(self) -> None:
         """Close the connection. Idempotent."""
@@ -164,6 +219,9 @@ class SqliteSessionStore(SessionStore):
                 if self._finalizer is not None:
                     self._finalizer.detach()
                     self._finalizer = None
+                # WeakSet auto-removes on GC, but discard now to keep
+                # the atexit walk small.
+                _LIVE_STORES.discard(self)
 
     async def __aenter__(self) -> "SqliteSessionStore":
         await self.connect()

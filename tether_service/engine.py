@@ -442,6 +442,24 @@ class Engine:
         See :func:`tether_service.tools.lifecycle.startup_all` for the
         gather semantics (synthesis §13.2 R5).
         """
+        # Phase 6 step 63: open the SqliteSessionStore's aiosqlite
+        # connection eagerly inside __aenter__. ``from_settings`` only
+        # constructs the store (sync); the async connect() must happen
+        # under an event loop. ``isinstance(self.store, SessionStore)``
+        # excludes raw ``MagicMock()`` test fakes (which auto-create
+        # any attribute) so direct-constructor unit tests using mocks
+        # are unaffected. MemoryStore inherits a no-op connect() from
+        # the ABC; SqliteSessionStore overrides it. Synthesis §3.6.
+        if isinstance(self.store, SessionStore):
+            try:
+                await self.store.connect()
+            except Exception:
+                # If the store can't open we cannot proceed; don't bother
+                # starting tools or connectors. aclose handles partial
+                # state via its idempotency guards.
+                await self.aclose()
+                raise
+
         if self.tools:
             from tether_service.tools.lifecycle import startup_all
 
@@ -558,3 +576,19 @@ class Engine:
             self.hw_watchdog.shutdown_all()
         elif hasattr(self.provider, "shutdown_all"):
             self.provider.shutdown_all()
+
+        # Phase 6 step 63: close the SqliteSessionStore's aiosqlite
+        # connection. Last in the teardown order so the provider /
+        # tools / connectors finish their cleanup against a still-open
+        # store if they depend on it. ``isinstance`` excludes raw
+        # ``MagicMock()`` test fakes; MemoryStore inherits a no-op
+        # aclose() from the ABC. Failure is logged but never raised —
+        # aclose must always complete. Synthesis §3.6.
+        if isinstance(self.store, SessionStore):
+            try:
+                await self.store.aclose()
+            except Exception as exc:  # noqa: BLE001 - defensive
+                logger.exception(
+                    "SessionStore.aclose() raised during Engine teardown: %s",
+                    exc,
+                )

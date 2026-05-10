@@ -298,6 +298,23 @@ class SessionStore(ABC):
     async def ensure_system_prompt(self, session_id: str, prompt: str) -> None:
         ...
 
+    # ------------------------------------------------------------------
+    # Lifecycle (default no-op; SqliteSessionStore overrides).
+    # Phase 6 step 63 (synthesis §3.6): aiosqlite needs an explicit
+    # async open/close pair. Keeping the contract on the ABC means
+    # ``Engine`` can call ``await store.connect()`` unconditionally
+    # against any concrete SessionStore — MemoryStore inherits the
+    # no-op, SqliteSessionStore opens/closes its aiosqlite connection.
+    # ------------------------------------------------------------------
+
+    async def connect(self) -> None:
+        """Open the underlying connection (if any). No-op for in-memory."""
+        return None
+
+    async def aclose(self) -> None:
+        """Close the underlying connection (if any). No-op for in-memory."""
+        return None
+
 
 class Tool(ABC):
     @property
