@@ -13,6 +13,9 @@ from tether_service.core.interfaces import SessionStore
 class MemoryStore(SessionStore):
     def __init__(self):
         self.sessions: Dict[str, List[Dict[str, Any]]] = {}
+        # created_at (Unix int) per session — used to sort list_sessions DESC,
+        # matching SqliteSessionStore's ORDER BY created_at DESC. Step 64.
+        self._session_created_at: Dict[str, int] = {}
         # v2 parallel state — mirrors turns/tool_calls/raw_events tables.
         # Not consumed by get_history(); exists for ABC parity + contract tests.
         # Synthesis §3.6 + b1-persistence.md v2 table design.
@@ -25,20 +28,31 @@ class MemoryStore(SessionStore):
     # ------------------------------------------------------------------
 
     async def create_session(self, session_id: str, created_at: int) -> None:
-        self.sessions.setdefault(session_id, [])
+        # INSERT OR IGNORE semantics: first call wins, same as SqliteSessionStore.
+        if session_id not in self.sessions:
+            self.sessions[session_id] = []
+            self._session_created_at[session_id] = created_at
 
     async def list_sessions(self) -> List[Dict[str, Any]]:
-        return [{"session_id": sid} for sid in self.sessions]
+        # ORDER BY created_at DESC — matches SqliteSessionStore. Step 64.
+        ordered = sorted(
+            self.sessions.keys(),
+            key=lambda sid: self._session_created_at.get(sid, 0),
+            reverse=True,
+        )
+        return [{"session_id": sid} for sid in ordered]
 
     async def delete_session(self, session_id: str) -> bool:
         if session_id in self.sessions:
             del self.sessions[session_id]
+            self._session_created_at.pop(session_id, None)
             return True
         return False
 
     async def delete_all_sessions(self) -> int:
         count = len(self.sessions)
         self.sessions.clear()
+        self._session_created_at.clear()
         return count
 
     # ------------------------------------------------------------------
