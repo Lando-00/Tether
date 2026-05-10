@@ -251,7 +251,8 @@ class Engine:
         tools.update(connector_registry.aggregate_tools())
 
         orchestrator_config = OrchestratorConfig.from_settings(settings)
-        tool_runner = ToolRunner(tools, timeout_sec=settings.limits.tool_timeout_sec)
+        tool_runner = ToolRunner(tools, timeout_sec=settings.limits.tool_timeout_sec,
+                                 result_max_bytes=settings.security.tool_result_max_bytes)
 
         hw_watchdog = HardwareWatchdog([provider], mode=watchdog_mode)
 
