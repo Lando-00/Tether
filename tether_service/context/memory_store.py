@@ -81,10 +81,12 @@ class MemoryStore(SessionStore):
         turn_id: Optional[str] = None,
         seq_start: Optional[int] = None,
     ) -> None:
-        entry: Dict[str, Any] = {"role": "assistant", "content": text}
+        history = self.sessions.setdefault(session_id, [])
+        # Phase 6 step 65: thinking is a separate role='thinking' entry,
+        # mirroring SqliteSessionStore. Synthesis §3.6.
         if save_thinking and thinking_text:
-            entry["thinking_text"] = thinking_text
-        self.sessions.setdefault(session_id, []).append(entry)
+            history.append({"role": "thinking", "content": thinking_text})
+        history.append({"role": "assistant", "content": text})
 
     async def add_assistant_toolcall(
         self,
@@ -146,19 +148,39 @@ class MemoryStore(SessionStore):
 
         Output shape MUST match SqliteSessionStore.get_history() — see
         tests/contract/test_session_store_history_contract.py.
+
+        Phase 6 step 65: thinking entries (role='thinking') are merged into
+        the following assistant entry. Synthesis §3.6.
         """
         history: List[Dict[str, Any]] = []
+        pending_thinking: Optional[str] = None
+
         for message in self.sessions.get(session_id, []):
             role = message.get("role")
+
+            if role == "thinking":
+                if include_thinking:
+                    content = message.get("content") or ""
+                    pending_thinking = (pending_thinking or "") + content
+                continue
+
+            if role == "assistant":
+                content = message.get("content", "")
+                # Back-compat: legacy entries may have thinking_text field
+                # (pre-Phase-6-step-65). pending row wins if both present.
+                legacy_thinking = message.get("thinking_text") or ""
+                effective_thinking = (pending_thinking or legacy_thinking) if include_thinking else ""
+                if effective_thinking:
+                    content = f"{effective_thinking}{content}"
+                history.append({"role": "assistant", "content": content})
+                pending_thinking = None
+                continue
+
+            # Non-thinking, non-assistant rows clear the pending buffer.
+            pending_thinking = None
+
             if role == "user":
                 history.append({"role": "user", "content": message.get("content", "")})
-            elif role == "assistant":
-                content = message.get("content", "")
-                if include_thinking:
-                    thinking = message.get("thinking_text") or ""
-                    if thinking:
-                        content = f"{thinking}{content}"
-                history.append({"role": "assistant", "content": content})
             elif role == "system":
                 history.append({"role": "system", "content": message.get("content", "")})
             elif role == "tool":
@@ -171,17 +193,14 @@ class MemoryStore(SessionStore):
                 })
             elif role == "tool_result":
                 tool_name = message.get("tool")
-                # Phase 5 followups F9: align with SqliteSessionStore which
-                # round-trips None through json.dumps/json.loads as "null".
-                # The previous ``... else {}`` coercion produced "{}"
-                # which diverged from the sqlite store. Now both stores
-                # render None as "null". Synthesis §11.3 R19.
                 result = message.get("result")
                 result_text = json.dumps(result, indent=2)
                 history.append({
                     "role": "user",
                     "content": f"Tool '{tool_name}' returned:\n{result_text}",
                 })
+
+        # Trailing thinking entry with no following assistant is dropped.
         return history
 
     async def ensure_system_prompt(self, session_id: str, prompt: str) -> None:
