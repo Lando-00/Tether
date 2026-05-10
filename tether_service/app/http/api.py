@@ -23,6 +23,7 @@ from contextlib import asynccontextmanager
 
 from fastapi import APIRouter, FastAPI
 
+from tether_service.app.http.middleware import RequestIdMiddleware
 from tether_service.app.http.routers.chat import router as chat_router
 from tether_service.app.http.routers.connectors import router as connectors_router
 from tether_service.app.http.routers.health import router as health_router
@@ -89,6 +90,8 @@ def create_app():
     app = FastAPI(lifespan=lifespan)
     app.state.gen_svc = gen_service
     app.state.settings = settings_v2
+
+    app.add_middleware(RequestIdMiddleware)
 
     v1_router = APIRouter(prefix="/api/v1")
     v1_router.include_router(chat_router)
