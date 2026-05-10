@@ -174,9 +174,9 @@ class TestOrchestratorPassesContext:
         original_run = runner.run
         captured: List[Dict[str, Any]] = []
 
-        async def spy_run(name, args, *, context=None):
+        async def spy_run(name, args, *, context=None, tool_call_id=None):
             captured.append({"name": name, "args": args, "context": context})
-            return await original_run(name, args, context=context)
+            return await original_run(name, args, context=context, tool_call_id=tool_call_id)
 
         runner.run = spy_run  # type: ignore[assignment]
 
