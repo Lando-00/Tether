@@ -6,7 +6,7 @@ __pycache__/
 .pytest_cache/
 
 # Distribution and build artifacts (Python packages plus local MLC model artifacts)
-/dist/
+/models/
 /build/
 *.egg-info
 mlc_llm-utils-win-x86-01_31_2025/

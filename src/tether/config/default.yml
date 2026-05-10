@@ -15,7 +15,7 @@ providers:
     # Future: uncomment for Nexa NPU (stub only in this refactor):
     # impl: "tether.providers.nexa.provider.NexaProvider"
     args:
-      # dist_root: "dist"  # Relative to project root
+      # models_root: "models"  # Relative to project root (env override: TETHER_MODELS_DIR)
       # model_name: "Hermes-2-Pro-Llama-3-8B-q4f16_1-MLC"
       device: "auto"
       max_tokens: 1024

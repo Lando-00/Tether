@@ -16,7 +16,7 @@ async def test_mlc_provider_shutdown_no_models_loaded():
     """
     from tether.providers.mlc.provider import MLCProvider
 
-    provider = MLCProvider(dist_root="dist", device="auto")
+    provider = MLCProvider(models_root="models", device="auto")
     models = provider.list_models()
     assert isinstance(models, list), "list_models() must return a list"
 
@@ -24,5 +24,5 @@ async def test_mlc_provider_shutdown_no_models_loaded():
     provider.shutdown_all()
 
     # Shutdown with explicit per-engine timeout
-    provider2 = MLCProvider(dist_root="dist", device="auto")
+    provider2 = MLCProvider(models_root="models", device="auto")
     provider2.shutdown_all(per_engine_timeout=1.0)

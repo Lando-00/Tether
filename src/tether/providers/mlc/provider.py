@@ -19,7 +19,7 @@ from tether.providers.hw import HwErrorClass, HwHealth
 
 # §security R-pathtraversal: model_name must be a plain directory component.
 # This pattern deliberately excludes path separators, colons, and any other
-# characters that could be used to escape the dist_root directory.
+# characters that could be used to escape the models_root directory.
 _MODEL_NAME_RE = re.compile(r"^[A-Za-z0-9._-]{1,128}$")
 
 
@@ -94,10 +94,10 @@ def match_model_dlls(model_name: str, dlls):
     return matches
 
 
-def find_models(dist_root: Path = Path("dist")) -> List[Dict[str, str]]:
-    """Find available models in the dist directory."""
+def find_models(models_root: Path = Path("models")) -> List[Dict[str, str]]:
+    """Find available models in the models directory."""
     models = []
-    for cfg in dist_root.rglob("mlc-chat-config.json"):
+    for cfg in models_root.rglob("mlc-chat-config.json"):
         model_dir = cfg.parent
         models.append(
             {"model_name": model_dir.name, "model_dir": str(model_dir), "config_path": str(cfg)}
@@ -127,13 +127,25 @@ def resolve_model_lib(model_name: str, libs_dir: Path) -> str:
 class MLCProvider(ModelProvider):
     def __init__(
         self,
-        dist_root: str = "dist",
+        models_root: str = "models",
         device: str = "auto",
         max_tokens: int = 1024,
     ):
-        """Initialize MLC provider with general config, not a specific model."""
-        self.dist_root = Path(dist_root)
-        self.libs_dir = self.dist_root / "libs"
+        """Initialize MLC provider with general config, not a specific model.
+
+        The ``models_root`` directory holds downloaded MLC model directories
+        (each containing an ``mlc-chat-config.json``) plus a ``libs/``
+        subdirectory of compiled DLLs/shared objects. The ``TETHER_MODELS_DIR``
+        environment variable, when set, overrides both the explicit constructor
+        argument and the YAML default — this lets operators relocate large
+        model artifacts off the project tree without editing config (synthesis
+        §4 Phase 8 step 85).
+        """
+        env_override = os.environ.get("TETHER_MODELS_DIR")
+        if env_override:
+            models_root = env_override
+        self.models_root = Path(models_root)
+        self.libs_dir = self.models_root / "libs"
         self.device = device
         self.max_tokens = max_tokens
         
@@ -149,25 +161,25 @@ class MLCProvider(ModelProvider):
         §security R-pathtraversal (§4 Phase 0A): any model_name that contains
         path separators, colons, or other escape characters must be rejected
         before any filesystem access. We also resolve the resulting path to
-        confirm it remains within dist_root, catching encoded traversal strings
-        such as '..%2F'.
+        confirm it remains within models_root, catching encoded traversal
+        strings such as '..%2F'.
 
         Raises:
-            ValueError: if name is unsafe or would escape dist_root.
+            ValueError: if name is unsafe or would escape models_root.
         """
         if not isinstance(name, str) or not _MODEL_NAME_RE.match(name):
             raise ValueError(f"invalid model_name: {name!r}")
         # Resolve to absolute paths and verify containment (Python 3.9+).
-        # The resolved path must be a strict child of dist_root, not dist_root
-        # itself (which "." would produce).
-        resolved = (self.dist_root / name).resolve()
-        dist_root_resolved = self.dist_root.resolve()
-        if not resolved.is_relative_to(dist_root_resolved) or resolved == dist_root_resolved:
+        # The resolved path must be a strict child of models_root, not
+        # models_root itself (which "." would produce).
+        resolved = (self.models_root / name).resolve()
+        models_root_resolved = self.models_root.resolve()
+        if not resolved.is_relative_to(models_root_resolved) or resolved == models_root_resolved:
             raise ValueError(f"invalid model_name: {name!r}")
 
     def list_models(self) -> List[str]:
         """List available models."""
-        models = find_models(self.dist_root)
+        models = find_models(self.models_root)
         return [m["model_name"] for m in models]
 
     def unload_model(self, model_name: str) -> bool:
@@ -192,13 +204,13 @@ class MLCProvider(ModelProvider):
         # the construction in ``_get_engine`` / ``_ensure_engine`` so we
         # match the exact key that was inserted on load.
         try:
-            model_dir = self.dist_root / model_name
+            model_dir = self.models_root / model_name
             model_lib_path = resolve_model_lib(model_name, self.libs_dir)
             canonical_key = f"{model_dir}:{self.device}:{model_lib_path}"
         except (ValueError, FileNotFoundError):
             # Model name doesn't resolve to a real model dir / library
-            # (e.g. dist was wiped after load). Nothing to unload; return
-            # False rather than raising so callers can decide.
+            # (e.g. models dir was wiped after load). Nothing to unload;
+            # return False rather than raising so callers can decide.
             return False
 
         # Atomically pop the engine under the lock.
@@ -593,7 +605,7 @@ class MLCProvider(ModelProvider):
             Context window size in tokens (defaults to 4096 if not found)
         """
         self._validate_model_name(model_name)
-        config_path = self.dist_root / model_name / "mlc-chat-config.json"
+        config_path = self.models_root / model_name / "mlc-chat-config.json"
         
         if not config_path.exists():
             # Fallback to conservative default
@@ -621,7 +633,7 @@ class MLCProvider(ModelProvider):
     def _get_engine(self, model_name: str) -> AsyncMLCEngine:
         """Get a cached engine instance or create a new one for a specific model."""
         self._validate_model_name(model_name)
-        model_dir = self.dist_root / model_name
+        model_dir = self.models_root / model_name
         if not model_dir.exists():
             raise ValueError(f"Model directory not found: {model_dir}")
 
@@ -647,7 +659,7 @@ class MLCProvider(ModelProvider):
         """Ensure the engine for a specific model is initialized."""
         self._validate_model_name(model_name)
         # Check if engine is already cached (fast path)
-        model_dir = self.dist_root / model_name
+        model_dir = self.models_root / model_name
         model_lib_path = resolve_model_lib(model_name, self.libs_dir)
         cache_key = f"{model_dir}:{self.device}:{model_lib_path}"
         with self._cache_lock:

@@ -74,10 +74,10 @@ def _make_provider(tmp_path: Path) -> MLCProvider:
     ``__init__`` only stores paths and initialises empty caches/locks, so
     construction is cheap and needs no real MLC libs.
     """
-    dist_root = tmp_path / "dist"
-    dist_root.mkdir()
-    (dist_root / "libs").mkdir()
-    return MLCProvider(dist_root=str(dist_root), device="auto", max_tokens=1024)
+    models_root = tmp_path / "models"
+    models_root.mkdir()
+    (models_root / "libs").mkdir()
+    return MLCProvider(models_root=str(models_root), device="auto", max_tokens=1024)
 
 
 def _populate(provider: MLCProvider, engines: dict) -> None:

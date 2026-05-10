@@ -114,7 +114,7 @@ def select_model(model_name: Optional[str]) -> str:
     console.print("🔍 Searching for available models...")
     available_models = get_available_models(API_BASE_URL)
     if not available_models:
-        console.print("[bold red]Error:[/bold red] No models found in the 'dist' directory.")
+        console.print("[bold red]Error:[/bold red] No models found in the 'models' directory.")
         console.print("Please make sure your compiled models are correctly placed and the service is running.")
         raise typer.Exit(1)
 
