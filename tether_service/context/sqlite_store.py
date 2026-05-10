@@ -351,16 +351,24 @@ class SqliteSessionStore(SessionStore):
         await self._ensure_session(session_id)
         conn = await self._ensure_connected()
         ts = datetime.datetime.now(datetime.timezone.utc).isoformat()
-        thinking_value = thinking_text if (save_thinking and thinking_text) else None
+
+        # Phase 6 step 65: thinking is now a separate role='thinking' row.
+        # The thinking_text column stays (schema rollback safety) but is no
+        # longer written here. Synthesis §3.6.
+        if save_thinking and thinking_text:
+            await conn.execute(
+                "INSERT INTO messages(session_id, role, content, ts) VALUES (?, ?, ?, ?)",
+                (session_id, "thinking", thinking_text, ts),
+            )
+
         await conn.execute(
-            "INSERT INTO messages(session_id, role, content, thinking_text, ts) VALUES (?, ?, ?, ?, ?)",
-            (session_id, "assistant", text, thinking_value, ts),
+            "INSERT INTO messages(session_id, role, content, ts) VALUES (?, ?, ?, ?)",
+            (session_id, "assistant", text, ts),
         )
         await conn.commit()
-        # turn_id/seq_start accepted for future step-65 reshape. Synthesis §3.6.
         if turn_id is not None:
             logger.debug(
-                "add_assistant_text: turn_id=%s seq_start=%s (v2 write deferred to step 65)",
+                "add_assistant_text: turn_id=%s seq_start=%s",
                 turn_id, seq_start,
             )
 
@@ -441,45 +449,78 @@ class SqliteSessionStore(SessionStore):
         """Reconstruct the model-facing history from the messages table.
 
         Canonical shape (synthesis §3.6):
+          - role=thinking rows are merged into the following assistant row when
+            include_thinking=True; skipped entirely when include_thinking=False.
           - role=user/assistant/system → passthrough.
           - role=tool → assistant message with ``<<function_call>> {...}``.
           - role=tool_result → user message with ``Tool 'name' returned:\\n{...}``.
+          - Back-compat: legacy assistant rows with thinking_text column populated
+            (pre-Phase-6-step-65) are rendered as if a thinking row preceded them.
 
         This shape is verified by tests/contract/test_session_store_history_contract.py.
+        Phase 6 step 65: thinking stored as separate role='thinking' rows.
         """
         conn = await self._ensure_connected()
+        # ORDER BY ts ASC, id ASC: stable insertion order when ts ties.
         async with conn.execute(
             "SELECT role, content, thinking_text, tool_name, args, result"
-            " FROM messages WHERE session_id = ? ORDER BY ts ASC",
+            " FROM messages WHERE session_id = ? ORDER BY ts ASC, id ASC",
             (session_id,),
         ) as cur:
             rows = await cur.fetchall()
+
         history: List[Dict[str, Any]] = []
+        pending_thinking: Optional[str] = None
+
         for r in rows:
             role = r["role"]
-            if role in ("user", "assistant", "system"):
+
+            if role == "thinking":
+                if include_thinking:
+                    content = r["content"] or ""
+                    pending_thinking = (pending_thinking or "") + content
+                # When include_thinking=False, discard silently.
+                continue
+
+            if role == "assistant":
                 content = r["content"] or ""
-                if role == "assistant" and include_thinking:
-                    thinking = r["thinking_text"] or ""
-                    if thinking:
-                        content = f"{thinking}{content}"
-                history.append({"role": role, "content": content})
+                # Back-compat: legacy rows may still have thinking_text on the
+                # column; use whichever has content (pending row wins).
+                legacy_thinking = r["thinking_text"] or ""
+                effective_thinking = (pending_thinking or legacy_thinking) if include_thinking else ""
+                if effective_thinking:
+                    content = f"{effective_thinking}{content}"
+                history.append({"role": "assistant", "content": content})
+                pending_thinking = None
+                continue
+
+            # Any non-thinking, non-assistant row clears the pending buffer
+            # so thinking doesn't bleed across non-adjacent rows.
+            pending_thinking = None
+
+            if role == "user":
+                history.append({"role": "user", "content": r["content"] or ""})
+            elif role == "system":
+                history.append({"role": "system", "content": r["content"] or ""})
             elif role == "tool":
-                # Assistant made a tool call - format as assistant message
-                # with function_call syntax so the model sees its own prior call.
                 tool_name = r["tool_name"]
                 args = json.loads(r["args"] or "{}")
                 tool_call_json = json.dumps({"name": tool_name, "arguments": args})
-                content = f"<<function_call>> {tool_call_json}"
-                history.append({"role": "assistant", "content": content})
+                history.append({
+                    "role": "assistant",
+                    "content": f"<<function_call>> {tool_call_json}",
+                })
             elif role == "tool_result":
-                # Tool execution result - format as user message so the
-                # model can see what it received from the tool.
                 tool_name = r["tool_name"]
                 result = json.loads(r["result"] or "{}")
                 result_text = json.dumps(result, indent=2)
-                content = f"Tool '{tool_name}' returned:\n{result_text}"
-                history.append({"role": "user", "content": content})
+                history.append({
+                    "role": "user",
+                    "content": f"Tool '{tool_name}' returned:\n{result_text}",
+                })
+            # Unknown roles silently dropped.
+
+        # Trailing thinking row with no following assistant is dropped.
         return history
 
     async def ensure_system_prompt(self, session_id: str, prompt: str) -> None:
