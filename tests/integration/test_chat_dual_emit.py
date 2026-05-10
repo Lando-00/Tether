@@ -19,12 +19,12 @@ from fastapi import APIRouter, FastAPI
 from fastapi.testclient import TestClient
 from unittest.mock import AsyncMock
 
-from tether_service.app.http.api import lifespan
-from tether_service.app.http.routers.chat import router as chat_router
-from tether_service.app.http.routers.health import router as health_router
-from tether_service.engine import Engine
-from tether_service.protocol.parsers.sliding import SlidingParser
-from tether_service.providers.dummy.provider import DummyProvider
+from tether.app.http.api import lifespan
+from tether.app.http.routers.chat import router as chat_router
+from tether.app.http.routers.health import router as health_router
+from tether.engine import Engine
+from tether.protocol.parsers.sliding import SlidingParser
+from tether.providers.dummy.provider import DummyProvider
 
 
 # ---------------------------------------------------------------------------

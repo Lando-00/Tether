@@ -2,7 +2,7 @@
 """Display auto-generated tool schemas.
 
 Note: this script does NOT load .env. Per _synthesis.md §4 Phase 2 step 26,
-.env loading is centralized in ``tether_service.app.__main__`` (the HTTP
+.env loading is centralized in ``tether.app.__main__`` (the HTTP
 entry point) and ``conftest.py`` (test runs). If you need environment
 variables (e.g. ``BRAVE_API_KEY``) when running this utility directly,
 either invoke after ``set BRAVE_API_KEY=...`` or wrap the call yourself
@@ -11,8 +11,8 @@ with ``from dotenv import load_dotenv; load_dotenv()``.
 import sys
 sys.path.insert(0, '.')
 
-from tether_service.core.tool_registry import ToolRegistry
-from tether_service.core.config import load_settings_legacy
+from tether.core.tool_registry import ToolRegistry
+from tether.core.config import load_settings_legacy
 
 # Load config and create registry
 config = load_settings_legacy()

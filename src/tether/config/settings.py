@@ -2,7 +2,7 @@
 
 This module ships the Pydantic v2 ``Settings`` model (the new typed loader)
 alongside its sub-models. The legacy ``dict``-returning loader at
-``tether_service.core.config.load_settings_legacy`` remains available for one
+``tether.core.config.load_settings_legacy`` remains available for one
 deprecation cycle while call sites migrate (see ``p2-cleanup``).
 
 Citations:
@@ -21,7 +21,7 @@ import yaml
 from pydantic import Field
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
-from tether_service.config._strict import StrictModel
+from tether.config._strict import StrictModel
 
 
 # ---------------------------------------------------------------------------
@@ -428,7 +428,7 @@ class StorageSettings(StrictModel):
         Linux/macOS XDG-compliant.
 
         ``platformdirs`` is lazy-imported here to preserve the library-first
-        invariant: ``import tether_service`` must not trigger it.
+        invariant: ``import tether`` must not trigger it.
         """
         if self.sqlite.dsn is not None:
             return self.sqlite.dsn
@@ -448,7 +448,7 @@ class ConnectorSpec(StrictModel):
 
     Mirrors :class:`ProviderSpec` + :class:`ToolSpec` shape: a dotted-path
     ``impl`` plus optional ``args`` filtered against the target ``__init__``
-    by ``tether_service.core.factory.load`` (so adding a new arg doesn't
+    by ``tether.core.factory.load`` (so adding a new arg doesn't
     crash older configs). ``enabled`` defaults to True so YAML entries are
     live unless explicitly disabled.
 
@@ -492,8 +492,8 @@ class OrchestratorSettings(StrictModel):
     )
     registry: Dict[str, str] = Field(
         default_factory=lambda: {
-            "chat": "tether_service.protocol.orchestration.chatty.ChattyAgentOrchestrator",
-            "research": "tether_service.protocol.orchestration.notebook.NotebookOrchestrator",
+            "chat": "tether.protocol.orchestration.chatty.ChattyAgentOrchestrator",
+            "research": "tether.protocol.orchestration.notebook.NotebookOrchestrator",
         },
         description="Mode -> dotted impl path (e.g., 'pkg.module.Class').",
     )
@@ -625,7 +625,7 @@ def load_settings(
     Tests may pass explicit ``default_yaml`` / ``overlay_yaml`` paths; production
     callers invoke with no arguments.
     """
-    pkg_root = resources.files("tether_service.config")
+    pkg_root = resources.files("tether.config")
 
     if default_yaml is None:
         cfg = _read_yaml(Path(str(pkg_root / "default.yml")))

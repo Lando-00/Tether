@@ -1,4 +1,4 @@
-"""Tests for the typed exception taxonomy in ``tether_service.core.errors``.
+"""Tests for the typed exception taxonomy in ``tether.core.errors``.
 
 Synthesis §4 Phase 3 step 33; A5 step 2.
 """
@@ -6,7 +6,7 @@ from __future__ import annotations
 
 import pytest
 
-from tether_service.core.errors import (
+from tether.core.errors import (
     CancelledByClient,
     ConnectorAuthError,
     ConnectorNotConfiguredError,

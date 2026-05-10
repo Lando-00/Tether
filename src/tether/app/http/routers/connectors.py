@@ -27,15 +27,15 @@ from typing import Any, Dict, List, Optional
 from fastapi import APIRouter, HTTPException, Query, Request
 from pydantic import BaseModel, Field
 
-from tether_service.connectors.base import Connector
-from tether_service.connectors.types import (
+from tether.connectors.base import Connector
+from tether.connectors.types import (
     AuthStatus,
     ConnectorState,
     HealthStatus,
     LoginContinueResult,
     LoginPrompt,
 )
-from tether_service.core.connector_registry import ConnectorRegistry
+from tether.core.connector_registry import ConnectorRegistry
 
 router = APIRouter(prefix="/connectors", tags=["connectors"])
 
@@ -161,7 +161,7 @@ async def list_connectors(request: Request) -> List[Dict[str, Any]]:
 async def get_inbox(connector_id: str, request: Request) -> Dict[str, Any]:
     """Return inbox events for ``connector_id``.
 
-    Phase 6.5 lands :class:`tether_service.context.inbox_store.SqliteInbox`
+    Phase 6.5 lands :class:`tether.context.inbox_store.SqliteInbox`
     along with the connector inbound-stream drain task (connector spec
     §3.4); for now this route returns 501 NOT IMPLEMENTED with a 404
     pre-check so unknown ids still surface clearly.

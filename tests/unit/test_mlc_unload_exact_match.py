@@ -15,7 +15,7 @@ from typing import List
 
 import pytest
 
-from tether_service.providers.mlc.provider import MLCProvider
+from tether.providers.mlc.provider import MLCProvider
 
 
 # ---------------------------------------------------------------------------
@@ -67,7 +67,7 @@ def _patch_resolve_model_lib(monkeypatch, mapping: dict[str, str]):
         return mapping[model_name]
 
     monkeypatch.setattr(
-        "tether_service.providers.mlc.provider.resolve_model_lib",
+        "tether.providers.mlc.provider.resolve_model_lib",
         fake_resolve,
     )
 
@@ -194,7 +194,7 @@ def test_unload_model_resolve_lib_filenotfound_returns_false(
         raise FileNotFoundError("libs dir vanished")
 
     monkeypatch.setattr(
-        "tether_service.providers.mlc.provider.resolve_model_lib",
+        "tether.providers.mlc.provider.resolve_model_lib",
         fake_resolve,
     )
 

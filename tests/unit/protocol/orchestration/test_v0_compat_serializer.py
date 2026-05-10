@@ -12,11 +12,11 @@ from datetime import datetime, timezone
 
 import pytest
 
-from tether_service.protocol.orchestration.emitter import (
+from tether.protocol.orchestration.emitter import (
     NdjsonEmitter,
     v0_compat_serialize,
 )
-from tether_service.protocol.wire.events import (
+from tether.protocol.wire.events import (
     Error,
     HwReset,
     LoopLimitReached,

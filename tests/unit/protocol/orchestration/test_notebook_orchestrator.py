@@ -7,7 +7,7 @@ from __future__ import annotations
 
 import pytest
 
-from tether_service.protocol.orchestration.notebook import NotebookOrchestrator
+from tether.protocol.orchestration.notebook import NotebookOrchestrator
 
 
 class _FakeProvider:

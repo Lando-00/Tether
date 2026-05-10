@@ -1,4 +1,4 @@
-"""Regression test: tether_service/providers/ must contain no bare print() calls.
+"""Regression test: tether/providers/ must contain no bare print() calls.
 
 Phase 7 step 70 replaced all 27 print() sites in providers/ with structured
 structlog events. This test prevents regressions (new prints being added).
@@ -30,9 +30,9 @@ def _collect_print_sites(root: pathlib.Path) -> list[str]:
 
 
 def test_no_bare_prints_in_providers() -> None:
-    """All print() calls in tether_service/providers/ must have been replaced
+    """All print() calls in tether/providers/ must have been replaced
     with structured structlog logger calls (Phase 7 step 70)."""
-    providers_root = pathlib.Path("tether_service") / "providers"
+    providers_root = pathlib.Path("src") / "tether" / "providers"
     assert providers_root.is_dir(), (
         f"providers root not found at {providers_root.resolve()} — "
         "run pytest from the repo root"
@@ -41,7 +41,7 @@ def test_no_bare_prints_in_providers() -> None:
     hits = _collect_print_sites(providers_root)
 
     assert not hits, (
-        f"Found {len(hits)} bare print() call(s) in tether_service/providers/ "
+        f"Found {len(hits)} bare print() call(s) in tether/providers/ "
         f"— replace with structlog _log.* calls (Phase 7 step 70):\n"
         + "\n".join(f"  {h}" for h in hits)
     )

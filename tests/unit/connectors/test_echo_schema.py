@@ -1,7 +1,7 @@
 """Schema-only unit tests for the EchoConnector tools.
 
 Validates the connector spec §8.1 acceptance contract that
-:class:`tether_service.tools.base.BaseTool.auto_schema` produces correct
+:class:`tether.tools.base.BaseTool.auto_schema` produces correct
 JSON Schema for the parameter shapes connector tools care about:
 
 * Plain ``str``                          — ``{"type": "string"}``.
@@ -21,7 +21,7 @@ Citations: connector spec §8.1; synthesis §4 Phase 4.5 step 47e-47f.
 """
 from __future__ import annotations
 
-from tether_service.connectors.types import ConnectorState
+from tether.connectors.types import ConnectorState
 from tests.fixtures.echo_connector import (
     EchoConfirmSendTool,
     EchoMarkSeenTool,

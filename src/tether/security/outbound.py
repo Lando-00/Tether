@@ -23,10 +23,10 @@ import ipaddress
 from typing import TYPE_CHECKING, Optional
 from urllib.parse import urlparse
 
-from tether_service.core.errors import TetherError
+from tether.core.errors import TetherError
 
 if TYPE_CHECKING:
-    from tether_service.config.settings import Settings
+    from tether.config.settings import Settings
 
 
 class OutboundUrlBlocked(TetherError):

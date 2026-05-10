@@ -13,10 +13,10 @@ from unittest.mock import AsyncMock, patch
 
 import pytest
 
-from tether_service import Engine
-from tether_service.config.settings import Settings
-from tether_service.core.types import OrchestratorConfig
-from tether_service.protocol.orchestration.tool_runner import ToolRunner
+from tether import Engine
+from tether.config.settings import Settings
+from tether.core.types import OrchestratorConfig
+from tether.protocol.orchestration.tool_runner import ToolRunner
 
 
 def _settings_dict(tmp_db: str) -> dict:
@@ -24,15 +24,15 @@ def _settings_dict(tmp_db: str) -> dict:
         "system": {"prompt": "test-prompt"},
         "providers": {
             "model": {
-                "impl": "tether_service.providers.dummy.provider.DummyProvider",
+                "impl": "tether.providers.dummy.provider.DummyProvider",
                 "args": {},
             },
             "parser": {
-                "impl": "tether_service.protocol.parsers.sliding.SlidingParser",
+                "impl": "tether.protocol.parsers.sliding.SlidingParser",
                 "args": {},
             },
             "session_store": {
-                "impl": "tether_service.context.sqlite_store.SqliteSessionStore",
+                "impl": "tether.context.sqlite_store.SqliteSessionStore",
                 "args": {"dsn": f"sqlite:///{tmp_db}"},
             },
         },
@@ -109,7 +109,7 @@ async def test_engine_stream_passes_cancel_event(settings):
     """cancel_event is wrapped in AsyncEventCancelToken and forwarded to Engine.chat
     as cancel_token. Engine.stream no longer calls orchestrate() directly.
     """
-    from tether_service.protocol.orchestration.cancel import AsyncEventCancelToken
+    from tether.protocol.orchestration.cancel import AsyncEventCancelToken
 
     engine = Engine.from_settings(settings)
     ev = asyncio.Event()

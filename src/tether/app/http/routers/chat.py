@@ -7,7 +7,7 @@ from typing import Literal
 import asyncio
 import json
 from datetime import datetime, timezone
-from tether_service.core.logging import logger
+from tether.core.logging import logger
 
 # Compile once at module level for performance.
 # (?![\w.]) is a negative lookahead: next char must not be a word character
@@ -126,15 +126,15 @@ async def stream(request: Request, body: StreamRequest):
     # begins if the mode is a stub (is_implemented=False). Pydantic's Literal
     # already rejects unknown modes with 422, so this branch handles only the
     # known-but-unimplemented case. Briefing §2 Seam B item 4.
-    from tether_service.protocol.orchestration.registry import (
+    from tether.protocol.orchestration.registry import (
         UnknownOrchestratorMode,
         resolve_orchestrator_class,
     )
     try:
         orchestrator_cls = resolve_orchestrator_class(
             body.mode, getattr(engine, "_orchestrator_registry", {
-                "chat": "tether_service.protocol.orchestration.chatty.ChattyAgentOrchestrator",
-                "research": "tether_service.protocol.orchestration.notebook.NotebookOrchestrator",
+                "chat": "tether.protocol.orchestration.chatty.ChattyAgentOrchestrator",
+                "research": "tether.protocol.orchestration.notebook.NotebookOrchestrator",
             })
         )
     except UnknownOrchestratorMode as exc:
@@ -153,8 +153,8 @@ async def stream(request: Request, body: StreamRequest):
         # SSE path: Engine.chat() yields typed WireEvents; transport_sse frames them.
         # Lazy import keeps tether_service importable without triggering the full
         # transport module graph (library-first invariant). Synthesis §3.4.
-        from tether_service.protocol.orchestration.cancel import AsyncEventCancelToken
-        from tether_service.protocol.wire.transport_sse import transport_sse
+        from tether.protocol.orchestration.cancel import AsyncEventCancelToken
+        from tether.protocol.wire.transport_sse import transport_sse
 
         async def sse_generator():
             cancel_token = AsyncEventCancelToken()
@@ -271,8 +271,8 @@ async def stream(request: Request, body: StreamRequest):
     # Activated by: no Accept header, Accept: application/x-ndjson (any version
     # except 0), or Accept: application/x-ndjson; version=1.0.
     # Lazy imports preserve library-first invariant. Synthesis §3.4; §11.3 R18.
-    from tether_service.protocol.orchestration.cancel import AsyncEventCancelToken
-    from tether_service.protocol.wire.transport_ndjson import transport_ndjson
+    from tether.protocol.orchestration.cancel import AsyncEventCancelToken
+    from tether.protocol.wire.transport_ndjson import transport_ndjson
 
     async def ndjson_v2_generator():
         cancel_token = AsyncEventCancelToken()

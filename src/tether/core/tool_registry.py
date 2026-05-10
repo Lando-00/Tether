@@ -35,12 +35,12 @@ import inspect
 import logging
 from typing import TYPE_CHECKING, Any, Dict, Iterable, List, Optional, Type
 
-from tether_service.core.factory import load
-from tether_service.core.registry_validator import validate_unique_names
+from tether.core.factory import load
+from tether.core.registry_validator import validate_unique_names
 
 if TYPE_CHECKING:
-    from tether_service.config.settings import Settings
-    from tether_service.core.secrets import SecretsProvider
+    from tether.config.settings import Settings
+    from tether.core.secrets import SecretsProvider
 
 logger = logging.getLogger(__name__)
 
@@ -172,7 +172,7 @@ class ToolRegistry:
         """Phase 4 path: instantiate every @tool-decorated class except
         those in ``disabled``."""
         if discovered is None:
-            from tether_service.tools.registration import discover
+            from tether.tools.registration import discover
             discovered = discover()
 
         disabled_set = set(disabled)
@@ -255,7 +255,7 @@ class ToolRegistry:
         Phase 7 step 78: passes ``settings`` to the registry so that tool
         constructors that declare a ``settings`` kwarg receive the full
         policy configuration (e.g., ``settings.security.outbound_allowlist``
-        for :class:`~tether_service.tools.web_search_tool.WebSearchTool`).
+        for :class:`~tether.tools.web_search_tool.WebSearchTool`).
         """
         tools_settings = settings.tools
         if tools_settings.registry:

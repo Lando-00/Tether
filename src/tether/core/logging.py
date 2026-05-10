@@ -1,7 +1,7 @@
 """Structured logging via structlog + stdlib bridge + RedactingFilter.
 
 Phase 7 step 67. Backwards-compat: existing
-``from tether_service.core.logging import logger`` continues to work.
+``from tether.core.logging import logger`` continues to work.
 ``configure_logging(settings)`` is called once at startup
 (``Engine.from_settings``); tests can call it with their own settings.
 
@@ -21,10 +21,10 @@ from typing import TYPE_CHECKING, Optional
 
 import structlog
 
-from tether_service.core.redact import redact_record_message, redact_text
+from tether.core.redact import redact_record_message, redact_text
 
 if TYPE_CHECKING:
-    from tether_service.config.settings import Settings
+    from tether.config.settings import Settings
 
 
 # ---------------------------------------------------------------------------
@@ -33,7 +33,7 @@ if TYPE_CHECKING:
 
 # Usable BEFORE configure_logging is called (structlog binds lazily to
 # whatever logging is configured at log time).
-logger = structlog.get_logger("tether_service")
+logger = structlog.get_logger("tether")
 
 
 # ---------------------------------------------------------------------------
@@ -109,7 +109,7 @@ def configure_logging(settings: Optional["Settings"] = None) -> None:
 
     # Resolve effective settings
     if settings is None:
-        from tether_service.config.settings import load_settings
+        from tether.config.settings import load_settings
         settings = load_settings()
 
     obs = settings.observability
@@ -188,7 +188,7 @@ def configure_logging(settings: Optional["Settings"] = None) -> None:
 
     # Lazy install OTel adapter if enabled.
     if settings.observability.otel.enabled:
-        from tether_service.observability.otel_adapter import install_otel_adapter
+        from tether.observability.otel_adapter import install_otel_adapter
         install_otel_adapter(settings)
 
 
@@ -199,7 +199,7 @@ def configure_logging(settings: Optional["Settings"] = None) -> None:
 def _resolve_log_file_path(configured: Optional[str]) -> Path:
     """Resolve log file path, defaulting to platformdirs user_log_dir.
 
-    Lazy-imports platformdirs so that ``import tether_service.core.logging``
+    Lazy-imports platformdirs so that ``import tether.core.logging``
     does not trigger it unless actually needed.
     """
     if configured:

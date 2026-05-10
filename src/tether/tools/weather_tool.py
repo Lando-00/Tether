@@ -14,8 +14,8 @@ from typing import Annotated, Any, Dict, Literal
 from datetime import datetime
 import requests
 from pydantic import Field
-from tether_service.tools.base import BaseTool
-from tether_service.tools.registration import tool
+from tether.tools.base import BaseTool
+from tether.tools.registration import tool
 
 
 # --- API Configuration ---

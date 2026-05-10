@@ -19,10 +19,10 @@ from unittest.mock import AsyncMock, MagicMock
 
 import pytest
 
-from tether_service import Engine
-from tether_service.config.settings import Settings
-from tether_service.connectors.base import Connector
-from tether_service.connectors.types import (
+from tether import Engine
+from tether.config.settings import Settings
+from tether.connectors.base import Connector
+from tether.connectors.types import (
     AuthStatus,
     ConnectorState,
     HealthStatus,
@@ -30,9 +30,9 @@ from tether_service.connectors.types import (
     LoginContinueResult,
     LoginPrompt,
 )
-from tether_service.core.connector_registry import ConnectorRegistry
-from tether_service.core.interfaces import Tool
-from tether_service.runtime.hw_watchdog import HardwareWatchdog
+from tether.core.connector_registry import ConnectorRegistry
+from tether.core.interfaces import Tool
+from tether.runtime.hw_watchdog import HardwareWatchdog
 
 
 # ---------------------------------------------------------------------------
@@ -163,15 +163,15 @@ def _settings_dict(
         "system": {"prompt": "test-prompt"},
         "providers": {
             "model": {
-                "impl": "tether_service.providers.dummy.provider.DummyProvider",
+                "impl": "tether.providers.dummy.provider.DummyProvider",
                 "args": {},
             },
             "parser": {
-                "impl": "tether_service.protocol.parsers.sliding.SlidingParser",
+                "impl": "tether.protocol.parsers.sliding.SlidingParser",
                 "args": {},
             },
             "session_store": {
-                "impl": "tether_service.context.sqlite_store.SqliteSessionStore",
+                "impl": "tether.context.sqlite_store.SqliteSessionStore",
                 "args": {"dsn": f"sqlite:///{tmp_db}"},
             },
         },

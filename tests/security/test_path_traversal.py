@@ -10,7 +10,7 @@ import pytest
 from pathlib import Path
 from unittest.mock import patch
 
-from tether_service.providers.mlc.provider import MLCProvider
+from tether.providers.mlc.provider import MLCProvider
 
 
 def _make_provider(tmp_path: Path) -> MLCProvider:

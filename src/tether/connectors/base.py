@@ -9,7 +9,7 @@ A connector is a long-lived plugin that:
 
 1. Has its own auth lifecycle (``begin_login`` / ``complete_login`` /
    ``logout``) — the registry never authenticates on the connector's behalf.
-2. Exposes one or more :class:`tether_service.core.interfaces.Tool` instances
+2. Exposes one or more :class:`tether.core.interfaces.Tool` instances
    whose names MUST be prefixed with ``f"{id}_"`` to avoid colliding with
    bundled tools or other connectors. The future ``ConnectorRegistry``
    (``p4_5-connector-registry``) enforces this at boot.
@@ -18,9 +18,9 @@ A connector is a long-lived plugin that:
    implement an empty async generator.
 4. Reports health + auth_status synchronously without making network calls.
 
-Tool methods raise :class:`tether_service.core.errors.ConnectorNotConfiguredError`
+Tool methods raise :class:`tether.core.errors.ConnectorNotConfiguredError`
 when the connector is in ``UNCONFIGURED`` or ``LOGGED_OUT`` state; failed
-logins raise :class:`tether_service.core.errors.ConnectorAuthError`.
+logins raise :class:`tether.core.errors.ConnectorAuthError`.
 
 Citations:
     - Connector spec §3.1 (Connector ABC), §3.2 (state types), §3.5
@@ -33,14 +33,14 @@ import re
 from abc import ABC, abstractmethod
 from typing import Any, AsyncIterator, ClassVar, Dict
 
-from tether_service.connectors.types import (
+from tether.connectors.types import (
     AuthStatus,
     HealthStatus,
     InboundEvent,
     LoginContinueResult,
     LoginPrompt,
 )
-from tether_service.core.interfaces import Tool
+from tether.core.interfaces import Tool
 
 
 _CONNECTOR_ID_RE = re.compile(r"^[a-z0-9_]+$")
@@ -84,7 +84,7 @@ class Connector(ABC):
     async def start(self) -> None:
         """Begin operation. Idempotent.
 
-        Loads creds via :class:`tether_service.core.secrets.SecretsProvider`;
+        Loads creds via :class:`tether.core.secrets.SecretsProvider`;
         if no creds, transitions to ``UNCONFIGURED`` and returns. If creds
         present, opens connections and transitions to ``READY`` (or
         ``DEGRADED`` / ``ERROR`` on issues).
@@ -159,7 +159,7 @@ class Connector(ABC):
         authorization code, password, MFA code). On success state becomes
         ``READY``; if more steps are needed the result carries a
         ``next_prompt``; on failure
-        :class:`tether_service.core.errors.ConnectorAuthError` may be
+        :class:`tether.core.errors.ConnectorAuthError` may be
         raised, OR the result may report ``state=ERROR`` with detail.
 
         Per connector spec §3.5.

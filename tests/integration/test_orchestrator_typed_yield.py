@@ -10,11 +10,11 @@ from typing import Any, AsyncGenerator, Dict, List, Optional
 
 import pytest
 
-from tether_service.config.settings import Settings
-from tether_service.core.interfaces import ModelProvider
-from tether_service.engine import Engine
-from tether_service.protocol.orchestration.cancel import AsyncEventCancelToken
-from tether_service.protocol.wire.events import (
+from tether.config.settings import Settings
+from tether.core.interfaces import ModelProvider
+from tether.engine import Engine
+from tether.protocol.orchestration.cancel import AsyncEventCancelToken
+from tether.protocol.wire.events import (
     MessageStart,
     MessageStop,
     TextDelta,
@@ -33,15 +33,15 @@ def _settings(tmp_path) -> Settings:
             "system": {"prompt": "sys"},
             "providers": {
                 "model": {
-                    "impl": "tether_service.providers.dummy.provider.DummyProvider",
+                    "impl": "tether.providers.dummy.provider.DummyProvider",
                     "args": {},
                 },
                 "parser": {
-                    "impl": "tether_service.protocol.parsers.sliding.SlidingParser",
+                    "impl": "tether.protocol.parsers.sliding.SlidingParser",
                     "args": {},
                 },
                 "session_store": {
-                    "impl": "tether_service.context.sqlite_store.SqliteSessionStore",
+                    "impl": "tether.context.sqlite_store.SqliteSessionStore",
                     "args": {"dsn": f"sqlite:///{tmp_path}/typed.db"},
                 },
             },
@@ -74,7 +74,7 @@ async def test_engine_chat_yields_wire_event(tmp_path):
         assert not isinstance(e, (bytes, dict))
         # WireEvent is Annotated[Union[...], discriminator]; instances
         # are concrete Pydantic models.
-        from tether_service.protocol.wire.events import _Base
+        from tether.protocol.wire.events import _Base
 
         assert isinstance(e, _Base)
 

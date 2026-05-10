@@ -16,7 +16,7 @@ from __future__ import annotations
 from pathlib import Path
 from typing import Optional
 
-from tether_service.core.logging import logger
+from tether.core.logging import logger
 
 
 _MIGRATIONS_DIR = Path(__file__).resolve().parent / "migrations"
@@ -43,7 +43,7 @@ def apply_pending_migrations(dsn: str, *, migrations_dir: Optional[Path] = None)
     Raises whatever yoyo raises on a corrupt migration or DB issue; the
     Engine treats a migration failure at startup as fatal.
     """
-    # Lazy-import yoyo so that ``import tether_service`` does not pull it
+    # Lazy-import yoyo so that ``import tether`` does not pull it
     # into sys.modules. Library-first invariant (R8 lazy-import rule).
     from yoyo import get_backend, read_migrations  # noqa: PLC0415
 

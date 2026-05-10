@@ -19,12 +19,12 @@ from pathlib import Path
 
 import pytest
 
-from tether_service.core.types import OrchestratorConfig
-from tether_service.protocol.orchestration.chatty import ChattyAgentOrchestrator
-from tether_service.protocol.orchestration.tool_runner import ToolRunner
-from tether_service.protocol.parsers.sliding import SlidingParser
-from tether_service.protocol.wire.transport_ndjson import transport_ndjson
-from tether_service.tools.time_tool import TimeTool
+from tether.core.types import OrchestratorConfig
+from tether.protocol.orchestration.chatty import ChattyAgentOrchestrator
+from tether.protocol.orchestration.tool_runner import ToolRunner
+from tether.protocol.parsers.sliding import SlidingParser
+from tether.protocol.wire.transport_ndjson import transport_ndjson
+from tether.tools.time_tool import TimeTool
 
 from tests.golden.conftest import ScriptedProvider, MinimalMemoryStore, normalize_event
 

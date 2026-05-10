@@ -10,7 +10,7 @@ from fastapi import FastAPI
 from fastapi.middleware.trustedhost import TrustedHostMiddleware
 from fastapi.testclient import TestClient
 
-from tether_service.config.settings import TrustedHostSettings
+from tether.config.settings import TrustedHostSettings
 
 
 # ---------------------------------------------------------------------------

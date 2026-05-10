@@ -7,7 +7,7 @@ from typing import Any, AsyncGenerator, Dict, List, Optional
 
 import pytest
 
-from tether_service.core.interfaces import ModelProvider, SessionStore
+from tether.core.interfaces import ModelProvider, SessionStore
 
 
 # ---------------------------------------------------------------------------

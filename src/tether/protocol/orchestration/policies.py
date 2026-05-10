@@ -15,7 +15,7 @@ deterministic single-turn tests.
 Loop-limit policy:
 
   - :attr:`RAISE` — orchestrator raises
-    :class:`tether_service.core.errors.LoopLimitReached`. Caller decides.
+    :class:`tether.core.errors.LoopLimitReached`. Caller decides.
   - :attr:`EMIT_LIMIT_EVENT` — emit a ``LoopLimitReached`` wire event
     plus a ``MessageStop(stop_reason="tool_loop_exhausted")`` and exit
     cleanly.

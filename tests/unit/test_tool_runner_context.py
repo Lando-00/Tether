@@ -13,9 +13,9 @@ from unittest.mock import AsyncMock, MagicMock
 
 import pytest
 
-from tether_service.core.interfaces import Tool
-from tether_service.core.types import ToolExecutionContext
-from tether_service.protocol.orchestration.tool_runner import ToolRunner
+from tether.core.interfaces import Tool
+from tether.core.types import ToolExecutionContext
+from tether.protocol.orchestration.tool_runner import ToolRunner
 
 
 # ---------------------------------------------------------------------------

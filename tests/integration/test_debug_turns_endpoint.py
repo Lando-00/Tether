@@ -25,13 +25,13 @@ pytestmark = pytest.mark.filterwarnings(
     "ignore::UserWarning:yoyo",
 )
 
-from tether_service.app.http.api import lifespan
-from tether_service.app.http.routers.debug import router as debug_router
-from tether_service.app.http.routers.health import router as health_router
-from tether_service.config.settings import Settings
-from tether_service.context.migration_runner import apply_pending_migrations
-from tether_service.engine import Engine
-from tether_service.runtime.watchdog_mode import WatchdogMode
+from tether.app.http.api import lifespan
+from tether.app.http.routers.debug import router as debug_router
+from tether.app.http.routers.health import router as health_router
+from tether.config.settings import Settings
+from tether.context.migration_runner import apply_pending_migrations
+from tether.engine import Engine
+from tether.runtime.watchdog_mode import WatchdogMode
 
 
 # ---------------------------------------------------------------------------
@@ -47,15 +47,15 @@ def _settings(db_path: str) -> Settings:
             "system": {"prompt": "debug-turns-test"},
             "providers": {
                 "model": {
-                    "impl": "tether_service.providers.dummy.provider.DummyProvider",
+                    "impl": "tether.providers.dummy.provider.DummyProvider",
                     "args": {},
                 },
                 "parser": {
-                    "impl": "tether_service.protocol.parsers.sliding.SlidingParser",
+                    "impl": "tether.protocol.parsers.sliding.SlidingParser",
                     "args": {},
                 },
                 "session_store": {
-                    "impl": "tether_service.context.sqlite_store.SqliteSessionStore",
+                    "impl": "tether.context.sqlite_store.SqliteSessionStore",
                     "args": {"dsn": dsn},
                 },
             },

@@ -1,4 +1,4 @@
-"""Unit tests for :class:`tether_service.core.connector_registry.ConnectorRegistry`.
+"""Unit tests for :class:`tether.core.connector_registry.ConnectorRegistry`.
 
 Per connector spec §3.3 (validation + lifecycle), §3.6 (data layout), §3.8
 (OAuth callback). Synthesis §4 Phase 4.5 steps 47b-47c, §13.4 M5.
@@ -13,8 +13,8 @@ from unittest.mock import AsyncMock
 
 import pytest
 
-from tether_service.connectors.base import Connector
-from tether_service.connectors.types import (
+from tether.connectors.base import Connector
+from tether.connectors.types import (
     AuthStatus,
     ConnectorState,
     HealthStatus,
@@ -22,11 +22,11 @@ from tether_service.connectors.types import (
     LoginContinueResult,
     LoginPrompt,
 )
-from tether_service.core.connector_registry import (
+from tether.core.connector_registry import (
     ConnectorRegistry,
     _OAuthStateCache,
 )
-from tether_service.core.interfaces import Tool
+from tether.core.interfaces import Tool
 
 
 # ---------------------------------------------------------------------------
@@ -289,7 +289,7 @@ def test_construction_logs_summary(tmp_path: Path, caplog: pytest.LogCaptureFixt
     conn = _make_fake_connector(
         connector_id="echo", tool_names=("echo_send",)
     )
-    with caplog.at_level("INFO", logger="tether_service.core.connector_registry"):
+    with caplog.at_level("INFO", logger="tether.core.connector_registry"):
         ConnectorRegistry([conn], data_dir=tmp_path)
     assert any(
         "1 connector" in r.message and "1 aggregated tool" in r.message
@@ -354,7 +354,7 @@ async def test_stop_connector_within_budget(
     stop_mock = AsyncMock()
     conn = _make_fake_connector(connector_id="echo", stop=stop_mock)
     registry = ConnectorRegistry([conn], data_dir=tmp_path)
-    with caplog.at_level("WARNING", logger="tether_service.core.connector_registry"):
+    with caplog.at_level("WARNING", logger="tether.core.connector_registry"):
         await registry.stop_connector("echo", timeout_sec=2.0)
     stop_mock.assert_awaited_once()
     # No timeout warning should be logged.
@@ -376,7 +376,7 @@ async def test_stop_connector_timeout_logs_warning(
     registry = ConnectorRegistry([conn], data_dir=tmp_path)
 
     t0 = time.monotonic()
-    with caplog.at_level("WARNING", logger="tether_service.core.connector_registry"):
+    with caplog.at_level("WARNING", logger="tether.core.connector_registry"):
         await registry.stop_connector("echo", timeout_sec=0.1)
     elapsed = time.monotonic() - t0
 
@@ -395,7 +395,7 @@ async def test_stop_connector_exception_logged_not_raised(
     stop_mock = AsyncMock(side_effect=RuntimeError("boom"))
     conn = _make_fake_connector(connector_id="echo", stop=stop_mock)
     registry = ConnectorRegistry([conn], data_dir=tmp_path)
-    with caplog.at_level("ERROR", logger="tether_service.core.connector_registry"):
+    with caplog.at_level("ERROR", logger="tether.core.connector_registry"):
         # Must not raise.
         await registry.stop_connector("echo")
     assert any("boom" in r.message or "boom" in str(r.exc_info) for r in caplog.records)

@@ -1,4 +1,4 @@
-"""Functional tests for :class:`tether_service.tools.weather_tool.GetWeatherTool`.
+"""Functional tests for :class:`tether.tools.weather_tool.GetWeatherTool`.
 
 Style B Annotated migration (synthesis §4 Phase 4 step 43; A2 step 7).
 Mocks ``requests.get`` to avoid real HTTP traffic; covers:
@@ -19,7 +19,7 @@ from unittest.mock import patch, MagicMock
 import pytest
 import requests
 
-from tether_service.tools.weather_tool import GetWeatherTool
+from tether.tools.weather_tool import GetWeatherTool
 
 
 @pytest.fixture
@@ -86,7 +86,7 @@ class TestGetWeatherToolHappyPath:
     @pytest.mark.asyncio
     async def test_invoke_with_location_returns_celsius_weather(self, tool: GetWeatherTool):
         with patch(
-            "tether_service.tools.weather_tool.requests.get",
+            "tether.tools.weather_tool.requests.get",
             side_effect=[_geocoding_ok(), _weather_ok(temp=14.5)],
         ):
             result = await tool.invoke({"location": "London"})
@@ -101,7 +101,7 @@ class TestGetWeatherToolHappyPath:
     @pytest.mark.asyncio
     async def test_invoke_with_fahrenheit_unit(self, tool: GetWeatherTool):
         with patch(
-            "tether_service.tools.weather_tool.requests.get",
+            "tether.tools.weather_tool.requests.get",
             side_effect=[_geocoding_ok(), _weather_ok(temp=68.0)],
         ):
             result = await tool.invoke({"location": "London", "unit": "fahrenheit"})
@@ -121,7 +121,7 @@ class TestGetWeatherToolErrors:
         empty_geocoding.raise_for_status = MagicMock()
         empty_geocoding.json.return_value = {"results": []}
         with patch(
-            "tether_service.tools.weather_tool.requests.get",
+            "tether.tools.weather_tool.requests.get",
             return_value=empty_geocoding,
         ):
             result = await tool.invoke({"location": "ZZZ-Nowhere-ZZZ"})
@@ -132,7 +132,7 @@ class TestGetWeatherToolErrors:
     @pytest.mark.asyncio
     async def test_geocoding_request_failure(self, tool: GetWeatherTool):
         with patch(
-            "tether_service.tools.weather_tool.requests.get",
+            "tether.tools.weather_tool.requests.get",
             side_effect=requests.RequestException("dns timeout"),
         ):
             result = await tool.invoke({"location": "London"})
@@ -143,7 +143,7 @@ class TestGetWeatherToolErrors:
     @pytest.mark.asyncio
     async def test_weather_request_failure(self, tool: GetWeatherTool):
         with patch(
-            "tether_service.tools.weather_tool.requests.get",
+            "tether.tools.weather_tool.requests.get",
             side_effect=[_geocoding_ok(), requests.RequestException("upstream 502")],
         ):
             result = await tool.invoke({"location": "London"})

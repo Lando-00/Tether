@@ -11,20 +11,20 @@ system:
     Do not include extra commentary on that line. After I run the tool, I will stream the result back to you.
 providers:
   model:
-    impl: "tether_service.providers.mlc.provider.MLCProvider"
+    impl: "tether.providers.mlc.provider.MLCProvider"
     # Future: uncomment for Nexa NPU (stub only in this refactor):
-    # impl: "tether_service.providers.nexa.provider.NexaProvider"
+    # impl: "tether.providers.nexa.provider.NexaProvider"
     args:
       # dist_root: "dist"  # Relative to project root
       # model_name: "Hermes-2-Pro-Llama-3-8B-q4f16_1-MLC"
       device: "auto"
       max_tokens: 1024
   parser:
-    impl: "tether_service.protocol.parsers.sliding.SlidingParser"
+    impl: "tether.protocol.parsers.sliding.SlidingParser"
     args:
       max_tool_chars: 32768
   session_store:
-    impl: "tether_service.context.sqlite_store.SqliteSessionStore"
+    impl: "tether.context.sqlite_store.SqliteSessionStore"
     args:
       dsn: "sqlite:///./data/tether.db"
 tools:
@@ -33,7 +33,7 @@ tools:
   #      enumerate tools by dotted-path. ToolRegistry uses this path
   #      whenever `registry` is non-empty (back-compat for one cycle).
   #   2. Discover: leave `registry` empty; ToolRegistry auto-discovers
-  #      every @tool-decorated class in tether_service.tools (and any
+  #      every @tool-decorated class in tether.tools (and any
   #      installed `tether.tools` entry-point). `disabled` filters them
   #      out by name. The four bundled tools below are decorated, so
   #      removing `registry` would still make them available — listing
@@ -41,13 +41,13 @@ tools:
   #      to discover-only is a one-cycle follow-up.
   registry:
     - name: "time"
-      impl: "tether_service.tools.time_tool.TimeTool"
+      impl: "tether.tools.time_tool.TimeTool"
     - name: "weather"
-      impl: "tether_service.tools.weather_tool.GetWeatherTool"
+      impl: "tether.tools.weather_tool.GetWeatherTool"
     - name: "forecast"
-      impl: "tether_service.tools.weather_tool.GetForecastTool"
+      impl: "tether.tools.weather_tool.GetForecastTool"
     - name: "web_search"
-      impl: "tether_service.tools.web_search_tool.WebSearchTool"
+      impl: "tether.tools.web_search_tool.WebSearchTool"
   enabled:
     - "time"
     - "weather"

@@ -3,8 +3,8 @@ import datetime
 
 import structlog
 
-from tether_service.core.interfaces import ModelProvider
-from tether_service.core.types import Event
+from tether.core.interfaces import ModelProvider
+from tether.core.types import Event
 
 
 from typing import List, Dict, Any, Optional, AsyncGenerator
@@ -65,7 +65,7 @@ class DummyProvider(ModelProvider):
     @property
     def capabilities(self):
         # Lazy-import to keep ``providers/types`` off the import-time path.
-        from tether_service.providers.types import ProviderCapabilities
+        from tether.providers.types import ProviderCapabilities
         return ProviderCapabilities(
             streaming=True,
             tools_native=False,        # DummyProvider just echoes prompt.
@@ -90,7 +90,7 @@ class DummyProvider(ModelProvider):
         from the legacy :meth:`stream` output. DummyProvider never emits
         native tool_calls, so the union is effectively single-variant
         here. Synthesis §4 Phase 3 step 39."""
-        from tether_service.providers.types import ProviderText
+        from tether.providers.types import ProviderText
 
         async for chunk in self.stream(
             model_name=model_name, messages=messages, tools=tools

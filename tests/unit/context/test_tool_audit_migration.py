@@ -10,7 +10,7 @@ from pathlib import Path
 
 import pytest
 
-from tether_service.context.migration_runner import apply_pending_migrations
+from tether.context.migration_runner import apply_pending_migrations
 
 # yoyo 8.x uses datetime.utcnow() internally — suppress its DeprecationWarning
 # so that `-W error::DeprecationWarning` sweeps stay clean.
@@ -150,7 +150,7 @@ def test_settings_audit_log_default_false() -> None:
     Tests the sub-model directly to avoid needing a providers arg.
     Synthesis §3.6 + B5 step 7.
     """
-    from tether_service.config.settings import AuditLogSettings, SecuritySettings
+    from tether.config.settings import AuditLogSettings, SecuritySettings
 
     s = SecuritySettings()
     assert s.audit_log.store_args is False

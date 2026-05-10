@@ -20,22 +20,22 @@ import asyncio
 import logging
 from typing import Any, AsyncGenerator, Callable, Dict, List, Optional, TYPE_CHECKING
 
-from tether_service.config.settings import Settings
-from tether_service.core.interfaces import (
+from tether.config.settings import Settings
+from tether.core.interfaces import (
     ModelProvider,
     SessionStore,
     StreamParser,
     Tool,
 )
-from tether_service.core.types import OrchestratorConfig
-from tether_service.protocol.orchestration.tool_runner import ToolRunner
-from tether_service.runtime.watchdog_mode import WatchdogMode
+from tether.core.types import OrchestratorConfig
+from tether.protocol.orchestration.tool_runner import ToolRunner
+from tether.runtime.watchdog_mode import WatchdogMode
 
 if TYPE_CHECKING:
-    from tether_service.core.connector_registry import ConnectorRegistry
-    from tether_service.protocol.orchestration.cancel import CancelToken
-    from tether_service.protocol.wire.events import WireEvent
-    from tether_service.runtime.hw_watchdog import HardwareWatchdog
+    from tether.core.connector_registry import ConnectorRegistry
+    from tether.protocol.orchestration.cancel import CancelToken
+    from tether.protocol.wire.events import WireEvent
+    from tether.runtime.hw_watchdog import HardwareWatchdog
 
 
 logger = logging.getLogger(__name__)
@@ -139,8 +139,8 @@ class Engine:
         self.tool_runner = tool_runner or ToolRunner(tools)
         self._closed = False
         self._orchestrator_registry: Dict[str, str] = orchestrator_registry or {
-            "chat": "tether_service.protocol.orchestration.chatty.ChattyAgentOrchestrator",
-            "research": "tether_service.protocol.orchestration.notebook.NotebookOrchestrator",
+            "chat": "tether.protocol.orchestration.chatty.ChattyAgentOrchestrator",
+            "research": "tether.protocol.orchestration.notebook.NotebookOrchestrator",
         }
         self._orchestrator_default_mode = orchestrator_default_mode
         # Phase 7 step 74: whether to store raw args_json in tool_audit.
@@ -163,7 +163,7 @@ class Engine:
         """Build an Engine from a typed Settings object.
 
         Lazy-imports concrete provider/parser/store classes so that
-        ``import tether_service`` does not pull in MLC, FastAPI, or Brave.
+        ``import tether`` does not pull in MLC, FastAPI, or Brave.
         Per R8 lazy-import rule (synthesis).
 
         Constructs a :class:`HardwareWatchdog` around the provider list.
@@ -187,15 +187,15 @@ class Engine:
         Raises ValueError / RuntimeError if any required impl path doesn't
         resolve (delegated to ``load`` and ``ToolRegistry``).
         """
-        from tether_service.core.connector_registry import ConnectorRegistry
-        from tether_service.core.factory import load
-        from tether_service.core.tool_registry import ToolRegistry
-        from tether_service.runtime.hw_watchdog import HardwareWatchdog
+        from tether.core.connector_registry import ConnectorRegistry
+        from tether.core.factory import load
+        from tether.core.tool_registry import ToolRegistry
+        from tether.runtime.hw_watchdog import HardwareWatchdog
 
         # Configure logging FIRST so any subsequent setup logs flow through
         # the structured pipeline. Idempotent — safe to call multiple times.
         # Citations: _synthesis.md §3 (observability), §4 Phase 7 step 67.
-        from tether_service.core.logging import configure_logging
+        from tether.core.logging import configure_logging
         configure_logging(settings)
 
         model_spec = settings.providers.model
@@ -222,7 +222,7 @@ class Engine:
         # (platformdirs default when unset) instead of the legacy CWD-relative
         # literal. Synthesis §3.6, §4 Phase 6 step 60.
         _store_dsn: str = settings.storage.resolved_dsn()
-        from tether_service.context.migration_runner import apply_pending_migrations
+        from tether.context.migration_runner import apply_pending_migrations
         try:
             apply_pending_migrations(_store_dsn)
         except Exception as _mig_exc:
@@ -265,7 +265,7 @@ class Engine:
         # cheap. The default mode is checked first (most-likely typo target),
         # followed by every other registered mode.
         registry_dict = dict(settings.orchestrator.registry)
-        from tether_service.protocol.orchestration.registry import (
+        from tether.protocol.orchestration.registry import (
             UnknownOrchestratorMode,
             resolve_orchestrator_class,
         )
@@ -325,8 +325,8 @@ class Engine:
         :class:`NotImplementedError`) rather than silently falling back to
         ``ChattyAgentOrchestrator``. Briefing §2 Seam B item 4.
         """
-        from tether_service.protocol.orchestration.cancel import AsyncEventCancelToken
-        from tether_service.protocol.orchestration.emitter import v0_compat_serialize
+        from tether.protocol.orchestration.cancel import AsyncEventCancelToken
+        from tether.protocol.orchestration.emitter import v0_compat_serialize
 
         cancel_token = AsyncEventCancelToken(cancel_event) if cancel_event else None
 
@@ -362,7 +362,7 @@ class Engine:
         to ``self._orchestrator_default_mode`` ("chat") when None.
         Briefing §2 Seam B item 4; synthesis §3.5.
         """
-        from tether_service.protocol.orchestration.registry import (
+        from tether.protocol.orchestration.registry import (
             resolve_orchestrator_class,
         )
 
@@ -464,7 +464,7 @@ class Engine:
         block ``__aenter__``; ``aclose`` cancels any still-pending
         tasks before invoking ``stop_all`` (connector spec §3.3 step 6).
 
-        See :func:`tether_service.tools.lifecycle.startup_all` for the
+        See :func:`tether.tools.lifecycle.startup_all` for the
         gather semantics (synthesis §13.2 R5).
         """
         # Phase 6 step 63: open the SqliteSessionStore's aiosqlite
@@ -486,7 +486,7 @@ class Engine:
                 raise
 
         if self.tools:
-            from tether_service.tools.lifecycle import startup_all
+            from tether.tools.lifecycle import startup_all
 
             try:
                 failures = await startup_all(
@@ -508,7 +508,7 @@ class Engine:
         if self.connector_registry is not None:
             # Lazy-imported because connectors module triggers no eager
             # imports at the package level (R8 lazy-import rule).
-            from tether_service.connectors.types import ConnectorState
+            from tether.connectors.types import ConnectorState
 
             for conn in self.connector_registry.all():
                 try:
@@ -553,11 +553,11 @@ class Engine:
         owner. The 2 s cooperative budget is the connector spec §3.3
         step 6 contract — connectors with potentially blocking native
         cleanup are responsible for their own daemon-thread + force-exit
-        pattern (see ``tether_service.connectors.base.Connector``).
+        pattern (see ``tether.connectors.base.Connector``).
 
         Routes through ``self.hw_watchdog.shutdown_all()`` for any
         provider implementing :class:`HardwareLifecycle` — that path
-        uses :func:`tether_service.runtime.daemon_call.daemon_thread_call`
+        uses :func:`tether.runtime.daemon_call.daemon_thread_call`
         (M1) so GC stays disabled in the daemon thread (R5) and native
         cleanup is bounded by per-provider budgets. Production /
         SERVER-mode usage always reaches this branch because
@@ -592,7 +592,7 @@ class Engine:
 
         # Tools next (they may still need the provider during shutdown).
         if self.tools:
-            from tether_service.tools.lifecycle import shutdown_all
+            from tether.tools.lifecycle import shutdown_all
 
             await shutdown_all(self.tools)
 

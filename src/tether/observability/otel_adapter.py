@@ -31,9 +31,9 @@ Known event names translated to spans:
   - All other events          → ignored (pass-through)
 
 Phase 7 RD followup (FIX 2): all string attributes are passed through
-:func:`tether_service.core.redact.redact_text` before reaching the OTel
+:func:`tether.core.redact.redact_text` before reaching the OTel
 exporter. The structlog OTel processor runs INSIDE structlog before the
-stdlib bridge, so :class:`tether_service.core.logging.RedactingFilter` does
+stdlib bridge, so :class:`tether.core.logging.RedactingFilter` does
 not protect span attributes — secrets in exception messages, URLs, etc.
 would leak to the collector. Native types (int / float / bool / bytes) are
 preserved instead of stringified.
@@ -42,10 +42,10 @@ from __future__ import annotations
 
 from typing import TYPE_CHECKING, Any
 
-from tether_service.core.redact import redact_text
+from tether.core.redact import redact_text
 
 if TYPE_CHECKING:
-    from tether_service.config.settings import Settings
+    from tether.config.settings import Settings
 
 
 _initialized = False

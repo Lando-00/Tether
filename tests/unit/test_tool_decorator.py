@@ -9,8 +9,8 @@ from unittest.mock import patch
 
 import pytest
 
-from tether_service.tools.base import BaseTool
-from tether_service.tools.registration import (
+from tether.tools.base import BaseTool
+from tether.tools.registration import (
     _DECORATED_TOOLS,
     _clear_registry,
     discover,
@@ -238,7 +238,7 @@ def test_discover_loads_entry_points():
             return _FakeTool
 
     with patch(
-        "tether_service.tools.registration.entry_points",
+        "tether.tools.registration.entry_points",
         return_value=[_FakeEP()],
         create=True,
     ):

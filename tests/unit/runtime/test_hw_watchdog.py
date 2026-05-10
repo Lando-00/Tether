@@ -1,4 +1,4 @@
-"""Tests for ``tether_service.runtime.hw_watchdog.HardwareWatchdog``.
+"""Tests for ``tether.runtime.hw_watchdog.HardwareWatchdog``.
 
 Synthesis §4 Phase 3 step 30; B6 step 2.
 
@@ -14,12 +14,12 @@ from typing import Dict, List
 
 import pytest
 
-from tether_service.providers.hw import HwErrorClass, HwHealth
-from tether_service.runtime.hw_watchdog import (
+from tether.providers.hw import HwErrorClass, HwHealth
+from tether.runtime.hw_watchdog import (
     DEFAULT_SHUTDOWN_BUDGET_SEC,
     HardwareWatchdog,
 )
-from tether_service.runtime.watchdog_mode import WatchdogMode
+from tether.runtime.watchdog_mode import WatchdogMode
 
 
 # ---------------------------------------------------------------------------

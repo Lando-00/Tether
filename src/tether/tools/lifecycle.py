@@ -1,10 +1,10 @@
 """Concurrent startup/shutdown helpers for the tool registry.
 
 Phase 4 step 41 (synthesis §4) ships these alongside the
-:class:`tether_service.tools.base.BaseTool` lifecycle hooks. Both helpers
+:class:`tether.tools.base.BaseTool` lifecycle hooks. Both helpers
 run in a regular asyncio event loop — they are NOT the daemon-thread
 shutdown path used for hardware-backed providers (see
-:mod:`tether_service.runtime.hw_watchdog`), so the GC-disable rule
+:mod:`tether.runtime.hw_watchdog`), so the GC-disable rule
 (synthesis §13.2 R5) does not apply here.
 
 Two functions:
@@ -23,7 +23,7 @@ import asyncio
 import logging
 from typing import Dict, Mapping, Optional
 
-from tether_service.core.interfaces import Tool
+from tether.core.interfaces import Tool
 
 logger = logging.getLogger(__name__)
 

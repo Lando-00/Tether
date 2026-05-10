@@ -18,7 +18,7 @@ The tool now owns a long-lived :class:`BraveSearchClient` opened in
 ``_get_client()`` helper that constructed a fresh client per call has
 been removed — synthesis §6 row 17 (cold TLS per call). The
 :class:`SecretsProvider` (default
-:class:`tether_service.core.secrets.EnvFileSecretsProvider`) supplies
+:class:`tether.core.secrets.EnvFileSecretsProvider`) supplies
 the ``BRAVE_API_KEY``; if the secret is missing the tool stays in the
 registry (``REQUIRED = False``) but :meth:`run` returns an error dict.
 That choice keeps ``/tools`` discoverable and lets the model see a
@@ -30,14 +30,14 @@ from typing import TYPE_CHECKING, Any, Dict, Literal, Optional
 
 from pydantic import Field, field_validator
 
-from tether_service.core.secrets import EnvFileSecretsProvider, SecretsProvider
-from tether_service.security.outbound import assert_safe_url
-from tether_service.tools.base import BaseTool, ToolInputs
-from tether_service.tools.brave_client import BraveSearchClient
-from tether_service.tools.registration import tool
+from tether.core.secrets import EnvFileSecretsProvider, SecretsProvider
+from tether.security.outbound import assert_safe_url
+from tether.tools.base import BaseTool, ToolInputs
+from tether.tools.brave_client import BraveSearchClient
+from tether.tools.registration import tool
 
 if TYPE_CHECKING:
-    from tether_service.config.settings import Settings
+    from tether.config.settings import Settings
 
 
 logger = logging.getLogger(__name__)
@@ -185,7 +185,7 @@ class WebSearchTool(BaseTool):
         Safe to call when :meth:`startup` skipped client construction
         (missing key) — the ``None`` check makes shutdown idempotent.
         Per synthesis §4 Phase 4 step 41, shutdown failures are caught
-        upstream by :func:`tether_service.tools.lifecycle.shutdown_all`
+        upstream by :func:`tether.tools.lifecycle.shutdown_all`
         and never raised.
         """
         if self._client is not None:

@@ -1,4 +1,4 @@
-"""Unit tests for :mod:`tether_service.protocol.parsers.events`.
+"""Unit tests for :mod:`tether.protocol.parsers.events`.
 
 Phase 5 step 49: parser-level event dataclasses (internal to parser).
 
@@ -10,7 +10,7 @@ from dataclasses import FrozenInstanceError
 
 import pytest
 
-from tether_service.protocol.parsers.events import (
+from tether.protocol.parsers.events import (
     PParseError,
     PStreamEnd,
     PText,

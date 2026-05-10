@@ -11,11 +11,11 @@ from fastapi import FastAPI, APIRouter
 from fastapi.testclient import TestClient
 from typing import Any, AsyncGenerator, Dict, List, Optional
 
-from tether_service.app.http.routers.health import router as health_router
-from tether_service.core.interfaces import ModelProvider, SessionStore
-from tether_service.engine import Engine
-from tether_service.providers.hw import HardwareLifecycle, HwErrorClass, HwHealth
-from tether_service.runtime.hw_watchdog import HardwareWatchdog
+from tether.app.http.routers.health import router as health_router
+from tether.core.interfaces import ModelProvider, SessionStore
+from tether.engine import Engine
+from tether.providers.hw import HardwareLifecycle, HwErrorClass, HwHealth
+from tether.runtime.hw_watchdog import HardwareWatchdog
 
 
 # ---------------------------------------------------------------------------
@@ -186,7 +186,7 @@ def _make_app(provider: ModelProvider, store: SessionStore, *, with_watchdog: bo
     (``list_models``) — useful when checking that an Engine constructed
     without ``from_settings`` still works.
     """
-    from tether_service.protocol.parsers.sliding import SlidingParser
+    from tether.protocol.parsers.sliding import SlidingParser
 
     watchdog: Optional[HardwareWatchdog] = (
         HardwareWatchdog([provider]) if with_watchdog else None
@@ -321,8 +321,8 @@ def test_readyz_no_watchdog_empty_models():
 
 from typing import AsyncIterator  # noqa: E402
 
-from tether_service.connectors.base import Connector  # noqa: E402
-from tether_service.connectors.types import (  # noqa: E402
+from tether.connectors.base import Connector  # noqa: E402
+from tether.connectors.types import (  # noqa: E402
     AuthStatus,
     ConnectorState,
     HealthStatus,
@@ -330,8 +330,8 @@ from tether_service.connectors.types import (  # noqa: E402
     LoginContinueResult,
     LoginPrompt,
 )
-from tether_service.core.connector_registry import ConnectorRegistry  # noqa: E402
-from tether_service.core.interfaces import Tool  # noqa: E402
+from tether.core.connector_registry import ConnectorRegistry  # noqa: E402
+from tether.core.interfaces import Tool  # noqa: E402
 
 
 class _StubConnectorTool(Tool):
@@ -410,7 +410,7 @@ def _make_app_with_connector(
     with_watchdog: bool = True,
 ) -> FastAPI:
     """Variant of _make_app that attaches a ConnectorRegistry."""
-    from tether_service.protocol.parsers.sliding import SlidingParser
+    from tether.protocol.parsers.sliding import SlidingParser
 
     watchdog: Optional[HardwareWatchdog] = (
         HardwareWatchdog([provider]) if with_watchdog else None

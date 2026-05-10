@@ -11,9 +11,9 @@ import pytest
 from fastapi import FastAPI
 from fastapi.testclient import TestClient
 
-from tether_service.app.http.csrf_middleware import CSRFTokenMiddleware
-from tether_service.app.http.middleware import RequestIdMiddleware
-from tether_service.config.settings import CSRFTokenSettings
+from tether.app.http.csrf_middleware import CSRFTokenMiddleware
+from tether.app.http.middleware import RequestIdMiddleware
+from tether.config.settings import CSRFTokenSettings
 
 
 # ---------------------------------------------------------------------------
@@ -138,7 +138,7 @@ def test_generated_token_logged_without_value(caplog):
     """
     settings = CSRFTokenSettings(enabled=True, token=None)
     app = _make_app(settings)
-    with caplog.at_level(logging.INFO, logger="tether_service.app.http.csrf_middleware"):
+    with caplog.at_level(logging.INFO, logger="tether.app.http.csrf_middleware"):
         with TestClient(app) as client:
             # First request triggers middleware stack instantiation.
             client.get("/test")

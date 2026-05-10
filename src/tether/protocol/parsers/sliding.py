@@ -2,9 +2,9 @@ import json
 import uuid
 from typing import List
 
-from tether_service.core.interfaces import StreamParser
-from tether_service.core.logging import logger
-from tether_service.protocol.parsers.events import (
+from tether.core.interfaces import StreamParser
+from tether.core.logging import logger
+from tether.protocol.parsers.events import (
     ParserEvent,
     PParseError,
     PText,

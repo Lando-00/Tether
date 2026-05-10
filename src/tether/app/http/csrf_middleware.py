@@ -25,7 +25,7 @@ from starlette.requests import Request
 from starlette.responses import JSONResponse, Response
 
 if TYPE_CHECKING:
-    from tether_service.config.settings import CSRFTokenSettings
+    from tether.config.settings import CSRFTokenSettings
 
 logger = logging.getLogger(__name__)
 

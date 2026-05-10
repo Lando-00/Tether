@@ -3,7 +3,7 @@
 These are produced by ``SlidingParser`` (the Phase 5
 ``p5-parser-typed-events`` step will refactor ``sliding.py`` to return
 these). The orchestrator (``p5-orchestrator-wire-policies``) consumes
-them and translates to :data:`tether_service.protocol.wire.events.WireEvent`.
+them and translates to :data:`tether.protocol.wire.events.WireEvent`.
 
 Frozen dataclasses (NOT Pydantic) — these are tight, internal types
 that don't need validation or JSON serialization.

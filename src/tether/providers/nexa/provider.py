@@ -24,8 +24,8 @@ from __future__ import annotations
 
 from typing import Any, AsyncGenerator, AsyncIterator, Dict, List, Optional
 
-from tether_service.core.interfaces import ModelProvider
-from tether_service.providers.types import ProviderCapabilities, ProviderEvent
+from tether.core.interfaces import ModelProvider
+from tether.providers.types import ProviderCapabilities, ProviderEvent
 
 
 class NexaProvider(ModelProvider):

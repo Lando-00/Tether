@@ -15,10 +15,10 @@ from unittest.mock import AsyncMock, MagicMock
 
 import pytest
 
-from tether_service.core.interfaces import ModelProvider, SessionStore, StreamParser, Tool
-from tether_service.core.types import OrchestratorConfig
-from tether_service.protocol.orchestration.orchestrator import orchestrate
-from tether_service.protocol.orchestration.tool_runner import ToolRunner
+from tether.core.interfaces import ModelProvider, SessionStore, StreamParser, Tool
+from tether.core.types import OrchestratorConfig
+from tether.protocol.orchestration.orchestrator import orchestrate
+from tether.protocol.orchestration.tool_runner import ToolRunner
 
 
 # ---------------------------------------------------------------------------
@@ -87,7 +87,7 @@ class _PassthroughParser(StreamParser):
     """
 
     def feed(self, chunk: str):
-        from tether_service.protocol.parsers.events import PText
+        from tether.protocol.parsers.events import PText
 
         return [PText(text=chunk)]
 
@@ -105,7 +105,7 @@ class _ToolCallParser(StreamParser):
         self._count = 0
 
     def feed(self, chunk: str):
-        from tether_service.protocol.parsers.events import (
+        from tether.protocol.parsers.events import (
             PText,
             PToolCallDetected,
             PToolCallParsed,

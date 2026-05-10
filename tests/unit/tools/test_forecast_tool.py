@@ -1,4 +1,4 @@
-"""Functional tests for :class:`tether_service.tools.weather_tool.GetForecastTool`.
+"""Functional tests for :class:`tether.tools.weather_tool.GetForecastTool`.
 
 Style B Annotated migration (synthesis §4 Phase 4 step 43; A2 step 7).
 Mocks ``requests.get`` to avoid real HTTP traffic; covers:
@@ -20,7 +20,7 @@ from unittest.mock import patch, MagicMock
 import pytest
 import requests
 
-from tether_service.tools.weather_tool import GetForecastTool
+from tether.tools.weather_tool import GetForecastTool
 
 
 @pytest.fixture
@@ -97,7 +97,7 @@ class TestGetForecastToolHappyPath:
     @pytest.mark.asyncio
     async def test_three_day_forecast(self, tool: GetForecastTool):
         with patch(
-            "tether_service.tools.weather_tool.requests.get",
+            "tether.tools.weather_tool.requests.get",
             side_effect=[_geocoding_ok(), _forecast_ok(3)],
         ):
             result = await tool.invoke({"location": "London", "days": 3})
@@ -116,7 +116,7 @@ class TestGetForecastToolHappyPath:
     @pytest.mark.asyncio
     async def test_default_days_is_three(self, tool: GetForecastTool):
         with patch(
-            "tether_service.tools.weather_tool.requests.get",
+            "tether.tools.weather_tool.requests.get",
             side_effect=[_geocoding_ok(), _forecast_ok(3)],
         ):
             result = await tool.invoke({"location": "London"})
@@ -135,7 +135,7 @@ class TestGetForecastToolDaysClamping:
         """Style B path: invoke({"days": 0}) bypasses Pydantic; the
         ``run`` body's ``max(1, min(16, days))`` clamp must rescue it."""
         with patch(
-            "tether_service.tools.weather_tool.requests.get",
+            "tether.tools.weather_tool.requests.get",
             side_effect=[_geocoding_ok(), _forecast_ok(1)],
         ) as mock_get:
             result = await tool.invoke({"location": "London", "days": 0})
@@ -149,7 +149,7 @@ class TestGetForecastToolDaysClamping:
     @pytest.mark.asyncio
     async def test_days_above_max_clamped_to_sixteen(self, tool: GetForecastTool):
         with patch(
-            "tether_service.tools.weather_tool.requests.get",
+            "tether.tools.weather_tool.requests.get",
             side_effect=[_geocoding_ok(), _forecast_ok(16)],
         ) as mock_get:
             result = await tool.invoke({"location": "London", "days": 999})
@@ -171,7 +171,7 @@ class TestGetForecastToolErrors:
         empty_geocoding.raise_for_status = MagicMock()
         empty_geocoding.json.return_value = {"results": []}
         with patch(
-            "tether_service.tools.weather_tool.requests.get",
+            "tether.tools.weather_tool.requests.get",
             return_value=empty_geocoding,
         ):
             result = await tool.invoke({"location": "ZZZ-Nowhere-ZZZ", "days": 3})
@@ -182,7 +182,7 @@ class TestGetForecastToolErrors:
     @pytest.mark.asyncio
     async def test_forecast_request_failure(self, tool: GetForecastTool):
         with patch(
-            "tether_service.tools.weather_tool.requests.get",
+            "tether.tools.weather_tool.requests.get",
             side_effect=[_geocoding_ok(), requests.RequestException("upstream 502")],
         ):
             result = await tool.invoke({"location": "London", "days": 3})

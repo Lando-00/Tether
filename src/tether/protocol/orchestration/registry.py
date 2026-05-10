@@ -13,7 +13,7 @@ import importlib
 from typing import Dict, Type, TYPE_CHECKING
 
 if TYPE_CHECKING:
-    from tether_service.core.interfaces import Orchestrator
+    from tether.core.interfaces import Orchestrator
 
 
 class UnknownOrchestratorMode(ValueError):
@@ -60,7 +60,7 @@ def resolve_orchestrator_class(
     cls = getattr(module, class_name)
 
     # Defense: ensure the resolved class is actually an Orchestrator.
-    from tether_service.core.interfaces import Orchestrator
+    from tether.core.interfaces import Orchestrator
     if not isinstance(cls, type) or not issubclass(cls, Orchestrator):
         raise TypeError(
             f"registry entry for mode={mode!r} resolves to {cls!r}, "

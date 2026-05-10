@@ -6,7 +6,7 @@ from __future__ import annotations
 
 import pytest
 
-from tether_service.core.redact import redact_text
+from tether.core.redact import redact_text
 
 
 def test_redact_bearer_token():

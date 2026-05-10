@@ -22,13 +22,13 @@ import pytest
 from fastapi import APIRouter, FastAPI
 from fastapi.testclient import TestClient
 
-from tether_service.app.http.api import lifespan
-from tether_service.app.http.routers.chat import StreamRequest, router as chat_router
-from tether_service.app.http.routers.health import router as health_router
-from tether_service.config.settings import Settings
-from tether_service.engine import Engine
-from tether_service.protocol.parsers.sliding import SlidingParser
-from tether_service.providers.dummy.provider import DummyProvider
+from tether.app.http.api import lifespan
+from tether.app.http.routers.chat import StreamRequest, router as chat_router
+from tether.app.http.routers.health import router as health_router
+from tether.config.settings import Settings
+from tether.engine import Engine
+from tether.protocol.parsers.sliding import SlidingParser
+from tether.providers.dummy.provider import DummyProvider
 
 
 # ---------------------------------------------------------------------------
@@ -151,15 +151,15 @@ def _minimal_settings(tmp_path) -> Settings:
         "system": {"prompt": "test"},
         "providers": {
             "model": {
-                "impl": "tether_service.providers.dummy.provider.DummyProvider",
+                "impl": "tether.providers.dummy.provider.DummyProvider",
                 "args": {},
             },
             "parser": {
-                "impl": "tether_service.protocol.parsers.sliding.SlidingParser",
+                "impl": "tether.protocol.parsers.sliding.SlidingParser",
                 "args": {},
             },
             "session_store": {
-                "impl": "tether_service.context.sqlite_store.SqliteSessionStore",
+                "impl": "tether.context.sqlite_store.SqliteSessionStore",
                 "args": {"dsn": f"sqlite:///{db}"},
             },
         },

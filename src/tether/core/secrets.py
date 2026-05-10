@@ -10,7 +10,7 @@ flow through this single interface. Connectors declare their required
 secret keys and call :meth:`SecretsProvider.get` from ``start()``; if a
 required secret is missing the connector reports
 ``ConnectorState.UNCONFIGURED`` and its tools raise
-:class:`tether_service.core.errors.ConnectorNotConfiguredError`.
+:class:`tether.core.errors.ConnectorNotConfiguredError`.
 
 Citations:
     - Connector spec §3.5 (SecretsProvider get/set/delete contract).

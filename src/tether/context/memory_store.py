@@ -7,7 +7,7 @@ Contract locked by tests/contract/test_session_store_history_contract.py
 import json
 from typing import Any, Dict, List, Optional
 
-from tether_service.core.interfaces import SessionStore
+from tether.core.interfaces import SessionStore
 
 
 class MemoryStore(SessionStore):

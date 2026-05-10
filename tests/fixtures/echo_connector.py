@@ -1,6 +1,6 @@
 """EchoConnector fixture — Phase 4.5 spec §8.3 validation harness.
 
-Implements the full :class:`tether_service.connectors.base.Connector`
+Implements the full :class:`tether.connectors.base.Connector`
 contract (spec §3.1) without any real network or external dependency.
 Used by ``tests/integration/test_connectors_lifecycle.py`` and
 ``tests/unit/connectors/test_echo_schema.py`` to exercise the spec §8.3
@@ -30,8 +30,8 @@ from __future__ import annotations
 import asyncio
 from typing import Any, AsyncIterator, Callable, ClassVar, Dict, List, Optional, Set
 
-from tether_service.connectors.base import Connector
-from tether_service.connectors.types import (
+from tether.connectors.base import Connector
+from tether.connectors.types import (
     AuthStatus,
     ConnectorState,
     HealthStatus,
@@ -39,10 +39,10 @@ from tether_service.connectors.types import (
     LoginContinueResult,
     LoginPrompt,
 )
-from tether_service.core.errors import ConnectorNotConfiguredError
-from tether_service.core.interfaces import Tool
-from tether_service.core.types import ToolExecutionContext
-from tether_service.tools.base import BaseTool
+from tether.core.errors import ConnectorNotConfiguredError
+from tether.core.interfaces import Tool
+from tether.core.types import ToolExecutionContext
+from tether.tools.base import BaseTool
 
 
 # ---------------------------------------------------------------------------
@@ -51,7 +51,7 @@ from tether_service.tools.base import BaseTool
 #
 # Each tool subclass sets ``_tether_tool_registered_name`` directly on the
 # class body. This is the same marker the @tool decorator installs (per
-# tether_service.tools.registration._TOOL_MARKER_ATTR) but bypasses the
+# tether.tools.registration._TOOL_MARKER_ATTR) but bypasses the
 # global ``_DECORATED_TOOLS`` registry — connector tools are wired through
 # the connector's own ``tools()`` dict, not the in-tree decorator registry,
 # so polluting the global registry would actively confuse other tests.

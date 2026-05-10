@@ -54,8 +54,8 @@ from typing import Any, Dict, List, Optional
 
 import aiosqlite
 
-from tether_service.core.interfaces import SessionStore
-from tether_service.core.logging import logger
+from tether.core.interfaces import SessionStore
+from tether.core.logging import logger
 
 
 # Module-level WeakSet of live stores. Used by the atexit handler to
@@ -131,7 +131,7 @@ class SqliteSessionStore(SessionStore):
         # is a no-op via its tracking table. Direct construction paths
         # (contract tests, CLI one-shots) get the latest schema
         # automatically. Synthesis §3.6.
-        from tether_service.context.migration_runner import (
+        from tether.context.migration_runner import (
             apply_pending_migrations,
         )
         apply_pending_migrations(dsn)

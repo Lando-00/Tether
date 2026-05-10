@@ -26,18 +26,18 @@ from typing import Optional
 
 from fastapi import APIRouter, FastAPI
 
-from tether_service.app.http.middleware import RequestIdMiddleware
-from tether_service.app.http.routers.chat import router as chat_router
-from tether_service.app.http.routers.connectors import router as connectors_router
-from tether_service.app.http.routers.debug import router as debug_router
-from tether_service.app.http.routers.health import router as health_router
-from tether_service.app.http.routers.models import router as models_router
-from tether_service.app.http.routers.protocol import router as protocol_router
-from tether_service.app.http.routers.sessions import router as sessions_router
-from tether_service.config.settings import Settings, load_settings
-from tether_service.engine import Engine
-from tether_service.runtime.signal_supervisor import SignalSupervisor
-from tether_service.runtime.watchdog_mode import WatchdogMode
+from tether.app.http.middleware import RequestIdMiddleware
+from tether.app.http.routers.chat import router as chat_router
+from tether.app.http.routers.connectors import router as connectors_router
+from tether.app.http.routers.debug import router as debug_router
+from tether.app.http.routers.health import router as health_router
+from tether.app.http.routers.models import router as models_router
+from tether.app.http.routers.protocol import router as protocol_router
+from tether.app.http.routers.sessions import router as sessions_router
+from tether.config.settings import Settings, load_settings
+from tether.engine import Engine
+from tether.runtime.signal_supervisor import SignalSupervisor
+from tether.runtime.watchdog_mode import WatchdogMode
 
 
 @asynccontextmanager
@@ -111,7 +111,7 @@ def create_app(settings: Optional[Settings] = None) -> FastAPI:
     # preflight, and 200 — passes back through RequestIdMiddleware and carries
     # X-Request-ID for correlation. Phase 7 step 68 + step 79 + RD followup (FIX 1).
     if settings_v2.security.csrf_token.enabled:
-        from tether_service.app.http.csrf_middleware import CSRFTokenMiddleware
+        from tether.app.http.csrf_middleware import CSRFTokenMiddleware
         app.add_middleware(CSRFTokenMiddleware, settings=settings_v2.security.csrf_token)
 
     if settings_v2.security.cors.enabled:

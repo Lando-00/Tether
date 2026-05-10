@@ -31,11 +31,11 @@ from typing import Any, Dict, Optional, TYPE_CHECKING
 
 import structlog
 
-from tether_service.core.interfaces import Tool
-from tether_service.core.redact import redact_text
+from tether.core.interfaces import Tool
+from tether.core.redact import redact_text
 
 if TYPE_CHECKING:
-    from tether_service.core.types import ToolExecutionContext
+    from tether.core.types import ToolExecutionContext
 
 _ARGS_REDACTED_MAX_CHARS = 200
 _ERROR_MESSAGE_MAX_CHARS = 500

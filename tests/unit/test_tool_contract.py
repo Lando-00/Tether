@@ -16,10 +16,10 @@ from unittest.mock import AsyncMock, MagicMock
 
 import pytest
 
-from tether_service.core.interfaces import Tool
-from tether_service.tools.base import BaseTool
-from tether_service.tools.time_tool import TimeTool
-from tether_service.protocol.orchestration.tool_runner import ToolRunner
+from tether.core.interfaces import Tool
+from tether.tools.base import BaseTool
+from tether.tools.time_tool import TimeTool
+from tether.protocol.orchestration.tool_runner import ToolRunner
 
 
 # ---------------------------------------------------------------------------
@@ -158,14 +158,14 @@ class TestBundledToolsStillWork:
 
     def test_weather_tools_constructible(self):
         """WeatherTool and GetForecastTool are constructible."""
-        from tether_service.tools.weather_tool import GetWeatherTool, GetForecastTool
+        from tether.tools.weather_tool import GetWeatherTool, GetForecastTool
         for cls in (GetWeatherTool, GetForecastTool):
             tool = cls()
             assert isinstance(tool, BaseTool)
 
     def test_web_search_tool_constructible(self):
         """WebSearchTool is constructible (even without API key)."""
-        from tether_service.tools.web_search_tool import WebSearchTool
+        from tether.tools.web_search_tool import WebSearchTool
         tool = WebSearchTool()
         assert isinstance(tool, BaseTool)
         schema = tool.schema

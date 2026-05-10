@@ -2,13 +2,13 @@
 hardware-backed providers (currently MLC; future Nexa / on-device GPU).
 
 Phase 2 (already shipped):
-    - :class:`tether_service.runtime.watchdog_mode.WatchdogMode` enum
+    - :class:`tether.runtime.watchdog_mode.WatchdogMode` enum
     - ``Engine.aclose()`` placeholder that delegates to ``provider.shutdown_all()``
 
 This phase (``p3-watchdog-supervisor``):
     - :class:`HardwareWatchdog` lives here
     - :meth:`HardwareWatchdog.shutdown_all` uses
-      :func:`tether_service.runtime.daemon_call.daemon_thread_call` (M1)
+      :func:`tether.runtime.daemon_call.daemon_thread_call` (M1)
     - ``Engine.aclose`` body is NOT YET REPLACED — that's
       ``p3-lifespan-slim`` (Phase 3 step 35)
     - FastAPI lifespan is NOT YET REWIRED — that's ``p3-lifespan-slim``
@@ -23,12 +23,12 @@ from __future__ import annotations
 import logging
 from typing import Any, Dict, List, Optional
 
-from tether_service.providers.hw import (
+from tether.providers.hw import (
     HardwareLifecycle,
     HwErrorClass,
 )
-from tether_service.runtime.daemon_call import daemon_thread_call
-from tether_service.runtime.watchdog_mode import WatchdogMode
+from tether.runtime.daemon_call import daemon_thread_call
+from tether.runtime.watchdog_mode import WatchdogMode
 
 logger = logging.getLogger(__name__)
 
@@ -48,7 +48,7 @@ class HardwareWatchdog:
       can pass the engine's full provider set.
     * ``mode``: :attr:`WatchdogMode.LIBRARY` (caller manages signals) or
       :attr:`WatchdogMode.SERVER` (signal handlers installed externally
-      by :class:`tether_service.runtime.signal_supervisor.SignalSupervisor`;
+      by :class:`tether.runtime.signal_supervisor.SignalSupervisor`;
       this class only does shutdown).
 
     The class itself is intentionally small — most concurrency lives in

@@ -9,12 +9,12 @@ from pathlib import Path
 
 import pytest
 
-from tether_service.core.logging import (
+from tether.core.logging import (
     configure_logging,
     reset_logging_for_tests,
     logger,
 )
-from tether_service.config.settings import (
+from tether.config.settings import (
     Settings,
     ObservabilitySettings,
     LogsSettings,
@@ -32,7 +32,7 @@ def _reset_logging():
 
 def _make_settings(tmp_path: Path, *, file_path: str | None = None, console: bool = False, file_enabled: bool = True) -> Settings:
     """Build a minimal Settings object for logging tests."""
-    from tether_service.config.settings import load_settings
+    from tether.config.settings import load_settings
     # Use load_settings to get the full defaults, then we test the observability sub-model
     # by constructing ObservabilitySettings directly.
     base = load_settings()
@@ -79,7 +79,7 @@ def test_configure_logging_redacts_secrets(tmp_path: Path) -> None:
     settings = _make_settings(tmp_path, file_path=str(log_path))
     configure_logging(settings)
 
-    stdlib_logger = logging.getLogger("tether_service.test")
+    stdlib_logger = logging.getLogger("tether.test")
     stdlib_logger.info("Authorization: Bearer secret_token_xxxxxxxxxxxxxxx")
 
     for h in logging.getLogger().handlers:
@@ -106,7 +106,7 @@ def test_default_path_uses_platformdirs(tmp_path: Path) -> None:
 def test_logger_works_before_configure() -> None:
     """Module-level logger import works without prior configure_logging call."""
     # configure_logging has NOT been called (autouse fixture only resets the flag)
-    from tether_service.core.logging import logger as fresh_logger
+    from tether.core.logging import logger as fresh_logger
     # Should not raise — structlog lazy-binds
     fresh_logger.info("pre_config_message")
 

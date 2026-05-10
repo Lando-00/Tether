@@ -13,8 +13,8 @@ import sqlite3
 
 import pytest
 
-from tether_service.context.memory_store import MemoryStore
-from tether_service.context.sqlite_store import SqliteSessionStore
+from tether.context.memory_store import MemoryStore
+from tether.context.sqlite_store import SqliteSessionStore
 
 # Note: asyncio_mode = "auto" in pyproject.toml — no anyio marker needed.
 

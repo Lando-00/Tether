@@ -1,7 +1,7 @@
 """Core orchestration loop — thin shim around :class:`ChattyAgentOrchestrator`.
 
 ``orchestrate()`` is the legacy function-shape entry point. It now
-delegates to :class:`tether_service.protocol.orchestration.chatty.ChattyAgentOrchestrator`
+delegates to :class:`tether.protocol.orchestration.chatty.ChattyAgentOrchestrator`
 and serializes each yielded :class:`WireEvent` into legacy v0 NDJSON
 bytes via :func:`v0_compat_serialize`.
 
@@ -21,20 +21,20 @@ from __future__ import annotations
 import asyncio
 from typing import AsyncGenerator, Dict, Optional, TYPE_CHECKING
 
-from tether_service.core.interfaces import (
+from tether.core.interfaces import (
     ModelProvider,
     SessionStore,
     StreamParser,
     Tool,
 )
-from tether_service.core.types import OrchestratorConfig
-from tether_service.protocol.orchestration.cancel import AsyncEventCancelToken
-from tether_service.protocol.orchestration.emitter import v0_compat_serialize
-from tether_service.protocol.orchestration.chatty import ChattyAgentOrchestrator
-from tether_service.protocol.orchestration.tool_runner import ToolRunner
+from tether.core.types import OrchestratorConfig
+from tether.protocol.orchestration.cancel import AsyncEventCancelToken
+from tether.protocol.orchestration.emitter import v0_compat_serialize
+from tether.protocol.orchestration.chatty import ChattyAgentOrchestrator
+from tether.protocol.orchestration.tool_runner import ToolRunner
 
 if TYPE_CHECKING:
-    from tether_service.runtime.hw_watchdog import HardwareWatchdog
+    from tether.runtime.hw_watchdog import HardwareWatchdog
 
 
 async def orchestrate(

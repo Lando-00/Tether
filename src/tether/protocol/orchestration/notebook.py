@@ -19,7 +19,7 @@ from __future__ import annotations
 
 from typing import AsyncIterator, Dict, Optional, TYPE_CHECKING
 
-from tether_service.core.interfaces import (
+from tether.core.interfaces import (
     ModelProvider,
     Orchestrator,
     SessionStore,
@@ -28,11 +28,11 @@ from tether_service.core.interfaces import (
 )
 
 if TYPE_CHECKING:
-    from tether_service.core.types import OrchestratorConfig
-    from tether_service.protocol.orchestration.cancel import CancelToken
-    from tether_service.protocol.orchestration.tool_runner import ToolRunner
-    from tether_service.protocol.wire.events import WireEvent
-    from tether_service.runtime.hw_watchdog import HardwareWatchdog
+    from tether.core.types import OrchestratorConfig
+    from tether.protocol.orchestration.cancel import CancelToken
+    from tether.protocol.orchestration.tool_runner import ToolRunner
+    from tether.protocol.wire.events import WireEvent
+    from tether.runtime.hw_watchdog import HardwareWatchdog
 
 
 class NotebookOrchestrator(Orchestrator):

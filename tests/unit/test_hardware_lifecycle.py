@@ -8,7 +8,7 @@ import dataclasses
 
 import pytest
 
-from tether_service.providers.hw import (
+from tether.providers.hw import (
     HardwareLifecycle,
     HwErrorClass,
     HwHealth,

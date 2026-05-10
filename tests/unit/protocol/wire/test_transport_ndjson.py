@@ -10,13 +10,13 @@ from typing import AsyncIterator, List
 
 import pytest
 
-from tether_service.protocol.wire.events import (
+from tether.protocol.wire.events import (
     MessageStop,
     TextDelta,
     ToolCall,
     WireEvent,
 )
-from tether_service.protocol.wire.transport_ndjson import transport_ndjson
+from tether.protocol.wire.transport_ndjson import transport_ndjson
 
 
 # ---------------------------------------------------------------------------

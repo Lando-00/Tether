@@ -1,4 +1,4 @@
-"""Deprecated alias for :class:`tether_service.engine.Engine`.
+"""Deprecated alias for :class:`tether.engine.Engine`.
 
 Kept for one cycle to avoid breaking downstream callers. Removal scheduled
 for Phase 8 (per _synthesis.md §4 Phase 2 step 22 / §4 Phase 8 cleanup).
@@ -6,17 +6,17 @@ for Phase 8 (per _synthesis.md §4 Phase 2 step 22 / §4 Phase 8 cleanup).
 import warnings
 from typing import Dict
 
-from tether_service.core.interfaces import (
+from tether.core.interfaces import (
     ModelProvider,
     SessionStore,
     StreamParser,
     Tool,
 )
-from tether_service.engine import Engine
+from tether.engine import Engine
 
 
 class GenerationService(Engine):
-    """Deprecated alias for :class:`tether_service.engine.Engine`.
+    """Deprecated alias for :class:`tether.engine.Engine`.
 
     Construction emits a ``DeprecationWarning``. All methods are inherited
     from ``Engine``. New code should use ``Engine`` (or
@@ -32,7 +32,7 @@ class GenerationService(Engine):
         system_prompt: str,
     ):
         warnings.warn(
-            "GenerationService is deprecated; use tether_service.Engine "
+            "GenerationService is deprecated; use tether.Engine "
             "(or Engine.from_settings) instead. Removal scheduled for Phase 8.",
             DeprecationWarning,
             stacklevel=2,

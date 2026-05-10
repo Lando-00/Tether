@@ -16,10 +16,10 @@ from typing import Any, Dict, Optional
 
 import pytest
 
-from tether_service.core.interfaces import Tool
-from tether_service.core.types import ToolExecutionContext
-from tether_service.tools.base import BaseTool
-from tether_service.tools.time_tool import TimeTool
+from tether.core.interfaces import Tool
+from tether.core.types import ToolExecutionContext
+from tether.tools.base import BaseTool
+from tether.tools.time_tool import TimeTool
 
 
 # ---------------------------------------------------------------------------

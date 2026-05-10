@@ -15,9 +15,9 @@ from unittest.mock import AsyncMock, patch
 import pytest
 from fastapi.testclient import TestClient
 
-import tether_service.app.http.api as api_mod
-from tether_service.app.http.api import create_app
-from tether_service.runtime.watchdog_mode import WatchdogMode
+import tether.app.http.api as api_mod
+from tether.app.http.api import create_app
+from tether.runtime.watchdog_mode import WatchdogMode
 
 
 def test_lifespan_calls_engine_aclose():
@@ -100,9 +100,9 @@ def test_api_py_no_dead_imports():
         "import threading",
         "import os",
         "from typing import cast",
-        "from tether_service.core.interfaces import ModelProvider",
-        "from tether_service.core.interfaces import StreamParser",
-        "from tether_service.core.interfaces import SessionStore",
+        "from tether.core.interfaces import ModelProvider",
+        "from tether.core.interfaces import StreamParser",
+        "from tether.core.interfaces import SessionStore",
     ]
     for needle in forbidden:
         assert needle not in src, (

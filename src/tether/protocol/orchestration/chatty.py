@@ -1,6 +1,6 @@
 """ChattyAgentOrchestrator — the standard tool-loop agent.
 
-Implements the Orchestrator ABC (tether_service.core.interfaces).
+Implements the Orchestrator ABC (tether.core.interfaces).
 The "chatty agent" mode is the default Tether experience: a user
 prompt enters; the model reasons, optionally calls tools, and produces
 a final answer; events stream to the caller.
@@ -53,7 +53,7 @@ shape for deterministic tests.
 Loop-limit policy (default ``EMIT_LIMIT_EVENT``): exhausting
 ``max_tool_loops`` yields :class:`LoopLimitReached` plus
 :class:`MessageStop(stop_reason='tool_loop_exhausted')` and exits
-cleanly. ``RAISE`` raises :class:`tether_service.core.errors.LoopLimitReached`.
+cleanly. ``RAISE`` raises :class:`tether.core.errors.LoopLimitReached`.
 
 Synthesis §3.4 (Engine.chat returns AsyncIterator[WireEvent]),
 §3.5 (cancellation + policy contracts), §11.3 R1 / R3 / R6 / R7 / R10.
@@ -79,26 +79,26 @@ from typing import (
     TYPE_CHECKING,
 )
 
-from tether_service.core.errors import (
+from tether.core.errors import (
     LoopLimitReached as LoopLimitReachedError,
     TransientProviderError,
 )
-from tether_service.core.interfaces import (
+from tether.core.interfaces import (
     ModelProvider,
     Orchestrator as OrchestratorABC,
     SessionStore,
     StreamParser,
     Tool,
 )
-from tether_service.core.logging import logger
-from tether_service.core.types import OrchestratorConfig, ToolExecutionContext
-from tether_service.protocol.orchestration.cancel import CancelToken
-from tether_service.protocol.orchestration.policies import (
+from tether.core.logging import logger
+from tether.core.types import OrchestratorConfig, ToolExecutionContext
+from tether.protocol.orchestration.cancel import CancelToken
+from tether.protocol.orchestration.policies import (
     LoopLimitPolicy,
     ToolErrorPolicy,
 )
-from tether_service.protocol.orchestration.tool_runner import ToolRunner
-from tether_service.protocol.parsers.events import (
+from tether.protocol.orchestration.tool_runner import ToolRunner
+from tether.protocol.parsers.events import (
     PParseError,
     PStreamEnd,
     PText,
@@ -106,7 +106,7 @@ from tether_service.protocol.parsers.events import (
     PToolCallDetected,
     PToolCallParsed,
 )
-from tether_service.protocol.wire.events import (
+from tether.protocol.wire.events import (
     Error,
     HwReset,
     LoopLimitReached as LoopLimitReachedWire,
@@ -121,7 +121,7 @@ from tether_service.protocol.wire.events import (
 )
 
 if TYPE_CHECKING:
-    from tether_service.runtime.hw_watchdog import HardwareWatchdog
+    from tether.runtime.hw_watchdog import HardwareWatchdog
 
 
 # Synthesis §3.5: cancellation contract bounds.
@@ -152,7 +152,7 @@ def _args_sha256(args: Dict[str, Any]) -> str:
 class ChattyAgentOrchestrator(OrchestratorABC):
     """Thin async orchestrator with named seams.
 
-    Implements :class:`tether_service.core.interfaces.Orchestrator`.
+    Implements :class:`tether.core.interfaces.Orchestrator`.
     Synthesis §3.5. Construct once per :class:`Engine`; call
     :meth:`run` per turn. Stateful per-turn but thread-safe across
     turns: per-turn state lives in the async generator's closure, not

@@ -13,10 +13,10 @@ from unittest.mock import MagicMock
 
 import pytest
 
-from tether_service import Engine
-from tether_service.config.settings import Settings
-from tether_service.runtime.hw_watchdog import HardwareWatchdog
-from tether_service.runtime.watchdog_mode import WatchdogMode
+from tether import Engine
+from tether.config.settings import Settings
+from tether.runtime.hw_watchdog import HardwareWatchdog
+from tether.runtime.watchdog_mode import WatchdogMode
 
 
 @pytest.fixture
@@ -29,15 +29,15 @@ def _settings_dict(tmp_db: str) -> dict:
         "system": {"prompt": "test-prompt"},
         "providers": {
             "model": {
-                "impl": "tether_service.providers.dummy.provider.DummyProvider",
+                "impl": "tether.providers.dummy.provider.DummyProvider",
                 "args": {},
             },
             "parser": {
-                "impl": "tether_service.protocol.parsers.sliding.SlidingParser",
+                "impl": "tether.protocol.parsers.sliding.SlidingParser",
                 "args": {},
             },
             "session_store": {
-                "impl": "tether_service.context.sqlite_store.SqliteSessionStore",
+                "impl": "tether.context.sqlite_store.SqliteSessionStore",
                 "args": {"dsn": f"sqlite:///{tmp_db}"},
             },
         },
@@ -147,7 +147,7 @@ def test_engine_watchdog_mode_library_default(settings):
 def test_engine_watchdog_mode_server_via_create_app():
     """create_app() builds Engine with watchdog_mode=WatchdogMode.SERVER per
     Phase 3 step 35 (HTTP entry point is the canonical SERVER-mode caller)."""
-    from tether_service.app.http.api import create_app
+    from tether.app.http.api import create_app
 
     app = create_app()
     engine = app.state.gen_svc

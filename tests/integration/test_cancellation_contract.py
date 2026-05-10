@@ -20,17 +20,17 @@ from typing import Any, AsyncGenerator, Dict, List, Optional
 
 import pytest
 
-from tether_service.core.interfaces import ModelProvider, Tool
-from tether_service.core.types import OrchestratorConfig, ToolExecutionContext
-from tether_service.protocol.orchestration.cancel import AsyncEventCancelToken
-from tether_service.protocol.orchestration.chatty import ChattyAgentOrchestrator
-from tether_service.protocol.orchestration.policies import (
+from tether.core.interfaces import ModelProvider, Tool
+from tether.core.types import OrchestratorConfig, ToolExecutionContext
+from tether.protocol.orchestration.cancel import AsyncEventCancelToken
+from tether.protocol.orchestration.chatty import ChattyAgentOrchestrator
+from tether.protocol.orchestration.policies import (
     LoopLimitPolicy,
     ToolErrorPolicy,
 )
-from tether_service.protocol.orchestration.tool_runner import ToolRunner
-from tether_service.protocol.parsers.sliding import SlidingParser
-from tether_service.protocol.wire.events import (
+from tether.protocol.orchestration.tool_runner import ToolRunner
+from tether.protocol.parsers.sliding import SlidingParser
+from tether.protocol.wire.events import (
     MessageStop,
     TextDelta,
     ToolCall,

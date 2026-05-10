@@ -3,8 +3,8 @@ Unit tests for the SlidingParser with focus on tool call detection.
 Tests chunk boundaries, newlines, balanced JSON, and quoted braces.
 """
 import pytest
-from tether_service.protocol.parsers.sliding import SlidingParser
-from tether_service.protocol.parsers.events import (
+from tether.protocol.parsers.sliding import SlidingParser
+from tether.protocol.parsers.events import (
     PParseError,
     PText,
     PThink,

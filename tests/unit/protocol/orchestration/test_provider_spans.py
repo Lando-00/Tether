@@ -22,16 +22,16 @@ import pytest
 import structlog.contextvars
 from structlog.testing import capture_logs
 
-from tether_service.core.interfaces import ModelProvider, SessionStore
-from tether_service.core.types import OrchestratorConfig
-from tether_service.protocol.orchestration.cancel import CancelToken
-from tether_service.protocol.orchestration.chatty import ChattyAgentOrchestrator
-from tether_service.protocol.orchestration.policies import (
+from tether.core.interfaces import ModelProvider, SessionStore
+from tether.core.types import OrchestratorConfig
+from tether.protocol.orchestration.cancel import CancelToken
+from tether.protocol.orchestration.chatty import ChattyAgentOrchestrator
+from tether.protocol.orchestration.policies import (
     LoopLimitPolicy,
     ToolErrorPolicy,
 )
-from tether_service.protocol.orchestration.tool_runner import ToolRunner
-from tether_service.protocol.parsers.sliding import SlidingParser
+from tether.protocol.orchestration.tool_runner import ToolRunner
+from tether.protocol.parsers.sliding import SlidingParser
 
 from tests.golden.conftest import MinimalMemoryStore
 
@@ -358,7 +358,7 @@ async def test_cancellation_path_cancelled_error_propagates():
         ):
             events.append(evt)
 
-    from tether_service.protocol.wire.events import MessageStop
+    from tether.protocol.wire.events import MessageStop
     stop_events = [e for e in events if isinstance(e, MessageStop)]
     assert len(stop_events) == 1, f"Expected 1 MessageStop, got {len(stop_events)}"
     assert stop_events[0].stop_reason == "cancelled"

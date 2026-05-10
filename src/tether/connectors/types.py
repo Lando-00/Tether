@@ -1,7 +1,7 @@
 """Connector framework types.
 
 Per connector spec §3.2 + §3.5. Types only; no behavior. Used by the
-:class:`tether_service.connectors.base.Connector` ABC, the future
+:class:`tether.connectors.base.Connector` ABC, the future
 ``ConnectorRegistry`` (``p4_5-connector-registry``), and the future HTTP
 routes (``p4_5-engine-wiring-routes``).
 

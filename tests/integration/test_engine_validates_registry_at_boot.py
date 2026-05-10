@@ -14,7 +14,7 @@ from __future__ import annotations
 
 import pytest
 
-from tether_service.config.settings import Settings
+from tether.config.settings import Settings
 
 
 def _settings_dict(tmp_db: str, *, orchestrator: dict | None = None) -> dict:
@@ -23,15 +23,15 @@ def _settings_dict(tmp_db: str, *, orchestrator: dict | None = None) -> dict:
         "system": {"prompt": "test-prompt"},
         "providers": {
             "model": {
-                "impl": "tether_service.providers.dummy.provider.DummyProvider",
+                "impl": "tether.providers.dummy.provider.DummyProvider",
                 "args": {},
             },
             "parser": {
-                "impl": "tether_service.protocol.parsers.sliding.SlidingParser",
+                "impl": "tether.protocol.parsers.sliding.SlidingParser",
                 "args": {},
             },
             "session_store": {
-                "impl": "tether_service.context.sqlite_store.SqliteSessionStore",
+                "impl": "tether.context.sqlite_store.SqliteSessionStore",
                 "args": {"dsn": f"sqlite:///{tmp_db}"},
             },
         },
@@ -58,22 +58,22 @@ def test_invalid_dotted_path_raises_at_boot(tmp_path):
                 "default": "chat",
                 "registry": {
                     "chat": (
-                        "tether_service.protocol.orchestration.chatty"
+                        "tether.protocol.orchestration.chatty"
                         ".ChattyAgentOrchestrator"
                     ),
                     "research": (
-                        "tether_service.protocol.orchestration.notebook"
+                        "tether.protocol.orchestration.notebook"
                         ".NotebookOrchestrator"
                     ),
                     "broken": (
-                        "tether_service.does_not_exist.NotAClass"
+                        "tether.does_not_exist.NotAClass"
                     ),
                 },
             },
         )
     )
 
-    from tether_service.engine import Engine
+    from tether.engine import Engine
 
     with pytest.raises(ValueError, match="invalid"):
         Engine.from_settings(settings)
@@ -91,7 +91,7 @@ def test_non_orchestrator_class_raises_at_boot(tmp_path):
                 "default": "chat",
                 "registry": {
                     "chat": (
-                        "tether_service.protocol.orchestration.chatty"
+                        "tether.protocol.orchestration.chatty"
                         ".ChattyAgentOrchestrator"
                     ),
                     "wrong_type": "json.JSONDecoder",
@@ -100,7 +100,7 @@ def test_non_orchestrator_class_raises_at_boot(tmp_path):
         )
     )
 
-    from tether_service.engine import Engine
+    from tether.engine import Engine
 
     with pytest.raises(ValueError, match="invalid"):
         Engine.from_settings(settings)
@@ -118,11 +118,11 @@ def test_unresolvable_attribute_raises_at_boot(tmp_path):
                 "default": "chat",
                 "registry": {
                     "chat": (
-                        "tether_service.protocol.orchestration.chatty"
+                        "tether.protocol.orchestration.chatty"
                         ".ChattyAgentOrchestrator"
                     ),
                     "missing_attr": (
-                        "tether_service.protocol.orchestration.chatty"
+                        "tether.protocol.orchestration.chatty"
                         ".NotARealClass"
                     ),
                 },
@@ -130,7 +130,7 @@ def test_unresolvable_attribute_raises_at_boot(tmp_path):
         )
     )
 
-    from tether_service.engine import Engine
+    from tether.engine import Engine
 
     with pytest.raises(ValueError, match="invalid"):
         Engine.from_settings(settings)
@@ -141,7 +141,7 @@ def test_valid_registry_loads_normally(tmp_path):
     db = tmp_path / "f6.db"
     settings = Settings.model_validate(_settings_dict(str(db)))
 
-    from tether_service.engine import Engine
+    from tether.engine import Engine
 
     engine = Engine.from_settings(settings)
     assert engine is not None

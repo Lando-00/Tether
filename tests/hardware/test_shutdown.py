@@ -14,7 +14,7 @@ async def test_mlc_provider_shutdown_no_models_loaded():
     Preserves the assertion intent of the original test_shutdown.py:
     both shutdown_all() calls must complete without raising.
     """
-    from tether_service.providers.mlc.provider import MLCProvider
+    from tether.providers.mlc.provider import MLCProvider
 
     provider = MLCProvider(dist_root="dist", device="auto")
     models = provider.list_models()

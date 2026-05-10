@@ -1,4 +1,4 @@
-"""Unit tests for ``tether_service.connectors.types``.
+"""Unit tests for ``tether.connectors.types``.
 
 Covers ConnectorState enum, frozen dataclass invariants, and LoginPrompt
 literal validation. Per connector spec §3.2 + §3.5; synthesis §4 Phase 4.5
@@ -11,7 +11,7 @@ from datetime import datetime, timezone
 
 import pytest
 
-from tether_service.connectors.types import (
+from tether.connectors.types import (
     AuthStatus,
     ConnectorState,
     HealthStatus,

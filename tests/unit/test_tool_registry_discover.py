@@ -17,9 +17,9 @@ from unittest.mock import patch
 
 import pytest
 
-from tether_service.core.tool_registry import ToolRegistry
-from tether_service.tools.base import BaseTool
-from tether_service.tools.registration import (
+from tether.core.tool_registry import ToolRegistry
+from tether.tools.base import BaseTool
+from tether.tools.registration import (
     _DECORATED_TOOLS,
     _clear_registry,
     tool,
@@ -145,7 +145,7 @@ def test_tool_registry_legacy_path_works():
     sentinel = object()
 
     with patch(
-        "tether_service.core.tool_registry.load",
+        "tether.core.tool_registry.load",
         return_value=sentinel,
     ):
         reg = ToolRegistry(cfg, ["x"])
@@ -158,7 +158,7 @@ def test_tool_registry_legacy_construction_failure_still_raises():
     """Legacy path's fail-fast (Phase 0A) still works."""
     cfg = [{"name": "boom", "impl": "x.B"}]
     with patch(
-        "tether_service.core.tool_registry.load",
+        "tether.core.tool_registry.load",
         side_effect=ValueError("legacy boom"),
     ):
         with pytest.raises(RuntimeError) as exc_info:
@@ -191,7 +191,7 @@ def test_from_settings_legacy_when_registry_non_empty():
     settings = SimpleNamespace(tools=tools_settings)
 
     with patch(
-        "tether_service.core.tool_registry.load",
+        "tether.core.tool_registry.load",
         return_value=sentinel,
     ):
         reg = ToolRegistry.from_settings(settings)
@@ -305,7 +305,7 @@ def test_tool_registry_calls_validate_unique_names_with_forbidden(monkeypatch):
         captured["forbidden"] = tuple(forbidden)
 
     monkeypatch.setattr(
-        "tether_service.core.tool_registry.validate_unique_names", _spy
+        "tether.core.tool_registry.validate_unique_names", _spy
     )
 
     ToolRegistry(discovered={"a": _GoodA, "b": _GoodB})

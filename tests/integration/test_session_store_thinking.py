@@ -1,6 +1,6 @@
 import pytest
 
-from tether_service.context.sqlite_store import SqliteSessionStore
+from tether.context.sqlite_store import SqliteSessionStore
 
 
 @pytest.mark.anyio

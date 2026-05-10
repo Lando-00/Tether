@@ -12,8 +12,8 @@ import sqlite3
 
 import pytest
 
-from tether_service.config.settings import Settings
-from tether_service.engine import Engine
+from tether.config.settings import Settings
+from tether.engine import Engine
 
 # yoyo 8.x uses datetime.utcnow() internally; suppress its DeprecationWarning
 # so that `-W error::DeprecationWarning` sweeps stay clean.
@@ -27,15 +27,15 @@ def _settings(db_path: str) -> Settings:
             "system": {"prompt": "migration-test-prompt"},
             "providers": {
                 "model": {
-                    "impl": "tether_service.providers.dummy.provider.DummyProvider",
+                    "impl": "tether.providers.dummy.provider.DummyProvider",
                     "args": {},
                 },
                 "parser": {
-                    "impl": "tether_service.protocol.parsers.sliding.SlidingParser",
+                    "impl": "tether.protocol.parsers.sliding.SlidingParser",
                     "args": {},
                 },
                 "session_store": {
-                    "impl": "tether_service.context.sqlite_store.SqliteSessionStore",
+                    "impl": "tether.context.sqlite_store.SqliteSessionStore",
                     "args": {"dsn": f"sqlite:///{db_path}"},
                 },
             },

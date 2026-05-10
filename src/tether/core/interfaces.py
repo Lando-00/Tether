@@ -1,13 +1,13 @@
 from abc import ABC, abstractmethod
 from typing import Any, AsyncGenerator, AsyncIterator, Dict, List, Optional, TYPE_CHECKING
 
-from tether_service.protocol.parsers.events import ParserEvent
-from tether_service.providers.types import ProviderCapabilities, ProviderEvent
+from tether.protocol.parsers.events import ParserEvent
+from tether.providers.types import ProviderCapabilities, ProviderEvent
 
 if TYPE_CHECKING:
-    from tether_service.core.types import ToolExecutionContext
-    from tether_service.protocol.orchestration.cancel import CancelToken
-    from tether_service.protocol.wire.events import WireEvent
+    from tether.core.types import ToolExecutionContext
+    from tether.protocol.orchestration.cancel import CancelToken
+    from tether.protocol.wire.events import WireEvent
 
 
 class ModelProvider(ABC):
@@ -155,7 +155,7 @@ class StreamParser(ABC):
         """Ingest a raw model chunk and return zero or more typed parser events.
 
         Phase 5 ``p5-parser-typed-events``: returns
-        :class:`tether_service.protocol.parsers.events.ParserEvent` values
+        :class:`tether.protocol.parsers.events.ParserEvent` values
         (frozen dataclasses), not dicts. Synthesis §4 Phase 5 step 51.
         """
         ...
@@ -165,7 +165,7 @@ class StreamParser(ABC):
         """Flush any residual state and return final typed parser events.
 
         Phase 5 ``p5-parser-typed-events``: returns
-        :class:`tether_service.protocol.parsers.events.ParserEvent` values.
+        :class:`tether.protocol.parsers.events.ParserEvent` values.
         Synthesis §4 Phase 5 step 51.
         """
         ...

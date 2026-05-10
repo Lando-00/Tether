@@ -22,13 +22,13 @@ from unittest.mock import AsyncMock, MagicMock
 
 import pytest
 
-import tether_service.protocol.orchestration.orchestrator as orch_mod
-from tether_service.core.interfaces import ModelProvider
-from tether_service.core.types import OrchestratorConfig
-from tether_service.protocol.orchestration.orchestrator import orchestrate
-from tether_service.protocol.orchestration.tool_runner import ToolRunner
-from tether_service.protocol.parsers.sliding import SlidingParser
-from tether_service.runtime.hw_watchdog import HardwareWatchdog
+import tether.protocol.orchestration.orchestrator as orch_mod
+from tether.core.interfaces import ModelProvider
+from tether.core.types import OrchestratorConfig
+from tether.protocol.orchestration.orchestrator import orchestrate
+from tether.protocol.orchestration.tool_runner import ToolRunner
+from tether.protocol.parsers.sliding import SlidingParser
+from tether.runtime.hw_watchdog import HardwareWatchdog
 
 from tests.golden.conftest import MinimalMemoryStore
 

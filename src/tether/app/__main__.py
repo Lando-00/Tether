@@ -1,10 +1,10 @@
-"""HTTP entry point — composition root for ``python -m tether_service.app``.
+"""HTTP entry point — composition root for ``python -m tether.app``.
 
 Loads ``.env`` (centralized here per _synthesis.md §4 Phase 2 step 26),
 constructs typed Settings, builds the FastAPI app via ``create_app()``, and
 hands it to uvicorn. Library users who construct ``Engine`` directly are
 responsible for both ``load_dotenv()`` AND signal handling (LIBRARY mode);
-see ``tether_service.__init__`` docstring.
+see ``tether.__init__`` docstring.
 
 Phase 3 follow-up: signal handling is now installed by the FastAPI
 lifespan startup (see ``app/http/api.py::lifespan``) instead of here.
@@ -16,8 +16,8 @@ the run.
 import uvicorn
 from dotenv import load_dotenv
 
-from tether_service.app.http.api import create_app
-from tether_service.config.settings import load_settings
+from tether.app.http.api import create_app
+from tether.config.settings import load_settings
 
 
 def main():

@@ -21,8 +21,8 @@ from typing import Any, ClassVar, Dict, Literal, Optional, Type
 import pytest
 from pydantic import Field, ValidationError
 
-from tether_service.core.types import ToolExecutionContext
-from tether_service.tools.base import BaseTool, ToolInputs
+from tether.core.types import ToolExecutionContext
+from tether.tools.base import BaseTool, ToolInputs
 
 
 # ---------------------------------------------------------------------------

@@ -19,7 +19,7 @@ from __future__ import annotations
 
 from typing import AsyncIterable, AsyncIterator
 
-from tether_service.protocol.wire.events import WireEvent
+from tether.protocol.wire.events import WireEvent
 
 
 async def transport_sse(

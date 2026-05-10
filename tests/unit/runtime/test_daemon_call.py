@@ -1,4 +1,4 @@
-"""Tests for ``tether_service.runtime.daemon_call.daemon_thread_call``.
+"""Tests for ``tether.runtime.daemon_call.daemon_thread_call``.
 
 Synthesis §13.4 M1.
 """
@@ -10,7 +10,7 @@ import time
 
 import pytest
 
-from tether_service.runtime.daemon_call import daemon_thread_call
+from tether.runtime.daemon_call import daemon_thread_call
 
 
 @pytest.fixture(autouse=True)

@@ -24,8 +24,8 @@ def load_settings_legacy() -> Dict[str, Any]:
     """
     DEPRECATED (one-cycle coexistence): legacy ``dict``-returning loader.
 
-    Use :func:`tether_service.config.settings.load_settings` for new code; that
-    returns a typed :class:`tether_service.config.settings.Settings`. This
+    Use :func:`tether.config.settings.load_settings` for new code; that
+    returns a typed :class:`tether.config.settings.Settings`. This
     function is preserved unchanged so that existing call sites continue to
     work; ``p2-cleanup`` will migrate them and delete this name.
 
@@ -33,7 +33,7 @@ def load_settings_legacy() -> Dict[str, Any]:
     using ``TETHER__A__B=val`` -> ``cfg['a']['b']=parsed(val)``.
     """
     # base config dir within package
-    pkg_root = resources.files("tether_service.config")
+    pkg_root = resources.files("tether.config")
     cfg = _yaml_load_text(pkg_root / "default.yml")
 
     dev_file = pkg_root / "dev.yml"

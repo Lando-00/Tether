@@ -30,8 +30,8 @@ from __future__ import annotations
 
 import asyncio
 
-from tether_service.core.errors import FatalProviderError, TransientProviderError
-from tether_service.providers.hw import HwErrorClass
+from tether.core.errors import FatalProviderError, TransientProviderError
+from tether.providers.hw import HwErrorClass
 
 
 def _classify_raw(exc: BaseException) -> HwErrorClass:

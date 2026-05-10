@@ -3,10 +3,10 @@ from typing import Any, ClassVar, Dict, List, Literal, Optional, Type, TYPE_CHEC
 
 from pydantic import BaseModel, ConfigDict
 
-from tether_service.core.interfaces import Tool
+from tether.core.interfaces import Tool
 
 if TYPE_CHECKING:
-    from tether_service.core.types import ToolExecutionContext
+    from tether.core.types import ToolExecutionContext
 
 
 class ToolInputs(BaseModel):
@@ -139,7 +139,7 @@ class BaseTool(Tool):
         Default no-op. Subclasses override when they own a resource that
         outlives a single ``invoke()`` call. Called once per
         ``Engine.__aenter__`` via
-        :func:`tether_service.tools.lifecycle.startup_all`.
+        :func:`tether.tools.lifecycle.startup_all`.
 
         If this method raises:
 
@@ -473,7 +473,7 @@ class BaseTool(Tool):
 
         Reads the class-level marker attribute
         (``_tether_tool_registered_name``) installed by
-        :func:`tether_service.tools.registration.tool` at class
+        :func:`tether.tools.registration.tool` at class
         definition time. Falls back to the bare class name when an
         undecorated :class:`BaseTool` subclass is used directly (test
         fixtures).

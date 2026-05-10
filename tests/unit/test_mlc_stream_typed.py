@@ -15,8 +15,8 @@ from unittest.mock import AsyncMock, MagicMock
 
 import pytest
 
-from tether_service.providers.mlc.provider import MLCProvider
-from tether_service.providers.types import (
+from tether.providers.mlc.provider import MLCProvider
+from tether.providers.types import (
     ProviderCapabilities,
     ProviderText,
     ProviderToolCall,

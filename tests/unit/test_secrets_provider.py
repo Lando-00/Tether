@@ -1,4 +1,4 @@
-"""Unit tests for ``tether_service.core.secrets``.
+"""Unit tests for ``tether.core.secrets``.
 
 Per connector spec §3.5 + §3.6; synthesis §4 Phase 4.5 step 47a.
 """
@@ -13,7 +13,7 @@ from unittest import mock
 
 import pytest
 
-from tether_service.core.secrets import (
+from tether.core.secrets import (
     EnvFileSecretsProvider,
     SecretsProvider,
 )

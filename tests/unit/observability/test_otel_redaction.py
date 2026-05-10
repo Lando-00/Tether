@@ -1,7 +1,7 @@
 """FIX 2 — OTel adapter must redact secrets in span attributes.
 
 The structlog OTel processor runs INSIDE structlog (before the stdlib bridge),
-so :class:`tether_service.core.logging.RedactingFilter` doesn't protect span
+so :class:`tether.core.logging.RedactingFilter` doesn't protect span
 attributes. Without explicit redaction, a Bearer token in
 ``tool.error::error_message`` or an api_key in
 ``provider.stream.error::url`` would land in the OTel collector verbatim.
@@ -14,7 +14,7 @@ from __future__ import annotations
 
 import pytest
 
-from tether_service.observability.otel_adapter import _make_attrs
+from tether.observability.otel_adapter import _make_attrs
 
 
 # ---------------------------------------------------------------------------
@@ -175,11 +175,11 @@ def test_otel_span_attribute_is_redacted_end_to_end():
 
     import structlog
 
-    from tether_service.core.logging import (
+    from tether.core.logging import (
         configure_logging,
         reset_logging_for_tests,
     )
-    from tether_service.observability.otel_adapter import (
+    from tether.observability.otel_adapter import (
         reset_otel_adapter_for_tests,
     )
 
@@ -194,7 +194,7 @@ def test_otel_span_attribute_is_redacted_end_to_end():
 
     # We're going to call the adapter's processor directly — install the
     # adapter to register it inside structlog's processor chain.
-    from tether_service.config.settings import load_settings
+    from tether.config.settings import load_settings
 
     settings = load_settings(
         env={

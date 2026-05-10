@@ -8,7 +8,7 @@ import re
 import pytest
 from fastapi.testclient import TestClient
 
-from tether_service.app.http.api import create_app
+from tether.app.http.api import create_app
 
 
 @pytest.fixture

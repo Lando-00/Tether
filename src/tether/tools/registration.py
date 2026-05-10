@@ -3,8 +3,8 @@
 Replaces the old "list every tool's dotted path in YAML" pattern with a
 decorator that authors apply at class definition time:
 
-    from tether_service.tools.base import BaseTool
-    from tether_service.tools.registration import tool
+    from tether.tools.base import BaseTool
+    from tether.tools.registration import tool
 
     @tool()                         # name = ClassName w/ "Tool" stripped, lowered
     class WebSearchTool(BaseTool):
@@ -15,14 +15,14 @@ decorator that authors apply at class definition time:
         ...
 
 The decorator is a *pure annotator*: it does NOT instantiate the class.
-Instantiation happens lazily in :class:`tether_service.core.tool_registry.ToolRegistry`
+Instantiation happens lazily in :class:`tether.core.tool_registry.ToolRegistry`
 when ``Engine.from_settings`` runs. That keeps decoration cheap and free
 of side effects (no httpx clients, no DB connections at import time —
 those belong in :meth:`BaseTool.startup`).
 
 Discovery has two surfaces:
 
-* **In-tree**: walk packages (default ``["tether_service.tools"]``) and
+* **In-tree**: walk packages (default ``["tether.tools"]``) and
   let import-time decorator side-effects populate ``_DECORATED_TOOLS``.
 * **Plugins**: scan ``importlib.metadata.entry_points(group="tether.tools")``
   for installed packages that publish ``tether.tools`` entries. Synthesis
@@ -57,7 +57,7 @@ _TOOL_MARKER_ATTR = "_tether_tool_registered_name"
 
 # Composition-root registry. Populated by the decorator and by
 # ``discover()`` from entry-points; consumed by
-# :class:`tether_service.core.tool_registry.ToolRegistry`.
+# :class:`tether.core.tool_registry.ToolRegistry`.
 _DECORATED_TOOLS: Dict[str, Type] = {}
 
 
@@ -106,7 +106,7 @@ def tool(*, name: Optional[str] = None) -> Callable[[Type], Type]:
 
     Notes:
         The decorator does NOT instantiate the class. Construction is
-        deferred to :class:`tether_service.core.tool_registry.ToolRegistry`,
+        deferred to :class:`tether.core.tool_registry.ToolRegistry`,
         which runs inside ``Engine.from_settings``. This keeps decoration
         cheap and ensures resource-owning side effects live in
         :meth:`BaseTool.startup`, not at import time.
@@ -141,7 +141,7 @@ def discover(packages: Optional[List[str]] = None) -> Dict[str, Type]:
 
     Args:
         packages: Dotted package names to walk. Defaults to
-            ``["tether_service.tools"]``. Tests may pass a
+            ``["tether.tools"]``. Tests may pass a
             single-package list to scope discovery (e.g., for fixture
             packages).
 
@@ -162,7 +162,7 @@ def discover(packages: Optional[List[str]] = None) -> Dict[str, Type]:
     Synthesis §4 Phase 4 step 42; §13 (entry_points group reserved).
     """
     if packages is None:
-        packages = ["tether_service.tools"]
+        packages = ["tether.tools"]
 
     for pkg_name in packages:
         try:

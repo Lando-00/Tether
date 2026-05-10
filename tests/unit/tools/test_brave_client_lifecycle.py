@@ -23,7 +23,7 @@ from unittest.mock import AsyncMock, MagicMock, patch
 import httpx
 import pytest
 
-from tether_service.tools.brave_client import BraveSearchClient
+from tether.tools.brave_client import BraveSearchClient
 
 
 @pytest.mark.asyncio

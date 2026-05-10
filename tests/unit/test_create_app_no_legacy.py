@@ -8,9 +8,9 @@ from __future__ import annotations
 
 import inspect
 
-import tether_service.app.http.api as api_mod
-from tether_service.app.http.api import create_app
-from tether_service.engine import Engine
+import tether.app.http.api as api_mod
+from tether.app.http.api import create_app
+from tether.engine import Engine
 
 
 def test_create_app_uses_engine_from_settings():
@@ -34,11 +34,11 @@ def test_create_app_imports():
     src = inspect.getsource(api_mod)
     forbidden = [
         "from typing import cast",
-        "from tether_service.core.interfaces import ModelProvider",
-        "from tether_service.core.interfaces import StreamParser",
-        "from tether_service.core.interfaces import SessionStore",
-        "from tether_service.protocol.service.generation_service import GenerationService",
-        "from tether_service.core.factory import load",
+        "from tether.core.interfaces import ModelProvider",
+        "from tether.core.interfaces import StreamParser",
+        "from tether.core.interfaces import SessionStore",
+        "from tether.protocol.service.generation_service import GenerationService",
+        "from tether.core.factory import load",
     ]
     for needle in forbidden:
         assert needle not in src, f"api.py still imports legacy symbol: {needle!r}"

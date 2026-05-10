@@ -13,7 +13,7 @@ from __future__ import annotations
 
 import pytest
 
-from tether_service.app.http.routers.chat import _has_version_0, _has_version_1_0
+from tether.app.http.routers.chat import _has_version_0, _has_version_1_0
 
 
 # ---------------------------------------------------------------------------

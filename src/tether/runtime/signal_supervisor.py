@@ -15,7 +15,7 @@ Behavior on signal:
     4. If a SECOND signal arrives, force-exit immediately.
 
 LIBRARY-mode users do NOT install this — they manage signals themselves
-(per :class:`tether_service.runtime.watchdog_mode.WatchdogMode.LIBRARY`
+(per :class:`tether.runtime.watchdog_mode.WatchdogMode.LIBRARY`
 contract). ``p3-lifespan-slim`` will install it from ``__main__.py`` for
 SERVER-mode startup.
 

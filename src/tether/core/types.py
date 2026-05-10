@@ -4,13 +4,13 @@ from dataclasses import dataclass
 from enum import StrEnum
 from typing import TYPE_CHECKING, TypedDict, Dict, Any, Optional
 
-from tether_service.protocol.orchestration.policies import (
+from tether.protocol.orchestration.policies import (
     LoopLimitPolicy,
     ToolErrorPolicy,
 )
 
 if TYPE_CHECKING:
-    from tether_service.config.settings import Settings
+    from tether.config.settings import Settings
 
 
 class StreamEvent(StrEnum):

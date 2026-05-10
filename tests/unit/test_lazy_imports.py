@@ -1,6 +1,6 @@
 """Library-first import surface tests.
 
-``import tether_service`` must NOT pull in FastAPI, MLC, Brave, or the
+``import tether`` must NOT pull in FastAPI, MLC, Brave, or the
 orchestrator. Per _synthesis.md §4 Phase 2 step 22 (R8 lazy-import rule).
 
 These tests run in subprocesses because pytest itself loads many modules,
@@ -15,13 +15,13 @@ import sys
 PYTHON = sys.executable
 
 
-def _module_loaded_after_import_tether_service(module_name: str) -> bool:
-    """Run ``import tether_service`` in a fresh subprocess and check whether
+def _module_loaded_after_import_tether(module_name: str) -> bool:
+    """Run ``import tether`` in a fresh subprocess and check whether
     ``module_name`` ended up in ``sys.modules``.
     """
     code = (
         "import sys\n"
-        "import tether_service  # noqa: F401\n"
+        "import tether  # noqa: F401\n"
         f"print({module_name!r} in sys.modules)\n"
     )
     res = subprocess.run(
@@ -35,30 +35,30 @@ def _module_loaded_after_import_tether_service(module_name: str) -> bool:
     return out == "True"
 
 
-def test_import_tether_service_does_not_load_fastapi():
-    assert not _module_loaded_after_import_tether_service("fastapi")
+def test_import_tether_does_not_load_fastapi():
+    assert not _module_loaded_after_import_tether("fastapi")
 
 
-def test_import_tether_service_does_not_load_mlc():
-    assert not _module_loaded_after_import_tether_service("mlc_llm")
+def test_import_tether_does_not_load_mlc():
+    assert not _module_loaded_after_import_tether("mlc_llm")
 
 
-def test_import_tether_service_does_not_load_brave_client():
-    assert not _module_loaded_after_import_tether_service(
-        "tether_service.tools.brave_client"
+def test_import_tether_does_not_load_brave_client():
+    assert not _module_loaded_after_import_tether(
+        "tether.tools.brave_client"
     )
 
 
-def test_import_tether_service_does_not_load_orchestrator():
-    assert not _module_loaded_after_import_tether_service(
-        "tether_service.protocol.orchestration.orchestrator"
+def test_import_tether_does_not_load_orchestrator():
+    assert not _module_loaded_after_import_tether(
+        "tether.protocol.orchestration.orchestrator"
     )
 
 
-def test_import_tether_service_does_not_load_connectors_router():
+def test_import_tether_does_not_load_connectors_router():
     """Phase 4.5 step 47e: the HTTP connectors router pulls in FastAPI
-    and the connector spec types; ``import tether_service`` must NOT
+    and the connector spec types; ``import tether`` must NOT
     eagerly trigger that — only :func:`create_app` does."""
-    assert not _module_loaded_after_import_tether_service(
-        "tether_service.app.http.routers.connectors"
+    assert not _module_loaded_after_import_tether(
+        "tether.app.http.routers.connectors"
     )

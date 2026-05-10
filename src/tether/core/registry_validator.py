@@ -2,7 +2,7 @@
 
 A pure, dependency-free helper used by:
 
-* :class:`tether_service.core.tool_registry.ToolRegistry` (Phase 4) — checks
+* :class:`tether.core.tool_registry.ToolRegistry` (Phase 4) — checks
   that no in-tree tool name collides with a forbidden set (empty in Phase 4;
   populated with connector-prefixed names by Phase 4.5).
 * (future) ``ConnectorRegistry`` (Phase 4.5 — connector spec §3.3) — enforces

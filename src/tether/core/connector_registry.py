@@ -6,7 +6,7 @@ Boot-time validation of connector tool names per connector spec §3.3:
 * No two connectors expose the same tool name.
 * No connector tool collides with the in-tree ``tools.registry``.
 
-Validation reuses :func:`tether_service.core.registry_validator.validate_unique_names`
+Validation reuses :func:`tether.core.registry_validator.validate_unique_names`
 (synthesis §13.4 M5) so the wording of error messages and the contract for
 "a valid set of registered names" stays in one place.
 
@@ -15,7 +15,7 @@ Lifecycle: :meth:`start_connector` / :meth:`stop_connector` /
 cooperative budget (connector spec §3.3 step 6); blocking native cleanup
 remains the connector's responsibility — concrete connectors with native
 cleanup needs are expected to mirror the daemon-thread + force-exit pattern
-documented on :class:`tether_service.connectors.base.Connector` (Phase 3
+documented on :class:`tether.connectors.base.Connector` (Phase 3
 ``HardwareWatchdog``).
 
 OAuth state for the spec §3.8 callback handshake is held in a small
@@ -36,10 +36,10 @@ import time
 from pathlib import Path
 from typing import Any, Dict, List, Optional, Set
 
-from tether_service.connectors.base import Connector
-from tether_service.connectors.types import ConnectorState
-from tether_service.core.interfaces import Tool
-from tether_service.core.registry_validator import validate_unique_names
+from tether.connectors.base import Connector
+from tether.connectors.types import ConnectorState
+from tether.core.interfaces import Tool
+from tether.core.registry_validator import validate_unique_names
 
 logger = logging.getLogger(__name__)
 
@@ -298,7 +298,7 @@ class ConnectorRegistry:
         potentially blocking native cleanup MUST themselves use the
         daemon-thread + force-exit pattern that
         ``shutdown_provider_with_timeout()`` uses for the MLC provider
-        (see :class:`tether_service.connectors.base.Connector` docstring).
+        (see :class:`tether.connectors.base.Connector` docstring).
 
         Exceptions raised by ``stop()`` are logged but never re-raised so
         one failing connector cannot block shutdown of the others when

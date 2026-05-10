@@ -14,11 +14,11 @@ from typing import List
 
 import pytest
 
-from tether_service.config.settings import Settings
-from tether_service.core.interfaces import StreamParser
-from tether_service.engine import Engine
-from tether_service.protocol.parsers.sliding import SlidingParser
-from tether_service.protocol.wire.events import MessageStart, MessageStop
+from tether.config.settings import Settings
+from tether.core.interfaces import StreamParser
+from tether.engine import Engine
+from tether.protocol.parsers.sliding import SlidingParser
+from tether.protocol.wire.events import MessageStart, MessageStop
 
 
 @pytest.fixture
@@ -32,15 +32,15 @@ def _settings(tmp_path) -> Settings:
             "system": {"prompt": "sys"},
             "providers": {
                 "model": {
-                    "impl": "tether_service.providers.dummy.provider.DummyProvider",
+                    "impl": "tether.providers.dummy.provider.DummyProvider",
                     "args": {},
                 },
                 "parser": {
-                    "impl": "tether_service.protocol.parsers.sliding.SlidingParser",
+                    "impl": "tether.protocol.parsers.sliding.SlidingParser",
                     "args": {},
                 },
                 "session_store": {
-                    "impl": "tether_service.context.sqlite_store.SqliteSessionStore",
+                    "impl": "tether.context.sqlite_store.SqliteSessionStore",
                     "args": {"dsn": f"sqlite:///{tmp_path}/concurrent.db"},
                 },
             },

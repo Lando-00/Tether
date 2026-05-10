@@ -14,8 +14,8 @@ from threading import Lock
 from typing import Any, AsyncGenerator, Dict, List, Optional
 
 from mlc_llm import AsyncMLCEngine
-from tether_service.core.interfaces import ModelProvider
-from tether_service.providers.hw import HwErrorClass, HwHealth
+from tether.core.interfaces import ModelProvider
+from tether.providers.hw import HwErrorClass, HwHealth
 
 # §security R-pathtraversal: model_name must be a plain directory component.
 # This pattern deliberately excludes path separators, colons, and any other
@@ -384,7 +384,7 @@ class MLCProvider(ModelProvider):
         ``providers.mlc.errors`` module load off the import-time path of
         anything that just touches ``MLCProvider``'s class object.
         """
-        from tether_service.providers.mlc.errors import classify_mlc_error
+        from tether.providers.mlc.errors import classify_mlc_error
         return classify_mlc_error(exc)
 
     async def hw_reset(self, model_name: str) -> None:
@@ -484,7 +484,7 @@ class MLCProvider(ModelProvider):
     def capabilities(self):
         # Lazy-import to keep ``providers/types`` off the import-time path
         # of any code that just touches MLCProvider's class object.
-        from tether_service.providers.types import ProviderCapabilities
+        from tether.providers.types import ProviderCapabilities
         return ProviderCapabilities(
             streaming=True,
             tools_native=True,         # MLC supports OpenAI tools API.
@@ -542,7 +542,7 @@ class MLCProvider(ModelProvider):
         contract documents them) but are not threaded through to the
         legacy ``stream()`` yet — Phase 5 will add the wiring.
         """
-        from tether_service.providers.types import (
+        from tether.providers.types import (
             ProviderText,
             ProviderToolCall,
         )
@@ -768,11 +768,11 @@ class MLCProvider(ModelProvider):
             # raise typed errors so the orchestrator and watchdog can branch
             # on class, not on substring grep. Lazy-imported here so import
             # of this module doesn't pull errors.py.
-            from tether_service.core.errors import (
+            from tether.core.errors import (
                 FatalProviderError,
                 TransientProviderError,
             )
-            from tether_service.providers.mlc.errors import classify_mlc_error
+            from tether.providers.mlc.errors import classify_mlc_error
 
             error_type = type(e).__name__
             error_msg = str(e)

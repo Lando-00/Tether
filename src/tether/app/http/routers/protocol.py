@@ -23,7 +23,7 @@ from fastapi import APIRouter
 from fastapi.responses import PlainTextResponse
 from pydantic import TypeAdapter
 
-from tether_service.protocol.wire.events import (
+from tether.protocol.wire.events import (
     PROTOCOL_VERSION,
     MessageStart,
     MessageStop,

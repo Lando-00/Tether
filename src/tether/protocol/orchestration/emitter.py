@@ -3,7 +3,7 @@
 Two paths:
 
   - :func:`v0_compat_serialize` — Translates a typed
-    :data:`tether_service.protocol.wire.events.WireEvent` into the
+    :data:`tether.protocol.wire.events.WireEvent` into the
     legacy v0 NDJSON dict bytes (e.g., ``MessageStop`` →
     ``{"type": "done", ...}``, ``TextDelta`` → ``{"type": "text", ...}``).
     This keeps the bytes wire UNCHANGED while the orchestrator switches
@@ -24,7 +24,7 @@ import json
 from datetime import datetime, timezone
 from typing import Any, Dict
 
-from tether_service.protocol.wire.events import (
+from tether.protocol.wire.events import (
     Error,
     HwReset,
     LoopLimitReached,

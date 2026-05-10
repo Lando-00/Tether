@@ -25,10 +25,10 @@ from unittest.mock import AsyncMock, patch
 from fastapi import APIRouter, FastAPI
 from fastapi.testclient import TestClient
 
-from tether_service.app.http.api import create_app, lifespan
-from tether_service.app.http.routers.health import router as health_router
-from tether_service.connectors.base import Connector
-from tether_service.connectors.types import (
+from tether.app.http.api import create_app, lifespan
+from tether.app.http.routers.health import router as health_router
+from tether.connectors.base import Connector
+from tether.connectors.types import (
     AuthStatus,
     ConnectorState,
     HealthStatus,
@@ -36,11 +36,11 @@ from tether_service.connectors.types import (
     LoginContinueResult,
     LoginPrompt,
 )
-from tether_service.core.connector_registry import ConnectorRegistry
-from tether_service.core.interfaces import Tool
-from tether_service.engine import Engine
-from tether_service.protocol.parsers.sliding import SlidingParser
-from tether_service.providers.dummy.provider import DummyProvider
+from tether.core.connector_registry import ConnectorRegistry
+from tether.core.interfaces import Tool
+from tether.engine import Engine
+from tether.protocol.parsers.sliding import SlidingParser
+from tether.providers.dummy.provider import DummyProvider
 
 
 # ---------------------------------------------------------------------------
