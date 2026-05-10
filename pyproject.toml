@@ -26,6 +26,7 @@ dependencies = [
     "aiosqlite>=0.19,<1",
     "yoyo-migrations>=8.2,<9",
     "platformdirs>=4.0,<5",
+    "structlog>=24.1,<26",
 ]
 
 [project.optional-dependencies]
