@@ -22,7 +22,7 @@ current work-in-progress state and [`AGENTS.md`](./AGENTS.md) for AI-agent navig
 | Snapdragon X Elite | Adreno 740 GPU, OpenCL backend — required for MLC/Adreno runtime |
 | Python 3.12 | via `conda` environment named `mlc-venv2` |
 | MLC-LLM runtime | Qualcomm CodeLinaro wheels (see `environment.yml`) |
-| Compiled MLC model | Set `TETHER_MODELS_DIR` to parent directory (falls back to `dist/`) |
+| Compiled MLC model | Set `TETHER_MODELS_DIR` to parent directory (defaults to `./models/`) |
 
 ### Install
 
