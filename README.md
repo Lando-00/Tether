@@ -1,1029 +1,149 @@
 # Tether
 
-> A personal experiment in local LLM inference with function calling
+> Single-user, local-first FastAPI service for streaming chat completions
+> from on-device LLMs with function calling and persistent sessions.
 
-Tether is a FastAPI-based service that provides session-based, streaming access to language models compiled with [MLC-LLM](https://github.com/mlc-ai/mlc-llm). This is a personal project for experimenting with running AI models locally with complete control over your data and conversations.
+Tether runs quantised language models locally via [MLC-LLM](https://github.com/mlc-ai/mlc-llm)
+on Qualcomm Adreno/OpenCL hardware. It exposes a streaming NDJSON (or SSE) API with
+tool-use (function calling), SQLite-backed session history, and a config-driven
+Model-Context-Protocol (MCP) architecture. No data leaves your machine.
 
-## 🎯 What is Tether?
+## Status
 
-Tether is my experimental playground for running large language models locally on my **Snapdragon X Elite** hardware. It started as a way to test model inference on the NPU/GPU and has evolved into a flexible service with function calling, persistent chat history, and streaming responses.
+Active development — Phase 8 refactor underway. See [`RESUME.md`](./RESUME.md) for the
+current work-in-progress state and [`AGENTS.md`](./AGENTS.md) for AI-agent navigation.
 
-The project explores how to give models access to personal data (like emails, calendars, files) while keeping everything local and private—no data leaves your machine.
-
-**Current Features:**
-
-- 🔒 **Privacy First**: Your data never leaves your machine
-- 🛠️ **Function Calling**: Models can use tools (weather, web search, custom functions)
-- 💬 **Session Management**: Persistent conversation history stored in SQLite
-- 🌊 **Streaming API**: Token-by-token responses via NDJSON
-- 🏗️ **MCP Architecture**: Clean, extensible Model-Context-Protocol design
-- ⚙️ **Config-Driven**: YAML-based configuration for easy customization
-- 🔌 **Extensible**: Add custom tools, providers, and parsers
-
-## 🚀 Background
-
-This project started as an experiment with the **Snapdragon X Elite GPU** to see how well local model inference could work on ARM-based NPU hardware. While MLC-LLM works great for this, I'm planning to add support for other providers like **Ollama** to make the tool system and personal data features accessible to anyone, regardless of hardware.
-
-## 🎯 Next Steps
-
-Current experiments and planned features:
-
-- **Email Integration**: Building tools to read, organize, and summarize emails
-- **Email Management**: Let models help categorize, prioritize, and draft responses
-- **Ollama Support**: Add Ollama as an alternative provider for broader hardware compatibility
-- **Calendar Tools**: Access and manage calendar events
-- **File System Tools**: Search and summarize local documents
-- **Personal Knowledge Base**: Use your own files as context for queries
-
-## 📋 Table of Contents
-
-- [Quick Start](#-quick-start)
-- [Architecture](#-architecture)
-- [API Documentation](#-api-documentation)
-- [Tool System](#-tool-system)
-- [Configuration](#%EF%B8%8F-configuration)
-- [Adding Custom Tools](#-adding-custom-tools)
-- [Development](#-development)
-- [Troubleshooting](#-troubleshooting)
-
-## 🏁 Quick Start
+## Quickstart
 
 ### Prerequisites
 
-- **Python 3.12**
-- **MLC-LLM runtime** installed separately (see `environment.yml` for Qualcomm CodeLinaro wheel notes)
-- **A compiled MLC model** (see [Model Setup](#model-setup))
-- **Windows/Linux/macOS** (tested on Windows with Snapdragon X Elite)
+| Requirement | Notes |
+|---|---|
+| Snapdragon X Elite | Adreno 740 GPU, OpenCL backend — required for MLC/Adreno runtime |
+| Python 3.12 | via `conda` environment named `mlc-venv2` |
+| MLC-LLM runtime | Qualcomm CodeLinaro wheels (see `environment.yml`) |
+| Compiled MLC model | Set `TETHER_MODELS_DIR` to parent directory (falls back to `dist/`) |
 
-### Installation
-
-1. **Clone the repository:**
+### Install
 
 ```powershell
-git clone https://github.com/Lando-00/Tether.git
-cd Tether
-
+conda activate mlc-venv2
+pip install -e ".[server,cli,brave]"
 ```
 
-2. **Create and activate a Python environment:**
+> **Note:** Qualcomm CodeLinaro MLC-LLM wheels must be installed separately **before**
+> the above step. See `environment.yml` for version pins and wheel download instructions.
+
+For web-search tool support, copy `.env.example` to `.env` and set `BRAVE_API_KEY`.
+
+### Run
 
 ```powershell
+python -m tether.app
+# Starts on http://127.0.0.1:8080
 
-# Using conda (recommended)
+# Or, after pip install -e ".[server]":
+tether-server
+```
 
-conda create -n mlc-venv2 python=3.12
+Interactive API docs: `http://127.0.0.1:8080/docs`
+
+### First request
+
+```powershell
+# 1. Create a session
+$sid = (Invoke-RestMethod -Method Post http://127.0.0.1:8080/api/v1/sessions).session_id
+
+# 2. Stream a reply (NDJSON — default)
+curl -N -X POST http://127.0.0.1:8080/api/v1/chat/stream `
+  -H "Content-Type: application/json" `
+  -d "{`"session_id`":`"$sid`",`"prompt`":`"What time is it?`"}"
+```
+
+The response is a stream of newline-delimited JSON objects. Each has a `type` field:
+
+| Event type      | Meaning                                            |
+|-----------------|----------------------------------------------------|
+| `message_start` | Turn begins; lists available tools                 |
+| `text_delta`    | Partial text token from the model                  |
+| `tool_call`     | Model invoked a tool (name + arguments)            |
+| `tool_result`   | Tool returned; `status` is `"ok"` or `"error"`     |
+| `message_stop`  | Turn complete                                      |
+
+For SSE framing send `Accept: text/event-stream`. See
+[`docs/architecture.md`](./docs/architecture.md#2-request-lifecycle-a-single-chat-turn)
+for the full event vocabulary.
+
+### CLI
+
+```powershell
+tether-cli   # interactive session (installed by pip install -e ".[cli]")
+```
+
+## API Reference (quick)
+
+All routes are under `/api/v1`.
+
+| Method   | Path                              | Description                      |
+|----------|-----------------------------------|----------------------------------|
+| `POST`   | `/sessions`                       | Create a new session             |
+| `GET`    | `/sessions`                       | List all sessions                |
+| `GET`    | `/sessions/{id}/messages`         | Retrieve session history         |
+| `DELETE` | `/sessions/{id}`                  | Delete one session               |
+| `DELETE` | `/sessions`                       | Delete all sessions              |
+| `POST`   | `/chat/stream`                    | Stream a chat completion         |
+| `GET`    | `/models`                         | List loaded models               |
+| `GET`    | `/health`                         | Liveness / readiness probe       |
+
+Request body for `/chat/stream`: `{"session_id": "...", "prompt": "..."}`.
+`model_name` is optional; defaults to the first model in `default.yml`.
+
+## Where to go next
+
+| You want…                         | Read…                                             |
+|-----------------------------------|---------------------------------------------------|
+| Architecture overview             | [`docs/architecture.md`](./docs/architecture.md)  |
+| Design decision records           | [`docs/adr/`](./docs/adr/)                        |
+| Operational runbooks              | [`docs/runbooks/`](./docs/runbooks/)              |
+| AI-agent navigation               | [`AGENTS.md`](./AGENTS.md)                        |
+| Current task state / resume point | [`RESUME.md`](./RESUME.md)                        |
+
+## Development
+
+```powershell
 conda activate mlc-venv2
 
-# Or using venv
+# Run the full test suite
+python -m pytest -q
 
-python -m venv venv
-.\venv\Scripts\Activate.ps1  # Windows
-source venv/bin/activate      # Linux/macOS
+# Type-check
+mypy src/tether/
 
+# Lint
+ruff check src/tether/
 ```
 
-3. **Install dependencies:**
+### Built-in tools
 
-```powershell
-pip install -e ".[server,cli,brave,dev]"
+| Tool name    | Description                            | Config required      |
+|--------------|----------------------------------------|----------------------|
+| `time`       | Current date and time                  | none                 |
+| `weather`    | Current conditions via open-meteo      | none                 |
+| `forecast`   | Multi-day forecast via open-meteo      | none                 |
+| `web_search` | Brave Search API web search            | `BRAVE_API_KEY` env  |
 
-```
+To add a custom tool: inherit `BaseTool` in `src/tether/tools/`, register it under
+`tools.registry` and `tools.enabled` in `src/tether/config/default.yml`, restart.
+See [`docs/architecture.md`](./docs/architecture.md) for the tool-calling flow.
 
-`requirements.txt` continues to work for one transition cycle, but editable install is the preferred path.
-For Snapdragon/Adreno MLC runtime wheels, follow the separate CodeLinaro notes in `environment.yml`.
+For AI coding agent conventions see [`AGENTS.md`](./AGENTS.md) and
+`.github/copilot-instructions.md`.
 
-4. **Configure environment variables:**
+## License
 
-```powershell
-# Copy the example environment file
-cp .env.example .env
+MIT — see `LICENSE`.
 
-# Edit .env and add your API keys (required for web_search tool)
-# BRAVE_API_KEY=your_key_here
+## Acknowledgments
 
-```
-
-5. **Set up MLC-LLM models** (see [Model Setup](#model-setup) below)
-
-6. **Run the service:**
-
-```powershell
-python -m tether_service.app
-
-```
-
-The API will be available at `http://localhost:8080`. Visit `http://localhost:8080/docs` for interactive API documentation.
-
-### Model Setup
-
-Tether uses [MLC-LLM](https://github.com/mlc-ai/mlc-llm) for efficient model inference. You'll need compiled models in the MLC format.
-
-#### Option 1: Download Pre-compiled Models
-
-Visit the [MLC-LLM model repository](https://huggingface.co/mlc-ai) and download a pre-compiled model. Popular options:
-
-- `Llama-3-8B-Instruct-q4f16_1-MLC`
-
-- `Phi-3-mini-4k-instruct-q4f16_1-MLC`
-
-- `Mistral-7B-Instruct-v0.3-q4f16_1-MLC`
-
-#### Option 2: Compile Your Own Model
-
-```powershell
-
-# Install MLC-LLM compilation tools
-
-pip install mlc-llm
-
-# Compile a model (example: Llama-3-8B with 4-bit quantization)
-
-mlc_llm compile meta-llama/Meta-Llama-3-8B-Instruct \
-  --quantization q4f16_1 \
-  --device auto \
-  -o dist/Llama-3-8B-Instruct-q4f16_1-MLC
-
-```
-
-#### Expected Directory Structure
-
-Place compiled models in the `dist/` directory:
-
-```text
-Tether/
-├── dist/
-│   ├── libs/                           # Shared libraries
-│   │   └── Llama-3-8B-q4f16_1.dll     # Model-specific DLL
-│   └── Llama-3-8B-Instruct-q4f16_1-MLC/
-│       ├── mlc-chat-config.json       # Model configuration
-│       ├── ndarray-cache.json         # Weight metadata
-│       └── params_*.bin               # Model weights
-```
-
-Configure the model in `tether_service/config/default.yml`:
-
-```yaml
-providers:
-  model:
-    impl: "tether_service.providers.mlc.provider.MLCProvider"
-    args:
-      dist_root: "dist"
-      model_name: "Llama-3-8B-Instruct-q4f16_1-MLC"
-      device: "auto"  # or "cuda", "vulkan", "metal"
-
-```
-
-### Basic Usage Example
-
-Here's a simple Python script to interact with the API:
-
-```python
-import requests
-import json
-
-# 1. Create a session
-
-response = requests.post("http://localhost:8080/sessions")
-session = response.json()
-session_id = session["session_id"]
-
-# 2. Stream a chat completion (v2 vocabulary — now the DEFAULT)
-
-stream_request = {
-    "session_id": session_id,
-    "prompt": "What's the weather like in Dublin?",
-    "model_name": "Llama-3-8B-Instruct-q4f16_1-MLC"
-}
-
-response = requests.post(
-    "http://localhost:8080/chat/stream",
-    json=stream_request,
-    stream=True
-)
-
-# 3. Process NDJSON events (v2 vocabulary)
-
-for line in response.iter_lines():
-    if line:
-        event = json.loads(line)
-        if event["type"] == "text_delta":
-            print(event["text"], end="", flush=True)
-        elif event["type"] == "tool_call":
-            print(f"\n[Tool: {event['name']}]")
-        elif event["type"] == "tool_result":
-            status = event.get("status", "ok")
-            if status == "ok":
-                print(f"[Result: {event.get('result')}]")
-            else:
-                print(f"[Tool error: {event.get('error')}]")
-        elif event["type"] == "message_stop":
-            print()  # newline after streaming
-
-```
-
-## 🏗️ Architecture
-
-Tether follows the **Model-Context-Protocol (MCP)** architecture, which cleanly separates concerns into distinct layers. This design makes the system highly maintainable, testable, and extensible.
-
-### MCP Layers
-
-```text
-┌─────────────────────────────────────────────────────────────┐
-│                      HTTP API Layer                          │
-│              (FastAPI Routes, WebSocket, REST)               │
-└──────────────────────┬──────────────────────────────────────┘
-                       │
-┌──────────────────────▼──────────────────────────────────────┐
-│                   Protocol Layer                             │
-│  • Orchestration (tool loop, streaming coordination)        │
-│  • Parsers (<<function_call>> detection)                    │
-│  • Event Emission (NDJSON formatting)                       │
-└──────────────┬──────────────────────┬───────────────────────┘
-               │                      │
-       ┌───────▼────────┐     ┌──────▼─────────┐
-       │  Model Layer   │     │  Context Layer  │
-       │  (Providers)   │     │  (Storage)      │
-       │                │     │                 │
-       │  • MLCProvider │     │  • SQLite Store │
-       │  • Streaming   │     │  • Sessions     │
-       │  • Inference   │     │  • History      │
-       └────────────────┘     └─────────────────┘
-
-```
-
-### Directory Structure
-
-```text
-tether_service/
-├── app/                          # HTTP API layer
-│   ├── __main__.py              # Entry point
-│   └── http/
-│       └── routers/             # FastAPI route handlers
-│           ├── chat.py          # /chat/stream endpoint
-│           ├── sessions.py      # Session CRUD
-│           ├── models.py        # Model discovery
-│           └── health.py        # Health checks
-│
-├── config/                       # Configuration files
-│   ├── default.yml              # Main config (system prompt, tools, limits)
-│   └── testing.yml              # Test configuration
-│
-├── core/                         # Core infrastructure
-│   ├── interfaces.py            # Abstract interfaces (ModelProvider, SessionStore, etc.)
-│   ├── types.py                 # Type definitions and data classes
-│   ├── factory.py               # Dependency injection container
-│   ├── config.py                # Config loading utilities
-│   ├── logging.py               # Structured logging
-│   └── tool_registry.py         # Tool discovery and registration
-│
-├── providers/                    # Model providers (implements ModelProvider)
-│   ├── mlc/
-│   │   └── provider.py          # MLC-LLM integration
-│   └── dummy/
-│       └── provider.py          # Mock provider for testing
-│
-├── context/                      # Context storage (implements SessionStore)
-│   ├── sqlite_store.py          # SQLite-based persistence with WAL mode
-│   ├── memory_store.py          # In-memory store for testing
-│   └── schema.sql               # Database schema
-│
-├── protocol/                     # Protocol layer (orchestration & parsing)
-│   ├── orchestration/
-│   │   ├── orchestrator.py      # Main coordination loop (model → parser → tools)
-│   │   └── tool_runner.py       # Tool execution with timeout
-│   ├── parsers/
-│   │   └── sliding.py           # Stateful parser for <<function_call>> detection
-│   ├── service/
-│   │   └── generation_service.py # High-level streaming API
-│   └── prompts.py               # System prompt utilities
-│
-└── tools/                        # Tool implementations (extends BaseTool)
-    ├── base.py                  # Abstract tool base class
-    ├── brave_client.py          # Brave Search API client wrapper
-    ├── time_tool.py             # Get current time
-    ├── weather_tool.py          # Weather and forecast
-    └── web_search_tool.py       # Web search via Brave Search API
-
-```
-
-### Key Design Decisions
-
-1. **Interface-Driven**: All major components implement abstract interfaces (`ModelProvider`, `SessionStore`, `Parser`), making them swappable and testable.
-
-2. **Config-First**: YAML configuration drives component wiring via dependency injection (see `core/factory.py`).
-
-3. **Stateful Parsing**: The `SlidingParser` maintains state across chunks to handle tool calls split across stream boundaries.
-
-4. **Tool Loop**: The orchestrator can execute multiple tool calls in sequence (up to `max_tool_loops`), allowing the model to "think with tools."
-
-5. **Event Streaming**: All outputs use a structured NDJSON event format with v2 vocabulary (`text_delta`, `tool_call`, `tool_result`, `message_stop`) **by default**. Legacy v0 vocabulary is available as an opt-in via `Accept: application/x-ndjson; version=0` until it is removed in a future release.
-
-## 📡 API Documentation
-
-### Endpoints
-
-#### `POST /sessions`
-
-Create a new conversation session.
-
-**Response:**
-
-```json
-{
-  "session_id": "550e8400-e29b-41d4-a716-446655440000",
-  "created_at": "2025-10-27T14:30:00Z"
-}
-
-```
-
-#### `GET /sessions`
-
-List all sessions.
-
-**Response:**
-
-```json
-[
-  {
-    "session_id": "550e8400-e29b-41d4-a716-446655440000",
-    "created_at": "2025-10-27T14:30:00Z"
-  }
-]
-
-```
-
-#### `GET /sessions/{session_id}/messages`
-
-Get conversation history for a session.
-
-**Response:**
-
-```json
-[
-  {"role": "user", "content": "Hello!"},
-  {"role": "assistant", "content": "Hi! How can I help you today?"}
-]
-
-```
-
-#### `DELETE /sessions/{session_id}`
-
-Delete a specific session.
-
-#### `DELETE /sessions`
-
-Delete all sessions.
-
-#### `POST /chat/stream`
-
-Stream a chat completion with function calling support.
-
-**Request:**
-
-```json
-{
-  "session_id": "550e8400-e29b-41d4-a716-446655440000",
-  "prompt": "What's the weather in Dublin?",
-  "model_name": "Llama-3-8B-Instruct-q4f16_1-MLC"
-}
-
-```
-
-**Response (NDJSON stream, v2 vocabulary — default):**
-
-`/api/v1/chat/stream` now defaults to v2 NDJSON. No Accept header changes are
-needed. To opt into the legacy v0 vocabulary, send
-`Accept: application/x-ndjson; version=0` (deprecated; will be removed in a
-future release; response will include a `Warning: 299` header).
-
-```json
-{"protocol_version": "1.0", "session_id": "...", "turn_id": "...", "seq": 0, "ts": "...", "type": "message_start", "available_tools": [...]}
-{"protocol_version": "1.0", "session_id": "...", "turn_id": "...", "seq": 1, "ts": "...", "type": "text_delta", "text": "Let me check"}
-{"protocol_version": "1.0", "session_id": "...", "turn_id": "...", "seq": 2, "ts": "...", "type": "tool_call", "tool_call_id": "...", "name": "weather", "arguments": {"location": "Dublin"}}
-{"protocol_version": "1.0", "session_id": "...", "turn_id": "...", "seq": 3, "ts": "...", "type": "tool_result", "tool_call_id": "...", "name": "weather", "status": "ok", "result": {"temp": 12, "condition": "Rainy"}, "error": null, "error_kind": null, "missing_capabilities": []}
-{"protocol_version": "1.0", "session_id": "...", "turn_id": "...", "seq": 4, "ts": "...", "type": "text_delta", "text": "It's 12°C and rainy"}
-{"protocol_version": "1.0", "session_id": "...", "turn_id": "...", "seq": 5, "ts": "...", "type": "message_stop", "stop_reason": "complete"}
-
-```
-
-### Wire Format Negotiation
-
-The `Accept` request header selects the response format and vocabulary:
-
-| Accept                                          | Response          | Notes                                   |
-|-------------------------------------------------|-------------------|-----------------------------------------|
-| (omitted) or `application/x-ndjson`             | NDJSON v2         | **Default** (v2 is now the default)     |
-| `application/x-ndjson; version=1.0`             | NDJSON v2         | Explicit (same as default)              |
-| `application/x-ndjson; version=0`               | NDJSON v0 (legacy)| **Deprecated**; emits `Warning: 299`    |
-| `text/event-stream`                             | SSE v2            | Per W3C SSE spec                        |
-
-All responses include `X-Tether-Protocol-Version: 1.0`. v0 responses
-additionally include `Warning: 299 - "..."` per RFC 9110 §5.6.7.
-
-The v0 NDJSON vocabulary will be removed in Phase 8.
-Migrate to v2 (no header changes needed) at your earliest convenience.
-
-> **Legacy v0 wire format (opt-in; deprecated)**: Send
-> `Accept: application/x-ndjson; version=0` to receive v0 vocabulary
-> (`text`, `think`, `tool_started`, `tool_completed`, `tool_error`, `done`).
-> Responses on this path carry `Warning: 299`. v0 will be removed in Phase 8.
-
-### Streaming Event Format (v2)
-
-Each event has a common envelope plus type-specific fields:
-
-```json
-{
-  "protocol_version": "1.0",
-  "session_id": "...",
-  "turn_id": "...",
-  "seq": 0,
-  "ts": "2026-01-01T12:00:00+00:00",
-  "type": "<event type>",
-  "...type-specific fields..."
-}
-```
-
-### Event Types
-
-| Event Type | Description | Key Fields |
-|------------|-------------|------------|
-| `message_start` | Turn opens | `available_tools` |
-| `text_delta` | Assistant text chunk | `text` |
-| `thinking_delta` | Reasoning chunk | `text` |
-| `tool_call` | Tool invocation | `tool_call_id`, `name`, `arguments` |
-| `tool_result` | Tool result | `tool_call_id`, `name`, `status` (ok/error), `result`, `error`, `error_kind` |
-| `error` | Fatal error | `message`, `error_type`, `is_fatal` |
-| `loop_limit_reached` | Tool-loop max hit | `loops` |
-| `hw_reset` | Hardware watchdog reset | `model_name` |
-| `message_stop` | Turn ends | `stop_reason` (complete/tool_loop_exhausted/cancelled/client_disconnect/error) |
-
-## 🛠️ Tool System
-
-Tether's function calling system allows models to interact with external tools. The model can call tools, receive results, and incorporate them into its response.
-
-### How It Works
-
-1. **System Prompt**: The model is instructed to emit tool calls in the format:
-
-   ```text
-   <<function_call>> {"name": "tool_name", "arguments": {...}}
-   ```
-
-2. **Stream Parsing**: The `SlidingParser` detects `<<function_call>>` markers in real-time, even across chunk boundaries.
-
-3. **Tool Execution**: The `ToolRunner` executes the tool with a timeout and returns the result.
-
-4. **Loop Continuation**: The tool result is added to the conversation history, and the model continues generating.
-
-5. **History Persistence**: Both tool calls and results are saved to the session store for multi-turn tool use.
-
-### Built-in Tools
-
-#### TimeTool
-
-Get the current time in any timezone.
-
-```json
-{
-  "name": "get_current_time",
-  "arguments": {
-    "timezone": "America/New_York",
-    "format": "human"
-  }
-}
-
-```
-
-#### WeatherTool
-
-Get current weather conditions.
-
-```json
-{
-  "name": "weather",
-  "arguments": {
-    "location": "London, UK"
-  }
-}
-
-```
-
-#### GetForecastTool
-
-Get weather forecast.
-
-```json
-{
-  "name": "forecast",
-  "arguments": {
-    "location": "Tokyo",
-    "days": 3
-  }
-}
-
-```
-
-#### WebSearchTool
-
-Search the web using Brave Search API (requires API key in environment).
-
-**Parameters:**
-
-- `query` (required): Search query string
-- `count` (optional): Number of results (default: 5, max: 20)
-- `country` (optional): 2-letter country code (default: "us")
-- `search_lang` (optional): 2-letter language code (default: "en")
-- `freshness` (optional): Time filter - "pd" (past day), "pw" (past week), "pm" (past month), "py" (past year)
-
-**Example:**
-
-```json
-{
-  "name": "web_search",
-  "arguments": {
-    "query": "AI developments 2025",
-    "count": 5,
-    "country": "us",
-    "search_lang": "en"
-  }
-}
-
-```
-
-**Response Format:**
-
-The tool returns a structured JSON response with:
-
-- `results`: Array of search results with `url`, `title`, `snippet`, and `rank`
-- `meta`: Metadata including query, search time, and engine name
-- `articles`: (Deprecated) Formatted strings for backward compatibility
-
-**Setup:**
-
-1. Get a free API key from <https://api-dashboard.search.brave.com/>
-2. Add to `.env` file: `BRAVE_API_KEY=your_key_here`
-3. Free tier: 2,000 queries/month, 10 requests/minute
-
-## 🔧 Configuration
-
-Configuration is managed through `tether_service/config/default.yml`. Here's a breakdown of key sections:
-
-### Server Configuration
-
-```yaml
-host: "127.0.0.1"
-port: 8080
-
-```
-
-### System Prompt
-
-```yaml
-system:
-  prompt: |
-    You are a helpful assistant that uses tools when appropriate.
-    To call a tool, output exactly one line that starts with:
-    <<function_call>>
-    followed by a single JSON object on the same line.
-
-```
-
-### Model Provider
-
-```yaml
-providers:
-  model:
-    impl: "tether_service.providers.mlc.provider.MLCProvider"
-    args:
-      dist_root: "dist"              # Model directory
-      model_name: "Llama-3-8B-q4f16_1-MLC"
-      device: "auto"                 # auto | cuda | vulkan | metal | cpu | opencl
-      max_tokens: 1024               # Max generation length
-
-```
-
-### Tool Configuration
-
-```yaml
-tools:
-  registry:
-    - name: "time"
-      impl: "tether_service.tools.time_tool.TimeTool"
-    - name: "weather"
-      impl: "tether_service.tools.weather_tool.WeatherTool"
-    - name: "web_search"
-      impl: "tether_service.tools.web_search_tool.WebSearchTool"
-  enabled:
-    - "time"
-    - "weather"
-    - "web_search"
-  # Web search specific configuration
-  web_search:
-    provider: "brave"           # Future: support multiple providers
-    timeouts:
-      connect_sec: 2            # Connection timeout
-      read_sec: 6               # Read timeout
-      total_sec: 15             # Total timeout (includes retries)
-    retries:
-      max_attempts: 3           # Initial attempt + 2 retries
-      backoff_base_sec: 0.5     # Exponential backoff starting at 0.5s
-    defaults:
-      count: 5                  # Default number of results
-      max_count: 20             # Maximum results to prevent token overflow
-      country: "us"             # Default 2-letter country code
-      search_lang: "en"         # Default language for results
-      freshness: null           # null = no filter; valid: pd/pw/pm/py
-
-```
-
-### Limits
-
-```yaml
-limits:
-  tool_timeout_sec: 15    # Max execution time per tool
-  max_tool_loops: 5       # Max consecutive tool calls
-
-```
-
-## 🎨 Adding Custom Tools
-
-Creating custom tools is straightforward. Follow these steps:
-
-### 1. Create Your Tool Class
-
-Create a new file in `tether_service/tools/`, e.g., `calculator_tool.py`:
-
-```python
-from tether_service.tools.base import BaseTool
-
-class CalculatorTool(BaseTool):
-    """Performs basic arithmetic operations."""
-    
-    def __init__(self):
-        super().__init__()  # Required for registry name injection
-    
-    def run(
-        self,
-        operation: str,
-        a: float,
-        b: float
-    ) -> dict:
-        """
-        Execute a calculation.
-        
-        Args:
-            operation: One of "add", "subtract", "multiply", "divide"
-            a: First number
-            b: Second number
-        
-        Returns:
-            dict: Result of the calculation
-        """
-        operations = {
-            "add": lambda x, y: x + y,
-            "subtract": lambda x, y: x - y,
-            "multiply": lambda x, y: x * y,
-            "divide": lambda x, y: x / y if y != 0 else None
-        }
-        
-        if operation not in operations:
-            return {"error": f"Unknown operation: {operation}"}
-        
-        result = operations[operation](a, b)
-        
-        if result is None:
-            return {"error": "Division by zero"}
-        
-        return {
-            "operation": operation,
-            "result": result,
-            "expression": f"{a} {operation} {b} = {result}"
-        }
-
-```
-
-### 2. Register in Configuration
-
-Add your tool to `tether_service/config/default.yml`:
-
-```yaml
-tools:
-  registry:
-    - name: "calculator"
-      impl: "tether_service.tools.calculator_tool.CalculatorTool"
-    # ... other tools
-  enabled:
-    - "calculator"
-    # ... other enabled tools
-
-```
-
-### 3. Update System Prompt (Optional)
-
-Add a description to the system prompt so the model knows when to use it:
-
-```yaml
-system:
-  prompt: |
-    You are a helpful assistant with access to these tools:
-    
-    - calculator: Perform arithmetic (add, subtract, multiply, divide)
-    
-    To use a tool, output:
-    <<function_call>> {"name":"calculator","arguments":{"operation":"add","a":5,"b":3}}
-
-```
-
-### 4. Restart the Service
-
-```powershell
-python -m tether_service.app
-
-```
-
-### Tool Implementation Guidelines
-
-✅ **Do:**
-
-- Inherit from `BaseTool`
-
-- Call `super().__init__()` in your `__init__`
-
-- Use type hints for all parameters (used for auto-schema generation)
-- Accept `**kwargs` in `run()` method
-- Return dictionaries or JSON-serializable objects
-- Handle errors gracefully and return error messages
-
-❌ **Don't:**
-
-- Accept raw dictionaries as arguments (use `**kwargs` unpacking)
-- Perform long-running operations without considering the timeout
-- Raise exceptions (return error dicts instead)
-- Modify global state
-
-### Advanced: Async Tools
-
-For I/O-bound tools, make `run()` async:
-
-```python
-class AsyncWebTool(BaseTool):
-    async def run(self, url: str) -> dict:
-        async with aiohttp.ClientSession() as session:
-            async with session.get(url) as resp:
-                return {"content": await resp.text()}
-
-```
-
-The `ToolRunner` automatically handles both sync and async tools.
-
-## 👨‍💻 Development
-
-### Running Tests
-
-```powershell
-
-# All tests
-
-pytest
-
-# Parser unit tests (27 tests)
-
-pytest tests/protocol/parsers/ -v
-
-# Integration tests (tool calling end-to-end)
-
-pytest tests/integration/ -v
-
-# Specific test file
-
-pytest tests/protocol/parsers/test_sliding_parser.py -v
-
-```
-
-### Project Structure Deep Dive
-
-- **`app/`**: HTTP layer - FastAPI routes and application setup
-- **`config/`**: YAML configurations - system prompts, tool registries, limits
-- **`core/`**: Infrastructure - interfaces, DI, logging, type definitions
-- **`providers/`**: Model implementations - MLC provider, dummy provider for testing
-- **`context/`**: Persistence - SQLite store with WAL mode for concurrent access
-- **`protocol/`**: Orchestration - the "brain" coordinating model, parser, and tools
-- **`tools/`**: Tool implementations - inherit from `BaseTool` with auto-schema
-
-### Debugging Tips
-
-**Enable Verbose Logging:**
-Edit `tether_service/core/logging.py`:
-
-```python
-logging.basicConfig(level=logging.DEBUG)
-
-```
-
-**Inspect Database:**
-
-```powershell
-sqlite3 data/tether.db
-sqlite> SELECT * FROM messages WHERE session_id='...' ORDER BY ts;
-
-```
-
-**Trace a Request:**
-
-1. HTTP request → `app/http/routers/chat.py`
-2. → `protocol/service/generation_service.py`
-3. → `protocol/orchestration/orchestrator.py`
-4. → Model streaming + parser + tool execution
-
-**Test Parser Directly:**
-
-```python
-from tether_service.protocol.parsers.sliding import SlidingParser
-
-parser = SlidingParser(max_tool_chars=1024)
-parser.feed("Some text <<function_call>> {")
-parser.feed('"name":"time"}')
-
-if parser.has_tool_call():
-    call = parser.extract_tool_call()
-    print(call)  # ToolCall(name='time', args_json='{}', raw=...)
-
-```
-
-### Common Issues
-
-| Issue | Symptom | Fix |
-|-------|---------|-----|
-| Model doesn't call tools | Generates descriptions instead of `<<function_call>>` | Check system prompt includes explicit format instructions |
-| Tool not found | `"Tool X not found"` error | Verify tool is in both `registry` and `enabled` in config |
-| Tool execution fails | `'dict' object has no attribute...` | Ensure tool uses `**kwargs`, not `args: dict` |
-| Repeated failed calls | Model keeps trying same failed tool | Check `get_history()` includes `tool_result` messages |
-| Parser misses tool calls | Tool call split across chunks | This is handled automatically by `SlidingParser` buffer |
-
-## 🐛 Troubleshooting
-
-### MLC-LLM Model Issues
-
-**Problem:** Model fails to load
-
-```text
-Solution:
-1. Verify model directory structure matches expected format
-2. Check that DLL/shared library is in dist/libs/
-3. Ensure model name in config matches directory name
-4. Try different device options: "cuda", "vulkan", "cpu"
-```
-
-**Problem:** Slow inference
-
-```text
-Solution:
-1. Check device is set correctly (GPU vs CPU)
-2. Reduce max_tokens in config
-3. Use smaller quantized models (q4f16 vs q0f16)
-4. Enable model caching (happens automatically)
-
-```
-
-### Tool Calling Issues
-
-**Problem:** Model describes actions but doesn't call tools
-
-```text
-Solution: The system prompt must explicitly show the tool call format.
-Edit config/default.yml and ensure the prompt includes:
-  <<function_call>> {"name":"tool_name","arguments":{...}}
-```
-
-**Problem:** Tools timing out
-
-```text
-Solution: Increase timeout in config/default.yml:
-  limits:
-    tool_timeout_sec: 30  # Increase from default 15
-```
-
-### Web Search Tool Issues
-
-**Problem:** `BRAVE_API_KEY` not found error
-
-```text
-Solution:
-1. Create a .env file in project root (copy from .env.example)
-2. Add your API key: BRAVE_API_KEY=your_key_here
-3. Get free key at: https://api-dashboard.search.brave.com/
-4. Restart the service after adding the key
-```
-
-**Problem:** Rate limit errors (429 responses)
-
-```text
-Solution:
-Free tier limits: 2,000 queries/month, 10 requests/minute
-1. Check remaining quota at Brave API dashboard
-2. Reduce web search frequency in prompts
-3. Consider upgrading to paid tier for higher limits
-4. The tool automatically retries with exponential backoff
-```
-
-**Problem:** Web search returns no results
-
-```text
-Solution:
-1. Check query is specific enough
-2. Try different country/language settings
-3. Use freshness filter for recent results only
-4. Verify API key has not expired
-5. Check Brave API status page for outages
-```
-
-**Problem:** Search results have HTML tags
-
-```text
-Solution: This should not happen - HTML tags are automatically removed.
-If you see this:
-1. Report as a bug with example query
-2. Check brave_client.py _normalize_response() function
-```
-
-### Database Issues
-
-**Problem:** Database locked errors
-
-```text
-Solution: Tether uses WAL mode by default. If issues persist:
-1. Ensure only one Tether instance is running
-2. Delete data/tether.db-wal and data/tether.db-shm
-3. Restart the service
-
-```
-
-### API Issues
-
-**Problem:** Connection refused
-
-```text
-Solution:
-1. Check service is running: python -m tether_service.app
-2. Verify port isn't in use: netstat -ano | findstr :8080
-3. Check firewall settings
-```
-
-## 🔄 Resetting Dev DBs after Phase 6
-
-Phase 6 changed how chat history is persisted (schema additions for
-`turns`/`tool_calls`/`raw_events`; thinking moved to its own `role='thinking'`
-row type). Existing development DBs are still functional but may render
-history inconsistently with the new code paths.
-
-If you have a `data/tether.db` or `data/tether_dev.db` from before this
-update, run:
-
-```powershell
-python scripts/reset_dev_dbs.py
-```
-
-The script archives existing DB files under `data/.archive/<name>.<timestamp>`
-then removes the originals. The next `python -m tether_service.app` launch
-will auto-create the clean schema via yoyo migrations.
-
-**When is this needed?** Only if you have local dev DBs from before this
-Phase 6 commit. Fresh clones are unaffected — `Engine.from_settings`
-applies migrations automatically on first launch.
-
-This is a one-time operation per local dev environment. The script is
-idempotent — safe to re-run on an already-clean data directory (each
-known path will report `[skip]`).
-
-## 🤝 Contributing
-
-This is a personal experiment, but contributions and ideas are welcome! Areas I'm exploring:
-
-- Additional tool implementations (especially email/calendar tools)
-- Alternative model providers (Ollama, llama.cpp)
-- Performance optimizations
-- Documentation improvements
-
-Feel free to open an issue to discuss ideas or share your own experiments.
-
-## 📄 License
-
-This project is licensed under the MIT License. See LICENSE file for details.
-
-## 🙏 Acknowledgments
-
-- [MLC-LLM](https://github.com/mlc-ai/mlc-llm) for enabling efficient local inference on Snapdragon X Elite
-- Qualcomm for the Snapdragon X Elite hardware that inspired this project
-- FastAPI for making API development straightforward
-- The open-source AI community for inspiration and tools
-
-## 📞 Questions or Ideas?
-
-- **Issues**: [GitHub Issues](https://github.com/Lando-00/Tether/issues)
-- **Discussions**: [GitHub Discussions](https://github.com/Lando-00/Tether/discussions)
-
----
-
-**A personal experiment in local AI, privacy, and giving models access to your data - safely.**
-
+Local inference powered by [MLC-LLM](https://github.com/mlc-ai/mlc-llm) and the
+Qualcomm CodeLinaro Adreno OpenCL backend.
