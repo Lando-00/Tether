@@ -19,7 +19,10 @@ manage signals themselves per ``WatchdogMode.LIBRARY`` contract.
 
 Synthesis §4 Phase 3 step 35; Phase 3 + Phase 4.5 follow-ups.
 """
+from __future__ import annotations
+
 from contextlib import asynccontextmanager
+from typing import Optional
 
 from fastapi import APIRouter, FastAPI
 
@@ -31,7 +34,7 @@ from tether_service.app.http.routers.health import router as health_router
 from tether_service.app.http.routers.models import router as models_router
 from tether_service.app.http.routers.protocol import router as protocol_router
 from tether_service.app.http.routers.sessions import router as sessions_router
-from tether_service.config.settings import load_settings
+from tether_service.config.settings import Settings, load_settings
 from tether_service.engine import Engine
 from tether_service.runtime.signal_supervisor import SignalSupervisor
 from tether_service.runtime.watchdog_mode import WatchdogMode
@@ -77,22 +80,54 @@ async def lifespan(app: FastAPI):
         await engine.__aexit__(None, None, None)
 
 
-def create_app():
+def create_app(settings: Optional[Settings] = None) -> FastAPI:
     """Create and configure the FastAPI application.
 
     Builds the Engine with :attr:`WatchdogMode.SERVER` because the HTTP
     entry point is the canonical SERVER-mode caller; library users go
     through ``Engine.from_settings`` directly with the LIBRARY default.
     Per _synthesis.md §4 Phase 3 step 35.
+
+    Args:
+        settings: Optional pre-built Settings object. When None (default),
+            :func:`load_settings` is called to load from YAML + env.
+            Pass an explicit instance in tests to avoid file I/O and to
+            configure specific security policies (Phase 7 step 79).
     """
-    settings_v2 = load_settings()
+    settings_v2 = settings if settings is not None else load_settings()
     gen_service = Engine.from_settings(settings_v2, watchdog_mode=WatchdogMode.SERVER)
 
     app = FastAPI(lifespan=lifespan)
     app.state.gen_svc = gen_service
     app.state.settings = settings_v2
 
+    # Middleware order: last-added = outermost in Starlette's execution model.
+    # Desired runtime order: TrustedHost → CORS → CSRF → RequestId.
+    # So we add: RequestId first (innermost), then CSRF, CORS, TrustedHost last.
+
+    # Phase 7 step 68: RequestIdMiddleware — innermost, always active.
     app.add_middleware(RequestIdMiddleware)
+
+    # Phase 7 step 79: optional security middlewares (outer layers).
+    if settings_v2.security.csrf_token.enabled:
+        from tether_service.app.http.csrf_middleware import CSRFTokenMiddleware
+        app.add_middleware(CSRFTokenMiddleware, settings=settings_v2.security.csrf_token)
+
+    if settings_v2.security.cors.enabled:
+        from fastapi.middleware.cors import CORSMiddleware
+        cors_cfg = settings_v2.security.cors
+        app.add_middleware(
+            CORSMiddleware,
+            allow_origins=cors_cfg.allow_origins,
+            allow_methods=cors_cfg.allow_methods,
+            allow_headers=cors_cfg.allow_headers,
+            allow_credentials=cors_cfg.allow_credentials,
+        )
+
+    if settings_v2.security.trusted_host.enabled:
+        from fastapi.middleware.trustedhost import TrustedHostMiddleware
+        th_cfg = settings_v2.security.trusted_host
+        app.add_middleware(TrustedHostMiddleware, allowed_hosts=list(th_cfg.allowed_hosts))
 
     v1_router = APIRouter(prefix="/api/v1")
     v1_router.include_router(chat_router)
