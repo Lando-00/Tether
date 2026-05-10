@@ -794,8 +794,12 @@ class MLCProvider(ModelProvider):
                 except Exception:
                     pass
             
-            # Defensive: abort again if it's still registered
+            # Defensive: abort again if it's still registered.
+            # NOTE: use mlc_request_id (the engine's per-request abort ID),
+            # NOT the caller's `request_id` correlation arg added in Phase 7
+            # step 72 — they are different concepts and shadowing was the
+            # whole reason for the rename.
             try:
-                engine._abort(request_id)
+                engine._abort(mlc_request_id)
             except Exception:
                 pass
