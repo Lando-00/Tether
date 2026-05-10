@@ -342,3 +342,38 @@ async def test_full_lifecycle_memory(memory_store_v2):
     await store.record_raw_event("sx", "tx", 4, "message_stop", {})
     await store.complete_turn("tx", status="completed", stop_reason="complete")
     # Must not raise.
+
+
+# ---------------------------------------------------------------------------
+# Consistency: tool_call_id without turn_id must NOT write v2 on either store
+# ---------------------------------------------------------------------------
+
+
+async def test_tool_call_id_without_turn_id_no_v2_write_memory(memory_store_v2):
+    """MemoryStore: tool_call_id alone (turn_id=None) must NOT populate tool_calls.
+
+    Aligns MemoryStore with SqliteSessionStore's stricter both-IDs condition.
+    Catches the divergent-condition bug (P8 review catch).
+    """
+    store = memory_store_v2
+    await store.add_assistant_toolcall(
+        "sx", "now", {},
+        turn_id=None, tool_call_id="call-orphan", seq_start=0,
+    )
+    assert "call-orphan" not in store.tool_calls, (
+        "MemoryStore wrote to tool_calls dict despite turn_id=None"
+    )
+
+
+async def test_tool_call_id_without_turn_id_no_v2_write_sqlite(fresh_sqlite):
+    """SqliteSessionStore: tool_call_id alone (turn_id=None) must NOT populate tool_calls."""
+    import sqlite3 as _sqlite3
+    store, db_path = fresh_sqlite
+    await store.add_assistant_toolcall(
+        "sx", "now", {},
+        turn_id=None, tool_call_id="call-orphan", seq_start=0,
+    )
+    conn = _sqlite3.connect(str(db_path))
+    rows = conn.execute("SELECT COUNT(*) FROM tool_calls").fetchone()[0]
+    conn.close()
+    assert rows == 0, "SqliteSessionStore wrote to tool_calls despite turn_id=None"

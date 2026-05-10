@@ -85,7 +85,7 @@ class MemoryStore(SessionStore):
         self.sessions.setdefault(session_id, []).append(
             {"role": "tool", "tool": tool_name, "args": args}
         )
-        if tool_call_id is not None:
+        if turn_id is not None and tool_call_id is not None:
             self.tool_calls[tool_call_id] = {
                 "tool_call_id": tool_call_id,
                 "turn_id": turn_id,
@@ -112,7 +112,7 @@ class MemoryStore(SessionStore):
         self.sessions.setdefault(session_id, []).append(
             {"role": "tool_result", "tool": tool_name, "result": result}
         )
-        if tool_call_id is not None and tool_call_id in self.tool_calls:
+        if turn_id is not None and tool_call_id is not None and tool_call_id in self.tool_calls:
             self.tool_calls[tool_call_id].update(
                 status=status, result=result, error=error, duration_ms=duration_ms
             )
