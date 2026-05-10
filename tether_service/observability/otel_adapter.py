@@ -165,14 +165,35 @@ def install_otel_adapter(settings: "Settings") -> None:
                 record_exception=False,
             ) as span:
                 if is_error:
-                    error_msg = event_dict.get("error") or event_dict.get("exc_info") or ""
+                    # Pull the error description from the canonical structlog
+                    # error keys used in this codebase. Different events use
+                    # different conventions:
+                    #   - tool.error → ``error_message`` (str)
+                    #   - provider.stream.error → ``error_class`` (str)
+                    #   - generic catch-all → ``error`` (legacy)
+                    # If any structured exc_info was attached via _exc_info,
+                    # record it as a proper span exception.
+                    error_msg = (
+                        event_dict.get("error_message")
+                        or event_dict.get("error_class")
+                        or event_dict.get("error")
+                        or event_dict.get("exception")
+                        or ""
+                    )
                     span.set_status(StatusCode.ERROR, description=str(error_msg))
                     exc = event_dict.get("_exc_info")
                     if isinstance(exc, BaseException):
                         span.record_exception(exc)
 
         elif event in _SPAN_EVENT_NAMES:
-            # Lightweight: add a span event to whatever span is currently active.
+            # Lightweight: attach a span event to whatever span is currently
+            # active. NOTE: in the MVP fire-and-forget model there is no live
+            # parent span when `tool.start` fires (the `provider.stream` span
+            # only exists for the brief duration of its end-event creation).
+            # This branch is a no-op today; it exists so a future iteration
+            # that introduces span-lifetime tracking will start working
+            # automatically once a parent span is open. Documented in the
+            # module docstring.
             current = trace.get_current_span()
             if current and current.is_recording():
                 attrs = _make_attrs(event_dict)
