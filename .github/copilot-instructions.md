@@ -1,47 +1,62 @@
 # Copilot Instructions — Tether
 
-**Tether** is a Python/FastAPI service for session-based, streaming access to MLC-LLM models with function-calling support. It uses SQLite for chat history, follows Model-Context-Protocol (MCP) architecture, and streams **v2 NDJSON events by default** (p5-cutover-c-flip-default). Legacy v0 NDJSON is available via `Accept: application/x-ndjson; version=0` until Phase 8.
+> For a high-level navigation aid (used by all AI agents, not just Copilot CLI),
+> see [`AGENTS.md`](../AGENTS.md). This file goes deeper into Copilot-CLI-specific
+> conventions.
+
+**Tether** is a Python/FastAPI service for session-based, streaming access to MLC-LLM models with function-calling support. It uses SQLite for chat history, follows Model-Context-Protocol (MCP) architecture, and streams **v2 NDJSON events by default** (p5-cutover-c-flip-default). Legacy v0 NDJSON is available via `Accept: application/x-ndjson; version=0`.
 
 ## Quick Start
 
 ```powershell
-# Environment
 conda activate mlc-venv2
 pip install -e ".[server,cli,brave,dev]"
 # MLC CodeLinaro wheels are installed separately; see environment.yml.
 
-# Run tether_service (new implementation)
-python -m tether_service.app      # http://localhost:8000
-# Or debug: .\run_debug.ps1
+# Run service
+python -m tether.app                       # canonical (http://localhost:8000)
+tether-server                              # via console script
+# Or debug: .\scripts\dev\run_debug.ps1
 
 # Run tests
-pytest -q                          # All tests
-pytest tests/protocol/parsers/     # Parser unit tests
-pytest tests/integration/          # Integration tests
+python -m pytest -q                        # default-on markers
+python -m pytest -m hardware tests/hardware/   # opt-in hardware tests
 ```
 
 ## Architecture (MCP Layers)
 
-### 1. Model (`tether_service/providers/`)
+### 1. Model (`src/tether/providers/`)
 - `mlc/provider.py`: MLC-LLM streaming interface
 - Implements `ModelProvider` interface from `core/interfaces.py`
 
-### 2. Context (`tether_service/context/`)
-- `sqlite_store.py`: Session + message persistence with WAL
+### 2. Context (`src/tether/context/`)
+- `sqlite_store.py`: `AsyncSqliteStore` base + `SqliteSessionStore` + `SqliteInbox` (aiosqlite + WAL + yoyo-migrations)
 - **Critical**: `get_history()` must include tool calls and results for multi-turn tool execution
+- `tool_audit` table stores per-call results (capped at 256 KB)
 
-### 3. Protocol (`tether_service/protocol/`)
+### 3. Protocol (`src/tether/protocol/`)
 - `orchestration/orchestrator.py`: Main loop coordinating model → parser → tool execution
 - `parsers/sliding.py`: Stateful parser detecting `<<function_call>>` markers in streams
 - `orchestration/tool_runner.py`: Executes tools with timeout
+- `events.py`: Typed v2 NDJSON event dataclasses (`message_start`, `text_delta`, `tool_call`, `tool_result`, `message_stop`)
 
-### 4. Tools (`tether_service/tools/`)
-- `base.py`: `BaseTool` abstract class with auto-schema generation
-- `core/tool_registry.py`: Loads tools from config, injects registry names
+### 4. Tools (`src/tether/tools/`)
+- `base.py`: `BaseTool` abstract class with auto-schema generation (`list[T]` and `Optional[T]` supported)
+- `registration.py`: `@tool(name=...)` decorator; `ToolRegistry` auto-discovers decorated classes when `tools.registry` is empty in config
+- Connector framework: `Connector` ABC + `ConnectorRegistry` with mandatory `{connector_id}_` tool-name prefix; `ToolExecutionContext` for draft+confirm send-safety pattern
 
-### 5. Config (`tether_service/config/`)
+### 5. Config (`src/tether/config/`)
 - `default.yml`: System prompt, tool registry, limits (max_tool_loops)
 - `core/factory.py`: DI container for wiring dependencies
+
+### 6. Observability (`src/tether/observability/`)
+- structlog + `RequestId` middleware (outermost in stack)
+- Optional OpenTelemetry adapter (gated by `Settings.observability.otel.enabled`); redaction filter applied to OTel attrs
+
+### 7. Security
+- Outbound URL allowlist (`assert_safe_url`) for all connector/tool HTTP calls
+- Optional CSRF + CORS + TrustedHost middleware
+- **Middleware order is critical** (Starlette: last-added = outermost): add-order `CSRF → CORS → TrustedHost → RequestId`; runtime order `RequestId(outermost) → TrustedHost → CORS → CSRF → handler`
 
 ## Tool Calling System (Critical)
 
@@ -63,11 +78,12 @@ pytest tests/integration/          # Integration tests
      - Tool result → user message with formatted JSON
 
 ### Tool Implementation Checklist
-- [ ] Inherit from `BaseTool` in `tether_service/tools/base.py`
+- [ ] Inherit from `BaseTool` in `src/tether/tools/base.py`
+- [ ] Decorate with `@tool(name="your_tool")` from `tether.tools.registration` (preferred) **or** register explicitly in `config/default.yml`
 - [ ] Call `super().__init__()` in `__init__` to enable registry name injection
-- [ ] Use type hints for parameters (auto-generates schema)
+- [ ] Use type hints for parameters (auto-generates schema; `list[T]` and `Optional[T]` are supported)
 - [ ] Tool methods receive `**kwargs`, not dict
-- [ ] Register in `config/default.yml` under `tools.registry` and `tools.enabled`
+- [ ] If using config-based registration: add to `tools.registry` and `tools.enabled` in `config/default.yml`
 
 ### Common Tool Calling Issues
 | Issue | Symptom | Fix |
@@ -80,35 +96,45 @@ pytest tests/integration/          # Integration tests
 ## Directory Structure
 
 ```
-tether_service/           # New implementation (SOLID, config-driven)
-├── app/                  # FastAPI app + HTTP routers
+src/tether/               # Active codebase (SOLID, config-driven)
+├── app/                  # FastAPI app + HTTP routers (console script: tether-server)
+├── cli/                  # CLI entry point main.py (console script: tether-cli)
 ├── config/               # YAML configs (default.yml, testing.yml)
-├── context/              # SqliteSessionStore (chat history)
+├── context/              # AsyncSqliteStore base; SqliteSessionStore + SqliteInbox (WAL + yoyo-migrations)
 ├── core/                 # Interfaces, types, factory, logging, tool registry
+├── observability/        # structlog + RequestId middleware + optional OTel adapter
 ├── protocol/             # Orchestration, parsers, service layer
+│   ├── events.py         # Typed v2 NDJSON event dataclasses
 │   ├── orchestration/    # orchestrator.py, tool_runner.py
 │   └── parsers/          # sliding.py (<<function_call>> detection)
 ├── providers/            # Model providers (mlc/, dummy/)
-└── tools/                # BaseTool + concrete tools (time, weather, web_search, etc.)
+└── tools/                # BaseTool, @tool decorator, connectors, concrete tools
 
-llm_service/              # Legacy reference implementation
+# tether_service/ is a deprecation alias (MetaPathFinder, single DeprecationWarning per process)
+llm_service/              # Legacy reference implementation — DO NOT MODIFY
+scripts/dev/              # Developer scripts (cli_chat.py, run_debug.{py,bat,ps1}, show_tool_schemas.py)
+models/                   # Model weights (override with TETHER_MODELS_DIR env var)
 tests/                    # pytest tests (use anyio for async)
-├── protocol/parsers/     # Parser unit tests (27 tests)
-└── integration/          # End-to-end tool calling tests (4 tests)
+├── hardware/             # Hardware-gated tests (opt-in: -m hardware)
+├── protocol/parsers/     # Parser unit tests
+├── integration/          # End-to-end tool calling tests
+└── fixtures/             # Shared fixtures (echo_connector.py::EchoConnector, etc.)
 ```
 
 ## Development Tips
 
-- **Trace a request**: `app/__main__.py` → `app/http/routers/chat.py` → `protocol/service/generation_service.py` → `protocol/orchestration/orchestrator.py`
+- **Trace a request**: `src/tether/app/__main__.py` → `app/http/routers/chat.py` → `protocol/service/generation_service.py` → `protocol/orchestration/orchestrator.py`
 - **Debug tool calls**: Enable logging in `core/logging.py`, check for `tool_call` / `tool_result` events (v2 vocab)
-- **Add new tool**: Create in `tools/`, register in `config/default.yml`, restart server
-- **Test parser**: `pytest tests/protocol/parsers/test_sliding_parser.py -v` (tests chunk boundaries, nested JSON, etc.)
+- **Add new tool**: Create in `src/tether/tools/`, decorate with `@tool(name=...)`, restart server
+- **Test parser**: `python -m pytest tests/protocol/parsers/test_sliding_parser.py -v` (tests chunk boundaries, nested JSON, etc.)
 - **Inspect DB**: `sqlite3 data/tether.db "SELECT * FROM messages WHERE session_id='...' ORDER BY ts"`
+- **Dev scripts**: `scripts/dev/cli_chat.py`, `scripts/dev/show_tool_schemas.py`
 
 ## Reference: Legacy vs New
 - `llm_service/`: **DO NOT MODIFY** — Original implementation kept for reference only (shows working patterns and lessons learned)
-- `tether_service/`: Active codebase — All new work happens here (interface-based with DI)
-- Use `llm_service/` to understand behavior in legacy code, feature implement/fixes only in `tether_service/`
+- `src/tether/`: Active codebase — All new work happens here (interface-based with DI)
+- Use `llm_service/` to understand behavior in legacy code; feature implement/fixes only in `src/tether/`
+- `tether_service` import paths still work via a deprecation alias (MetaPathFinder) but emit a `DeprecationWarning`; new code must use `tether.*`
 
 ---
 
@@ -119,26 +145,29 @@ tests/                    # pytest tests (use anyio for async)
 Tools are described to the model through **auto-generated JSON schemas** created by the `BaseTool` class:
 
 **Schema Generation Flow:**
-1. `BaseTool.auto_schema` property (lines 61-96 in `tether_service/tools/base.py`)
+1. `BaseTool.auto_schema` property (in `src/tether/tools/base.py`)
 2. Introspects the `run()` method signature using Python's `inspect` module
 3. Extracts parameter names, types, defaults, and docstrings
 4. Generates JSON Schema with:
-   - `name`: Injected by `ToolRegistry` from config (e.g., "web_search")
+   - `name`: Injected by `ToolRegistry` from `@tool` decorator or config (e.g., "web_search")
    - `description`: From tool class docstring
    - `parameters`: Auto-generated from `run()` method signature
-     - Type mapping: `str → "string"`, `int → "integer"`, `Optional[str] → nullable`, etc.
+     - Type mapping: `str → "string"`, `int → "integer"`, `list[str] → array`, `Optional[T] → nullable`, etc.
      - Required vs optional based on presence of default values
      - Parameter descriptions from docstring (if available)
 
 **To Modify Tool Description:**
-- **Change tool name**: Update `name` field in `config/default.yml::tools.registry`
+- **Change tool name**: Update `@tool(name="...")` decorator **or** `name` field in `config/default.yml::tools.registry`
 - **Change tool description**: Update the docstring of the tool class (first line after `class WebSearchTool(BaseTool):`)
 - **Change parameter names/types**: Update the `run()` method signature
 - **Change parameter descriptions**: Update the `run()` method's docstring (param sections)
 
 **Example - WebSearchTool Schema Generation:**
 ```python
-# In tether_service/tools/web_search_tool.py
+# In src/tether/tools/web_search_tool.py
+from tether.tools.registration import tool
+
+@tool(name="web_search")
 class WebSearchTool(BaseTool):
     """Search the web using Brave Search API."""  # ← Tool description
     
@@ -203,26 +232,26 @@ class WebSearchTool(BaseTool):
 ```
 
 **Key Files:**
-- `tether_service/core/tool_registry.py`: Loads tools from config, injects registry names
-- `tether_service/protocol/orchestration/orchestrator.py`: Main orchestration loop
-- `tether_service/protocol/orchestration/tool_runner.py`: Tool execution with timeout
-- `tether_service/protocol/parsers/sliding.py`: Detects `<<function_call>>` in stream
-- `tether_service/context/sqlite_store.py`: Persists tool calls/results for multi-turn
+- `src/tether/core/tool_registry.py`: Loads tools from config or auto-discovers `@tool`-decorated classes
+- `src/tether/protocol/orchestration/orchestrator.py`: Main orchestration loop
+- `src/tether/protocol/orchestration/tool_runner.py`: Tool execution with timeout
+- `src/tether/protocol/parsers/sliding.py`: Detects `<<function_call>>` in stream
+- `src/tether/context/sqlite_store.py`: Persists tool calls/results for multi-turn
 
 ### Available Tools
 
 #### Web Search Tool (Brave Search API)
 **Provider:** Brave Search API (https://api.search.brave.com/)  
-**File:** `tether_service/tools/web_search_tool.py`  
-**HTTP Client:** `tether_service/tools/brave_client.py` (315 lines, httpx-based)
+**File:** `src/tether/tools/web_search_tool.py`  
+**HTTP Client:** `src/tether/tools/brave_client.py` (httpx-based)
 
 **Configuration:**
 ```yaml
-# In tether_service/config/default.yml
+# In src/tether/config/default.yml
 tools:
   registry:
     - name: "web_search"  # Name exposed to model
-      impl: "tether_service.tools.web_search_tool.WebSearchTool"
+      impl: "tether.tools.web_search_tool.WebSearchTool"
   enabled:
     - "web_search"
   web_search:
@@ -283,15 +312,23 @@ tools:
 - Rate limits: 2k queries/month, 10 req/min (free tier)
 
 #### Other Tools
-- **Time Tool** (`tether_service/tools/time_tool.py`): Get current time
-- **Weather Tool** (`tether_service/tools/weather_tool.py`): Get weather information
+- **Time Tool** (`src/tether/tools/time_tool.py`): Get current time
+- **Weather Tool** (`src/tether/tools/weather_tool.py`): Get weather information
+
+#### Connector Framework (Phase 4.5)
+- `Connector` ABC in `src/tether/tools/connectors/base.py`
+- `ConnectorRegistry`: all tools registered by a connector must carry a mandatory `{connector_id}_` name prefix
+- `ToolExecutionContext`: draft+confirm send-safety pattern (prevents accidental sends during tool preview)
+- Test fixture: `tests/fixtures/echo_connector.py::EchoConnector`
 
 ### Adding a New Tool
 
-1. **Create tool class** in `tether_service/tools/your_tool.py`:
+1. **Create tool class** in `src/tether/tools/your_tool.py`:
    ```python
-   from tether_service.tools.base import BaseTool
+   from tether.tools.base import BaseTool
+   from tether.tools.registration import tool
    
+   @tool(name="your_tool")   # preferred; ToolRegistry auto-discovers @tool classes
    class YourTool(BaseTool):
        """Your tool description for the model."""
        
@@ -302,6 +339,7 @@ tools:
            self,
            param1: str,           # Required
            param2: int = 10,      # Optional with default
+           tags: list[str] = (),  # list[T] is supported
            **kwargs               # REQUIRED: Catch extra args
        ) -> dict:
            """
@@ -310,17 +348,18 @@ tools:
            Args:
                param1: Description of param1
                param2: Description of param2
+               tags: List of tag strings
            """
            # Return dict, not raise exceptions for user-facing errors
            return {"result": "..."}
    ```
 
-2. **Register in config** (`tether_service/config/default.yml`):
+2. **(Optional) Register explicitly in config** (`src/tether/config/default.yml`) if you need a different name or the `@tool` decorator is not used:
    ```yaml
    tools:
      registry:
        - name: "your_tool"  # Name model will see
-         impl: "tether_service.tools.your_tool.YourTool"
+         impl: "tether.tools.your_tool.YourTool"
      enabled:
        - "your_tool"
    ```
@@ -329,7 +368,7 @@ tools:
 
 4. **Test** — Create tests in `tests/tools/test_your_tool.py`
 
-**Important:** Legacy reference code exists in `llm_service/tools/` — **DO NOT MODIFY**. Only work in `tether_service/`.
+**Important:** Legacy reference code exists in `llm_service/tools/` — **DO NOT MODIFY**. Only work in `src/tether/`.
 
 ---
 
@@ -358,12 +397,12 @@ tools:
 4. **GC disabled** - prevents hanging in destructors
 5. **Daemon thread** - can be killed without waiting
 
-**Testing**: Use `test_model_shutdown.py` to verify both models:
+**Testing**: Use `scripts/dev/test_model_shutdown.py` to verify both models:
 ```powershell
-python test_model_shutdown.py Qwen2.5-7B-q4f16_0-MLC
-python test_model_shutdown.py Qwen3-4B-q4f16_0-MLC
+python scripts/dev/test_model_shutdown.py Qwen2.5-7B-q4f16_0-MLC
+python scripts/dev/test_model_shutdown.py Qwen3-4B-q4f16_0-MLC
 ```
 
-**Documentation**: See `SHUTDOWN_HANG_FIX_SUMMARY.md` and `MODEL_DEPENDENT_SHUTDOWN_FIX.md` for full analysis.
+**Documentation**: See `docs/runbooks/shutdown-hang-fix-summary.md` and `docs/runbooks/model-dependent-shutdown-fix.md` for full analysis.
 
 **Never re-enable GC** in the daemon shutdown thread - this is critical for models with smaller prefill chunks.
