@@ -59,4 +59,8 @@ filterwarnings = [
     # yoyo-migrations 8.x uses datetime.utcnow() internally; suppress until
     # yoyo releases a fix. This does NOT suppress our own DeprecationWarnings.
     "ignore::DeprecationWarning:yoyo",
+    # yoyo imports pkg_resources which emits a UserWarning attributed to
+    # yoyo.migrations (stacklevel=2 in pkg_resources.__init__).
+    # Suppress so -W error sweeps stay clean.
+    "ignore::UserWarning:yoyo",
 ]
