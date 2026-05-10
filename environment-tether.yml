@@ -16,7 +16,15 @@ channels:
 #
 # Or simply run scripts/setup_fresh_env.ps1 which handles all of the above.
 dependencies:
-  - python=3.12
+  # Pin Python + OpenSSL to match mlc-venv2's working versions.
+  # Conda-forge's openssl 3.6.x is ABI-incompatible with the CodeLinaro
+  # 2025.06.r1 TVM wheel — TVM bundles OpenSSL 3.5.x runtime expectations
+  # and Python's _ssl.pyd fails to load DLLs after `import tvm`.
+  # Symptom: ImportError: DLL load failed while importing _ssl on
+  # `import mlc_llm` (which transitively imports tvm + fastapi + anyio + ssl).
+  # See docs/runbooks/fresh-env-setup.md "Troubleshooting" for full diagnosis.
+  - python=3.12.11
+  - openssl=3.5.3
   - pip
   - pip:
       # Install the two Qualcomm CodeLinaro 2025.06.r1 wheels BEFORE the

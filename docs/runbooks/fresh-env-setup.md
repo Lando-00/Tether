@@ -96,6 +96,22 @@ conda env create -f environment-tether.yml
 
 The bootstrap script does this automatically; this manual fix is for the rare case where you bypassed it.
 
+### Symptom: `import mlc_llm` fails with `ImportError: DLL load failed while importing _ssl`
+
+Cause: `import tvm.relax` (transitively pulled in by `mlc_llm.__init__`) loads `libtvm.dll` which alters the DLL search path in a way that prevents Python's `_ssl.pyd` from loading correctly afterwards. Reproduces with `python -c "import tvm.relax; import ssl"` even when `import ssl` alone works.
+
+The fresh `tether` env hits this; `mlc-venv2` does not. Both envs have identical `libtvm.dll` bytes, openssl 3.5.3, and Python 3.12.11 — but `tether` exhibits the symptom and `mlc-venv2` does not. The difference is unidentified (possibly accumulated `os.add_dll_directory()` state from earlier installs in `mlc-venv2`'s history).
+
+**Workarounds**:
+- For non-runtime workflows (tests that don't exercise the real MLC engine, server smoke that doesn't load a model): the Tether package still works — `import tether`, `from tether import Engine`, and 1295/1306 tests pass per the validation log. Tests that fail to collect are MLC-runtime-dependent.
+- For real chat sessions: use `mlc-venv2`. This is an env-fragility issue with the CodeLinaro `2025.06.r1` TVM wheel on certain conda-forge package combinations; fixing it likely requires either rebuilding the wheels OR pinning a specific TVM wheel + DLL search order strategy. Tracked as `fu-fresh-env-mlc-llm-import` (future work).
+
+### Symptom: docs drift gate (`pytest -m docs`) fails on `test_openapi_no_drift`
+
+Cause: FastAPI/Pydantic versions differ between envs. Pydantic V2 added `ctx` and `input` fields to `ValidationError` in a recent minor release; older envs (like `mlc-venv2`) don't emit them.
+
+**Fix**: pin `fastapi` and `pydantic` versions in `pyproject.toml` so all envs install identical versions. Tracked as `fu-pin-fastapi-pydantic-versions`.
+
 ### Symptom: `import mlc_llm` succeeds but `Engine` fails with "no such model"
 
 Cause: `models/` is empty. The fresh env doesn't carry over your downloaded models.
