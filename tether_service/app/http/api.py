@@ -102,16 +102,17 @@ def create_app(settings: Optional[Settings] = None) -> FastAPI:
     app.state.settings = settings_v2
 
     # Middleware order: last-added = outermost in Starlette's execution model.
-    # Desired runtime order: RequestId (outermost) → TrustedHost → CORS → CSRF → handler.
-    # So we add: security middlewares first (innermost), RequestId last (outermost).
-    # This ensures every response — including 403 from CSRF and 400 from TrustedHost —
-    # passes back through RequestIdMiddleware and carries X-Request-ID. Phase 7 step 68.
-
-    # Phase 7 step 79: optional security middlewares (inner layers, added first).
-    if settings_v2.security.trusted_host.enabled:
-        from fastapi.middleware.trustedhost import TrustedHostMiddleware
-        th_cfg = settings_v2.security.trusted_host
-        app.add_middleware(TrustedHostMiddleware, allowed_hosts=list(th_cfg.allowed_hosts))
+    # Desired runtime order:
+    #   RequestId (outermost overall) → TrustedHost → CORS → CSRF → handler
+    # So we add: security middlewares in REVERSE order (CSRF first / innermost,
+    # then CORS, then TrustedHost), then RequestId LAST (outermost overall).
+    # This means TrustedHost rejects bad-Host requests with 400 BEFORE CSRF/CORS
+    # run, and EVERY response — including 400 (TrustedHost), 403 (CSRF), CORS
+    # preflight, and 200 — passes back through RequestIdMiddleware and carries
+    # X-Request-ID for correlation. Phase 7 step 68 + step 79 + RD followup (FIX 1).
+    if settings_v2.security.csrf_token.enabled:
+        from tether_service.app.http.csrf_middleware import CSRFTokenMiddleware
+        app.add_middleware(CSRFTokenMiddleware, settings=settings_v2.security.csrf_token)
 
     if settings_v2.security.cors.enabled:
         from fastapi.middleware.cors import CORSMiddleware
@@ -124,12 +125,11 @@ def create_app(settings: Optional[Settings] = None) -> FastAPI:
             allow_credentials=cors_cfg.allow_credentials,
         )
 
-    if settings_v2.security.csrf_token.enabled:
-        from tether_service.app.http.csrf_middleware import CSRFTokenMiddleware
-        app.add_middleware(CSRFTokenMiddleware, settings=settings_v2.security.csrf_token)
+    if settings_v2.security.trusted_host.enabled:
+        from fastapi.middleware.trustedhost import TrustedHostMiddleware
+        th_cfg = settings_v2.security.trusted_host
+        app.add_middleware(TrustedHostMiddleware, allowed_hosts=list(th_cfg.allowed_hosts))
 
-    # Phase 7 step 68: RequestIdMiddleware — added LAST = outermost, so every
-    # response (200, 403, 400, …) gets X-Request-ID before leaving the server.
     app.add_middleware(RequestIdMiddleware)
 
     v1_router = APIRouter(prefix="/api/v1")

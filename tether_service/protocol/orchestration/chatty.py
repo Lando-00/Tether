@@ -212,10 +212,6 @@ class ChattyAgentOrchestrator(OrchestratorABC):
         :meth:`Engine.chat` to iterate :data:`WireEvent` directly.
         """
         turn_id = uuid.uuid4().hex[:12]
-        # Phase 7 step 69: bind turn_id to structlog contextvars so every
-        # log line emitted during this turn includes it automatically.
-        # Cleanup is in the existing finally block below.
-        structlog.contextvars.bind_contextvars(turn_id=turn_id)
         seq = 0
 
         def _next_seq() -> int:
@@ -244,18 +240,27 @@ class ChattyAgentOrchestrator(OrchestratorABC):
         # means "no terminal event yet" — the finally block decides.
         final_stop_reason: Optional[str] = None
 
-        # Seed history first; if this raises we never even get to
-        # MessageStart.
-        await self._seed_history(session_id, prompt)
-
-        # v2 turn lifecycle: open the turn row before the loop so all
-        # add_* calls below can link their v2 rows to this turn_id.
-        # complete_turn is called in the finally block. Synthesis §3.6.
-        await self.store.start_turn(
-            session_id, turn_id, model_name=model_name
-        )
-
+        # Phase 7 step 69 + RD followup (FIX 4): bind turn_id INSIDE the try
+        # block so the matching unbind in `finally` always runs even when
+        # `_seed_history` or `store.start_turn` raises. Bind FIRST (before
+        # any awaitable that can fail) so error logs from those calls still
+        # carry turn_id for forensics. The previous arrangement bound BEFORE
+        # the try, which leaked the contextvar onto the calling task if
+        # _seed_history / start_turn raised.
         try:
+            structlog.contextvars.bind_contextvars(turn_id=turn_id)
+
+            # Seed history first; if this raises we never even get to
+            # MessageStart but the bind/unbind is still symmetric.
+            await self._seed_history(session_id, prompt)
+
+            # v2 turn lifecycle: open the turn row before the loop so all
+            # add_* calls below can link their v2 rows to this turn_id.
+            # complete_turn is called in the finally block. Synthesis §3.6.
+            await self.store.start_turn(
+                session_id, turn_id, model_name=model_name
+            )
+
             # Yield message_start with available tools (synthesis §3.4).
             yield MessageStart(
                 **_envelope(),
@@ -572,10 +577,24 @@ class ChattyAgentOrchestrator(OrchestratorABC):
             if cancelled:
                 _final_turn_status = "cancelled"
             try:
-                await self.store.complete_turn(
-                    turn_id,
-                    status=_final_turn_status,
-                    stop_reason=final_stop_reason or ("cancelled" if cancelled else "complete"),
+                # Phase 7 RD followup (FIX 5): bound complete_turn with the
+                # same _PARTIAL_PERSIST_TIMEOUT_SEC budget used for partial-text
+                # persistence. The whole `finally` block runs on cancel paths,
+                # so a slow store can stall outer cancel — symmetric to the
+                # _persist_partial budget above.
+                await asyncio.wait_for(
+                    self.store.complete_turn(
+                        turn_id,
+                        status=_final_turn_status,
+                        stop_reason=final_stop_reason or ("cancelled" if cancelled else "complete"),
+                    ),
+                    timeout=_PARTIAL_PERSIST_TIMEOUT_SEC,
+                )
+            except asyncio.TimeoutError:
+                logger.warning(
+                    "turn.complete_timeout",
+                    turn_id=turn_id,
+                    timeout_sec=_PARTIAL_PERSIST_TIMEOUT_SEC,
                 )
             except Exception as ct_exc:
                 logger.warning(
@@ -931,17 +950,34 @@ class ChattyAgentOrchestrator(OrchestratorABC):
                         error_kind="cancelled",
                         error=error_msg,
                     )
-                    await self._audit_tool_call(
-                        session_id=session_id,
-                        turn_id=turn_id,
-                        tool_call_id=tool_call_id,
-                        tool_name=tool_name,
-                        args_json=_args_json_str,
-                        args_sha256=sha,
-                        status="cancelled",
-                        error_kind="cancelled",
-                        duration_ms=int((time.monotonic() - _tool_dispatch_start) * 1000),
-                    )
+                    # Phase 7 RD followup (FIX 3): cancel-path _audit_tool_call
+                    # bounded with the same 200ms budget as _persist_partial /
+                    # complete_turn. The success / exception / timeout paths
+                    # below run on normal time and don't need the budget — only
+                    # the soft-cancel branch is reached during outer cancel and
+                    # must respect the cancellation deadline.
+                    try:
+                        await asyncio.wait_for(
+                            self._audit_tool_call(
+                                session_id=session_id,
+                                turn_id=turn_id,
+                                tool_call_id=tool_call_id,
+                                tool_name=tool_name,
+                                args_json=_args_json_str,
+                                args_sha256=sha,
+                                status="cancelled",
+                                error_kind="cancelled",
+                                duration_ms=int((time.monotonic() - _tool_dispatch_start) * 1000),
+                            ),
+                            timeout=_PARTIAL_PERSIST_TIMEOUT_SEC,
+                        )
+                    except asyncio.TimeoutError:
+                        logger.warning(
+                            "tool_audit.cancel_path_timeout",
+                            tool_name=tool_name,
+                            tool_call_id=tool_call_id,
+                            timeout_sec=_PARTIAL_PERSIST_TIMEOUT_SEC,
+                        )
                     dispatch_state["cancelled"] = True
                     dispatch_state["should_break"] = True
                     return

@@ -21,7 +21,7 @@ from typing import TYPE_CHECKING, Optional
 
 import structlog
 
-from tether_service.core.redact import redact_record_message
+from tether_service.core.redact import redact_record_message, redact_text
 
 if TYPE_CHECKING:
     from tether_service.config.settings import Settings
@@ -59,6 +59,32 @@ class RedactingFilter(logging.Filter):
     def filter(self, record: logging.LogRecord) -> bool:
         redact_record_message(record)
         return True
+
+
+# ---------------------------------------------------------------------------
+# RedactingFormatter
+# ---------------------------------------------------------------------------
+
+class _RedactingFormatter(logging.Formatter):
+    """stdlib Formatter that redacts the FINAL formatted output (incl. tracebacks).
+
+    Phase 7 RD followup (FIX 6): :class:`RedactingFilter` only mutates
+    ``record.msg``, but :meth:`logging.Formatter.formatException` is appended
+    AFTER the filter runs (in :meth:`format`). Tracebacks frequently embed
+    secrets — e.g., ``urllib.error.HTTPError`` includes the offending URL with
+    its query params, and downstream library exceptions sometimes carry the
+    Bearer token they failed on. Without this formatter, those secrets would
+    leak into the file/console handlers despite RedactingFilter.
+
+    This formatter runs :func:`redact_text` on the entire formatted string
+    (message + traceback + stack info) so secrets are scrubbed regardless of
+    which path placed them there. Idempotent with RedactingFilter (running
+    redaction twice on already-redacted text is a no-op).
+    """
+
+    def format(self, record: logging.LogRecord) -> str:
+        formatted = super().format(record)
+        return redact_text(formatted)
 
 
 # ---------------------------------------------------------------------------
@@ -106,10 +132,17 @@ def configure_logging(settings: Optional["Settings"] = None) -> None:
 
     handlers: list[logging.Handler] = []
 
+    # Phase 7 RD followup (FIX 6): use _RedactingFormatter so the final
+    # formatted output (including tracebacks appended by formatException)
+    # passes through redact_text. RedactingFilter alone only scrubs
+    # record.msg; it does not catch exc_info text.
+    formatter = _RedactingFormatter("%(message)s")
+
     if log_settings.console:
         stream_handler = logging.StreamHandler(sys.stderr)
         stream_handler.setLevel(level)
         stream_handler.addFilter(RedactingFilter())
+        stream_handler.setFormatter(formatter)
         handlers.append(stream_handler)
 
     if file_path is not None:
@@ -122,6 +155,7 @@ def configure_logging(settings: Optional["Settings"] = None) -> None:
         )
         file_handler.setLevel(level)
         file_handler.addFilter(RedactingFilter())
+        file_handler.setFormatter(formatter)
         handlers.append(file_handler)
 
     for h in handlers:
@@ -186,4 +220,9 @@ def reset_logging_for_tests() -> None:
     _CONFIGURED = False
 
 
-__all__ = ["logger", "configure_logging", "RedactingFilter", "reset_logging_for_tests"]
+__all__ = [
+    "logger",
+    "configure_logging",
+    "RedactingFilter",
+    "reset_logging_for_tests",
+]
