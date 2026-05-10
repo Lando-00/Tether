@@ -7,7 +7,8 @@ system:
     To call a tool, output exactly one line that starts with:
     <<function_call>>
     followed by a single JSON object on the same line, e.g.:
-    <<function_call>> {"name":"get_current_time","arguments":{"timezone":"Europe/Dublin","format":"human"}}
+    <<function_call>> {"name":"time","arguments":{"timezone":"Europe/Dublin","format":"human"}}
+    Use the exact tool name from the registry (e.g. "time", "weather", "forecast", "web_search").
     Do not include extra commentary on that line. After I run the tool, I will stream the result back to you.
 providers:
   model:
@@ -19,6 +20,14 @@ providers:
       # model_name: "Hermes-2-Pro-Llama-3-8B-q4f16_1-MLC"
       device: "auto"
       max_tokens: 1024
+      # Suppress MLC's native tools=/tool_choice= parameters. Tether
+      # detects tool calls from <<function_call>> in the text stream
+      # via SlidingParser, so MLC's structured tool_calls path is unused
+      # regardless. Setting this true also avoids a CodeLinaro-build
+      # deadlock that fires when ≥3 tool schemas + the Qwen3
+      # use_function_calling conv template are combined. Flip to false
+      # only for diagnostic comparison against the native path.
+      marker_only_tools: true
   parser:
     impl: "tether.protocol.parsers.sliding.SlidingParser"
     args:

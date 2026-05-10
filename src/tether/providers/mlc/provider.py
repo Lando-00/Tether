@@ -144,6 +144,7 @@ class MLCProvider(ModelProvider):
         models_root: str = "models",
         device: str = "auto",
         max_tokens: int = 1024,
+        marker_only_tools: bool = True,
     ):
         """Initialize MLC provider with general config, not a specific model.
 
@@ -154,6 +155,17 @@ class MLCProvider(ModelProvider):
         argument and the YAML default — this lets operators relocate large
         model artifacts off the project tree without editing config (synthesis
         §4 Phase 8 step 85).
+
+        ``marker_only_tools`` (default ``True``) suppresses MLC's native
+        ``tools=`` / ``tool_choice=`` parameters at the engine boundary.
+        Tether detects tool calls from the ``<<function_call>>`` marker
+        emitted in plain text (via :class:`SlidingParser`), so MLC's
+        structured ``delta.tool_calls`` path is unused either way. Passing
+        ``tools=[…]`` to MLC's CodeLinaro build with the Qwen3
+        ``use_function_calling`` conv template deadlocks at ≥3 schemas
+        (the async stream opens but yields zero chunks; ~4% CPU). Setting
+        this to ``False`` re-enables the native path for diagnostic
+        comparisons.
         """
         env_override = os.environ.get("TETHER_MODELS_DIR")
         if env_override:
@@ -162,6 +174,7 @@ class MLCProvider(ModelProvider):
         self.libs_dir = self.models_root / "libs"
         self.device = device
         self.max_tokens = max_tokens
+        self.marker_only_tools = marker_only_tools
         
         # Instance-level cache and locks (not shared across providers)
         self._engine_cache: Dict[str, AsyncMLCEngine] = {}
@@ -726,7 +739,25 @@ class MLCProvider(ModelProvider):
                             pass
 
         tool_choice = "auto" if tools else "none"
-        
+
+        # ``marker_only_tools`` (constructor flag) controls whether we pass
+        # ``tools=``/``tool_choice=`` to MLC. Tether detects tool calls from
+        # the ``<<function_call>>`` text marker via SlidingParser regardless,
+        # so MLC's native structured-tool path is unused either way.
+        #
+        # Passing ``tools=`` triggers a deadlock in MLC's CodeLinaro build
+        # with the Qwen3 ``use_function_calling`` conv template when ≥3 tool
+        # schemas are sent: the async stream opens but ``async for response
+        # in stream_generator`` yields zero chunks, process at ~4% CPU.
+        # Single-tool calls work in ~90 s. Default is ``True`` (suppress) —
+        # the safe path that lets multi-tool generation actually run.
+        if self.marker_only_tools:
+            tools_for_mlc = None
+            tool_choice_for_mlc = "none"
+        else:
+            tools_for_mlc = tools
+            tool_choice_for_mlc = tool_choice
+
         # Generate mlc_request_id so we can abort the engine request deterministically.
         # Renamed from `request_id` (the caller's correlation ID) to avoid shadowing.
         # Phase 7 step 72: caller request_id available for internal log correlation.
@@ -739,14 +770,15 @@ class MLCProvider(ModelProvider):
             "provider.stream.starting",
             model_name=model_name,
             mlc_request_id=mlc_request_id,
+            marker_only_tools=self.marker_only_tools,
         )
         stream_generator = None
         try:
             stream_generator = await engine.chat.completions.create(
                 messages=messages,
                 max_tokens=self.max_tokens,
-                tools=tools,
-                tool_choice=tool_choice,
+                tools=tools_for_mlc,
+                tool_choice=tool_choice_for_mlc,
                 stream=True,
                 request_id=mlc_request_id,
             )
