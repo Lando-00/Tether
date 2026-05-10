@@ -187,12 +187,14 @@ def test_from_settings_legacy_when_registry_non_empty():
         enabled=["legacy"],
         disabled=[],
     )
+    # Phase 7 step 78: from_settings now takes a full Settings-like object.
+    settings = SimpleNamespace(tools=tools_settings)
 
     with patch(
         "tether_service.core.tool_registry.load",
         return_value=sentinel,
     ):
-        reg = ToolRegistry.from_settings(tools_settings)
+        reg = ToolRegistry.from_settings(settings)
 
     assert reg.get("legacy") is sentinel
 
@@ -222,8 +224,10 @@ def test_from_settings_discover_when_registry_empty():
         enabled=[],
         disabled=[],
     )
+    # Phase 7 step 78: from_settings now takes a full Settings-like object.
+    settings = SimpleNamespace(tools=tools_settings)
 
-    reg = ToolRegistry.from_settings(tools_settings)
+    reg = ToolRegistry.from_settings(settings)
     assert "auto1" in reg.all()
     assert "auto2" in reg.all()
 
@@ -253,7 +257,9 @@ def test_from_settings_discover_honors_disabled():
         enabled=[],
         disabled=["drop_me"],
     )
-    reg = ToolRegistry.from_settings(tools_settings)
+    # Phase 7 step 78: from_settings now takes a full Settings-like object.
+    settings = SimpleNamespace(tools=tools_settings)
+    reg = ToolRegistry.from_settings(settings)
     assert "keep_me" in reg.all()
     assert "drop_me" not in reg.all()
 
