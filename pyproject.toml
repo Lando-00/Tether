@@ -45,6 +45,10 @@ otel = [
 ]
 dev = ["pytest>=7", "pytest-asyncio", "ruff", "mypy", "build"]
 
+[project.scripts]
+tether-server = "tether.app.__main__:main"
+tether-cli = "tether.cli.main:app"
+
 [tool.hatch.build.targets.wheel]
 packages = ["src/tether", "src/tether_service"]
 
