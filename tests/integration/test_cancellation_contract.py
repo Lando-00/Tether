@@ -69,7 +69,7 @@ class _CancelMidStreamProvider(ModelProvider):
         self._token = token
 
     async def stream(
-        self, model_name, messages, tools=None
+        self, model_name, messages, tools=None, **kwargs
     ) -> AsyncGenerator[str, None]:
         yield "Hello world this is the first chunk to flush parser. "
         yield "And this is the second chunk before cancel arrives now. "
@@ -90,7 +90,7 @@ class _ToolCallProvider(ModelProvider):
     """Emits a tool call on the first stream call."""
 
     async def stream(
-        self, model_name, messages, tools=None
+        self, model_name, messages, tools=None, **kwargs
     ) -> AsyncGenerator[str, None]:
         yield (
             "Long enough preamble to flush parser overlap. "

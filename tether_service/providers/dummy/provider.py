@@ -14,8 +14,14 @@ class DummyProvider(ModelProvider):
         model_name: str,
         messages: List[Dict[str, Any]],
         tools: Optional[List[Dict[str, Any]]] = None,
+        *,
+        request_id: Optional[str] = None,
     ) -> AsyncGenerator[str, None]:
-        """Simulate streaming text chunks based on last user message"""
+        """Simulate streaming text chunks based on last user message.
+
+        ``request_id`` accepted for interface parity (Phase 7 step 72)
+        but not used — DummyProvider has no internal logger.
+        """
         prompt = messages[-1].get('content', '') if messages else ''
         for i in range(3):
             await asyncio.sleep(0.1)

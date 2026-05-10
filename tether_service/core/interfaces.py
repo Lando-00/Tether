@@ -23,6 +23,8 @@ class ModelProvider(ABC):
         model_name: str,
         messages: List[Dict[str, Any]],
         tools: Optional[List[Dict[str, Any]]] = None,
+        *,
+        request_id: Optional[str] = None,
     ) -> AsyncGenerator[str | List[Dict[str, Any]], None]:
         """Stream raw text chunks for a given model, history, and tools.
 
@@ -31,6 +33,11 @@ class ModelProvider(ABC):
         :meth:`stream_typed` which returns typed :class:`ProviderEvent`
         values; kept for one cycle until Phase 5 step 52 migrates the
         orchestrator. See _synthesis.md §4 Phase 3 step 39, §6 bug #12.
+
+        ``request_id`` is the caller's correlation ID (bound to structlog
+        contextvars by RequestIdMiddleware). Providers accept it so any
+        internal log calls they make can include it for cross-layer
+        correlation. Phase 7 step 72.
         """
         ...
 

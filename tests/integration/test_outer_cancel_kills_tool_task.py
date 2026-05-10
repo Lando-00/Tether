@@ -50,7 +50,7 @@ class _ToolCallProvider(ModelProvider):
     """Emits a tool call on every stream call."""
 
     async def stream(
-        self, model_name, messages, tools=None
+        self, model_name, messages, tools=None, **kwargs
     ) -> AsyncGenerator[str, None]:
         yield (
             "Long enough preamble to flush parser overlap. "

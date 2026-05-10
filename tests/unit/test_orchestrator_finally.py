@@ -77,6 +77,8 @@ class _CancellingProvider(ModelProvider):
         model_name: str,
         messages: List[Dict[str, Any]],
         tools: Optional[List[Dict[str, Any]]] = None,
+        *,
+        request_id: Optional[str] = None,
     ) -> AsyncGenerator[str, None]:
         yield "Hello world this is the first chunk. "
         yield "And this is the second chunk before cancel. "
@@ -102,6 +104,8 @@ class _CompleteProvider(ModelProvider):
         model_name: str,
         messages: List[Dict[str, Any]],
         tools: Optional[List[Dict[str, Any]]] = None,
+        *,
+        request_id: Optional[str] = None,
     ) -> AsyncGenerator[str, None]:
         yield "All done with the request, no tool needed."
 
@@ -123,6 +127,8 @@ class _RaisingProvider(ModelProvider):
         model_name: str,
         messages: List[Dict[str, Any]],
         tools: Optional[List[Dict[str, Any]]] = None,
+        *,
+        request_id: Optional[str] = None,
     ) -> AsyncGenerator[str, None]:
         yield "Partial reply text before the model exploded."
         raise RuntimeError("model exploded")
@@ -263,7 +269,9 @@ async def test_orchestrator_finally_runs_even_on_unexpected_exception():
             model_name: str,
             messages: List[Dict[str, Any]],
             tools: Optional[List[Dict[str, Any]]] = None,
-        ) -> AsyncGenerator[str, None]:
+        *,
+        request_id: Optional[str] = None,
+    ) -> AsyncGenerator[str, None]:
             yield "Half-written reply"
             # raise an exception that propagates as the streaming error path
             # — but make it look non-streaming-related so the inner except
@@ -294,7 +302,9 @@ async def test_orchestrator_finally_runs_even_on_unexpected_exception():
             model_name: str,
             messages: List[Dict[str, Any]],
             tools: Optional[List[Dict[str, Any]]] = None,
-        ) -> AsyncGenerator[str, None]:
+        *,
+        request_id: Optional[str] = None,
+    ) -> AsyncGenerator[str, None]:
             self._calls += 1
             if self._calls == 1:
                 # Iteration 1: emit a long preamble + a tool call (no inner persist of preamble)

@@ -63,6 +63,8 @@ class _RaisingProvider(ModelProvider):
         model_name: str,
         messages: List[Dict[str, Any]],
         tools: Optional[List[Dict[str, Any]]] = None,
+        *,
+        request_id: Optional[str] = None,
     ) -> AsyncGenerator[str, None]:
         yield "Hello there, partial reply before failure. "
         raise self._exc

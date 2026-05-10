@@ -676,6 +676,8 @@ class MLCProvider(ModelProvider):
         model_name: str,
         messages: List[Dict[str, Any]],
         tools: Optional[List[Dict[str, Any]]] = None,
+        *,
+        request_id: Optional[str] = None,
     ) -> AsyncGenerator[str | List[Dict[str, Any]], None]:
         """Stream raw text chunks from the MLC engine for a specific model."""
         engine = await self._ensure_engine(model_name)
@@ -698,10 +700,12 @@ class MLCProvider(ModelProvider):
 
         tool_choice = "auto" if tools else "none"
         
-        # Generate request_id so we can abort deterministically
-        request_id = f"tether-{uuid.uuid4().hex}"
+        # Generate mlc_request_id so we can abort the engine request deterministically.
+        # Renamed from `request_id` (the caller's correlation ID) to avoid shadowing.
+        # Phase 7 step 72: caller request_id available for internal log correlation.
+        mlc_request_id = f"tether-{uuid.uuid4().hex}"
 
-        print(f"==== STARTING MODEL STREAM: {model_name} (request_id={request_id}) ====")
+        print(f"==== STARTING MODEL STREAM: {model_name} (request_id={request_id or 'none'}, mlc_request_id={mlc_request_id}) ====")
         stream_generator = None
         try:
             stream_generator = await engine.chat.completions.create(
@@ -710,7 +714,7 @@ class MLCProvider(ModelProvider):
                 tools=tools,
                 tool_choice=tool_choice,
                 stream=True,
-                request_id=request_id,
+                request_id=mlc_request_id,
             )
             
             # Iterate with explicit exception handling
@@ -727,7 +731,7 @@ class MLCProvider(ModelProvider):
                 # Client disconnected - abort the engine-side request
                 print(f"==== MODEL STREAM GENERATOR EXIT (client disconnect): {model_name} ====")
                 try:
-                    engine._abort(request_id)
+                    engine._abort(mlc_request_id)
                 except Exception:
                     pass
                 raise
@@ -790,8 +794,12 @@ class MLCProvider(ModelProvider):
                 except Exception:
                     pass
             
-            # Defensive: abort again if it's still registered
+            # Defensive: abort again if it's still registered.
+            # NOTE: use mlc_request_id (the engine's per-request abort ID),
+            # NOT the caller's `request_id` correlation arg added in Phase 7
+            # step 72 — they are different concepts and shadowing was the
+            # whole reason for the rename.
             try:
-                engine._abort(request_id)
+                engine._abort(mlc_request_id)
             except Exception:
                 pass

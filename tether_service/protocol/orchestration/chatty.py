@@ -681,15 +681,42 @@ class ChattyAgentOrchestrator(OrchestratorABC):
         full_thinking_text = ""
         tool_call_to_run: Optional[PToolCallParsed] = None
 
+        # Phase 7 step 72: provider streaming spans.
+        # Pull request_id from contextvars (bound by RequestIdMiddleware;
+        # merge_contextvars processor makes it appear in all structlog events
+        # automatically, but we also forward it to provider.stream() for
+        # provider-internal log correlation). Synthesis §3 (observability).
+        _plog = structlog.get_logger(__name__)
+        _caller_rid: Optional[str] = structlog.contextvars.get_contextvars().get("request_id")
+        _chunk_sample: int = self.config.provider_chunk_log_sample
+        _stream_start = time.monotonic()
+        _stream_chunks = 0
+        _plog.info("provider.stream.start", model_id=model_name)
+
         try:
             async with aclosing(
                 self.provider.stream(
                     model_name=model_name,
                     messages=messages,
                     tools=tool_schemas,
+                    request_id=_caller_rid,
                 )
             ) as provider_stream:
                 async for chunk in provider_stream:
+                    _stream_chunks += 1
+                    if _chunk_sample and (
+                        _stream_chunks == 1 or _stream_chunks % _chunk_sample == 0
+                    ):
+                        _size = (
+                            len(chunk.encode("utf-8"))
+                            if isinstance(chunk, str)
+                            else len(repr(chunk))
+                        )
+                        _plog.info(
+                            "provider.stream.chunk",
+                            chunk_index=_stream_chunks,
+                            size_bytes=_size,
+                        )
                     logger.debug(f"Provider stream chunk: {chunk}")
                     for parser_evt in self.parser.feed(chunk):
                         logger.debug(f"Parser event: {parser_evt}")
@@ -755,7 +782,37 @@ class ChattyAgentOrchestrator(OrchestratorABC):
                         )
                         turn_state["cancelled"] = True
                         break
+
+            # Stream exited cleanly (exhausted, tool-call break, or
+            # soft-cancel break). Emit the end span.
+            _plog.info(
+                "provider.stream.end",
+                model_id=model_name,
+                duration_ms=int((time.monotonic() - _stream_start) * 1000),
+                chunks_emitted=_stream_chunks,
+            )
+        except asyncio.CancelledError:
+            # Hard task cancellation (e.g., HTTP client disconnect or
+            # outer asyncio.Task.cancel()). Log the error span and re-raise
+            # so the outer CancelledError handler in run() fires correctly.
+            # Synthesis §3.5 cancellation contract.
+            _plog.warning(
+                "provider.stream.error",
+                model_id=model_name,
+                error_kind="cancelled",
+                duration_ms=int((time.monotonic() - _stream_start) * 1000),
+                chunks_emitted=_stream_chunks,
+            )
+            raise
         except Exception as stream_error:
+            _plog.error(
+                "provider.stream.error",
+                model_id=model_name,
+                error_kind="provider_error",
+                error_class=type(stream_error).__name__,
+                duration_ms=int((time.monotonic() - _stream_start) * 1000),
+                chunks_emitted=_stream_chunks,
+            )
             turn_state["stream_error"] = stream_error
             return
 
