@@ -26,14 +26,18 @@ clear, structured "missing-key" message rather than a silent drop.
 """
 
 import logging
-from typing import Any, Dict, Literal, Optional
+from typing import TYPE_CHECKING, Any, Dict, Literal, Optional
 
 from pydantic import Field, field_validator
 
 from tether_service.core.secrets import EnvFileSecretsProvider, SecretsProvider
+from tether_service.security.outbound import assert_safe_url
 from tether_service.tools.base import BaseTool, ToolInputs
 from tether_service.tools.brave_client import BraveSearchClient
 from tether_service.tools.registration import tool
+
+if TYPE_CHECKING:
+    from tether_service.config.settings import Settings
 
 
 logger = logging.getLogger(__name__)
@@ -117,7 +121,12 @@ class WebSearchTool(BaseTool):
 
     Inputs = WebSearchInputs
 
-    def __init__(self, *, secrets: Optional[SecretsProvider] = None):
+    def __init__(
+        self,
+        *,
+        secrets: Optional[SecretsProvider] = None,
+        settings: Optional["Settings"] = None,
+    ):
         """Construct the tool.
 
         Args:
@@ -125,9 +134,14 @@ class WebSearchTool(BaseTool):
                 defaults to :class:`EnvFileSecretsProvider` (env-first,
                 file-fallback under ``<data_dir>/secrets/<key>``).
                 Connector spec §3.5; synthesis §4 Phase 4.5 step 47a.
+            settings: Optional :class:`Settings` instance used to enforce
+                outbound URL policy via ``assert_safe_url`` (Phase 7 step 78).
+                When ``None`` (default), only the always-on scheme + host
+                checks apply.
         """
         super().__init__()
         self._secrets: SecretsProvider = secrets or EnvFileSecretsProvider()
+        self._settings: Optional["Settings"] = settings
         self._client: Optional[BraveSearchClient] = None
 
     @property
@@ -200,6 +214,15 @@ class WebSearchTool(BaseTool):
                     "<data_dir>/secrets/BRAVE_API_KEY and restart."
                 )
             }
+
+        # Phase 7 step 78: assert the fixed Brave API endpoint is safe.
+        # With default settings (no allowlist), only scheme + host checks apply.
+        # Callers that supply Settings with outbound_allowlist.enabled=True can
+        # restrict to specific hosts (e.g., ["api.search.brave.com"]).
+        try:
+            assert_safe_url(BraveSearchClient.BASE_URL, self._settings)
+        except Exception as e:
+            return {"error": str(e)}
 
         try:
             return await self._client.search(
