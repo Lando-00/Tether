@@ -64,6 +64,7 @@ from __future__ import annotations
 import asyncio
 import hashlib
 import json
+import time
 import uuid
 from contextlib import aclosing
 
@@ -817,8 +818,13 @@ class ChattyAgentOrchestrator(OrchestratorABC):
         # Wrap the tool execution in a Task so we can cancel it with
         # bounded grace if cancel_token flips True. ToolRunner already
         # imposes its own timeout; we're adding the cancel-grace layer.
+        # Phase 7 step 71: measure wall time for _audit_tool_call(duration_ms).
+        _tool_dispatch_start = time.monotonic()
         task = asyncio.create_task(
-            self.tool_runner.run(tool_name, tool_args, context=tool_ctx),
+            self.tool_runner.run(
+                tool_name, tool_args, context=tool_ctx,
+                tool_call_id=tool_call_id,  # Phase 7 step 71: span correlation
+            ),
             name=f"tool:{tool_name}",
         )
         dispatch_state["active_task_holder"][0] = task
@@ -866,6 +872,7 @@ class ChattyAgentOrchestrator(OrchestratorABC):
                         args_sha256=sha,
                         status="cancelled",
                         error_kind="cancelled",
+                        duration_ms=int((time.monotonic() - _tool_dispatch_start) * 1000),
                     )
                     dispatch_state["cancelled"] = True
                     dispatch_state["should_break"] = True
@@ -897,6 +904,7 @@ class ChattyAgentOrchestrator(OrchestratorABC):
                     args_sha256=sha,
                     status="error",
                     error_kind="timeout",
+                    duration_ms=int((time.monotonic() - _tool_dispatch_start) * 1000),
                 )
                 if (
                     self.config.tool_error_policy
@@ -932,6 +940,7 @@ class ChattyAgentOrchestrator(OrchestratorABC):
                     args_sha256=sha,
                     status="error",
                     error_kind="execution",
+                    duration_ms=int((time.monotonic() - _tool_dispatch_start) * 1000),
                 )
                 if (
                     self.config.tool_error_policy
@@ -979,6 +988,7 @@ class ChattyAgentOrchestrator(OrchestratorABC):
                     args_sha256=sha,
                     status="error",
                     error_kind="execution",
+                    duration_ms=int((time.monotonic() - _tool_dispatch_start) * 1000),
                 )
                 if self.config.tool_error_policy is ToolErrorPolicy.BREAK_LOOP:
                     dispatch_state["should_break"] = True
@@ -1007,6 +1017,7 @@ class ChattyAgentOrchestrator(OrchestratorABC):
                 tool_name=tool_name,
                 args_sha256=sha,
                 status="ok",
+                duration_ms=int((time.monotonic() - _tool_dispatch_start) * 1000),
             )
         finally:
             # Phase 5 followups F3 (rubber-duck review by xhigh + gpt-5.5):
