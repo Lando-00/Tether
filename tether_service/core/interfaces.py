@@ -308,6 +308,31 @@ class SessionStore(ABC):
         ...
 
     # ------------------------------------------------------------------
+    # Audit log (default no-op; SqliteSessionStore overrides).
+    # Phase 7 step 74 (synthesis §3.6 + B5 step 7): every tool dispatch
+    # writes ONE row to tool_audit. MemoryStore inherits the no-op so
+    # in-memory state stays simple. SqliteSessionStore overrides with a
+    # real INSERT.
+    # ------------------------------------------------------------------
+
+    async def audit_tool_call(
+        self,
+        *,
+        correlation_id: str,
+        session_id: str,
+        turn_id: str,
+        tool_call_id: Optional[str],
+        tool_name: str,
+        args_sha256: str,
+        args_json: Optional[str],
+        status: str,
+        error_kind: Optional[str],
+        duration_ms: Optional[int],
+    ) -> None:
+        """Append-only audit log entry for a tool call. Default no-op."""
+        return None
+
+    # ------------------------------------------------------------------
     # Lifecycle (default no-op; SqliteSessionStore overrides).
     # Phase 6 step 63 (synthesis §3.6): aiosqlite needs an explicit
     # async open/close pair. Keeping the contract on the ABC means
