@@ -1,0 +1,840 @@
+{
+  "$defs": {
+    "AuditLogSettings": {
+      "additionalProperties": false,
+      "description": "``security.audit_log:`` sub-model.\n\nPhase 7 step 73: tool_audit table receives one row per tool call.\nBy default args are stored as SHA-256 hash (privacy-preserving).\nSet ``store_args=True`` to also persist raw args_json (debug-only;\ncontains potentially-PII tool input).\n\nSynthesis §3.6 + B5 step 7.",
+      "properties": {
+        "store_args": {
+          "default": false,
+          "title": "Store Args",
+          "type": "boolean"
+        }
+      },
+      "title": "AuditLogSettings",
+      "type": "object"
+    },
+    "CORSSettings": {
+      "additionalProperties": false,
+      "description": "``security.cors:`` sub-model. Phase 7 step 79.",
+      "properties": {
+        "allow_credentials": {
+          "default": false,
+          "description": "Allow credentialed requests.",
+          "title": "Allow Credentials",
+          "type": "boolean"
+        },
+        "allow_headers": {
+          "description": "Allowed request headers.",
+          "items": {
+            "type": "string"
+          },
+          "title": "Allow Headers",
+          "type": "array"
+        },
+        "allow_methods": {
+          "description": "Allowed methods.",
+          "items": {
+            "type": "string"
+          },
+          "title": "Allow Methods",
+          "type": "array"
+        },
+        "allow_origins": {
+          "description": "Allowed Origin header values (literal or '*').",
+          "items": {
+            "type": "string"
+          },
+          "title": "Allow Origins",
+          "type": "array"
+        },
+        "enabled": {
+          "default": false,
+          "description": "Enable CORS middleware.",
+          "title": "Enabled",
+          "type": "boolean"
+        }
+      },
+      "title": "CORSSettings",
+      "type": "object"
+    },
+    "CSRFTokenSettings": {
+      "additionalProperties": false,
+      "description": "``security.csrf_token:`` sub-model.\n\nWhen enabled, requests must carry an ``X-Tether-CSRF`` header matching\nthe token printed at server startup. Off by default (single-user local\ndeployment doesn't need it). Phase 7 step 79.",
+      "properties": {
+        "enabled": {
+          "default": false,
+          "description": "Enable CSRF-token auth on /api/v1/* mutating requests (POST/PUT/PATCH/DELETE). Off by default.",
+          "title": "Enabled",
+          "type": "boolean"
+        },
+        "exempt_paths": {
+          "description": "Paths exempt from CSRF check (typically read-only health/info endpoints). GET requests are also exempt regardless of path.",
+          "items": {
+            "type": "string"
+          },
+          "title": "Exempt Paths",
+          "type": "array"
+        },
+        "header_name": {
+          "default": "X-Tether-CSRF",
+          "description": "Request header carrying the token.",
+          "title": "Header Name",
+          "type": "string"
+        },
+        "token": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "Static token. If None and enabled=True, server generates a fresh secrets.token_urlsafe(32) at startup and logs it once.",
+          "title": "Token"
+        }
+      },
+      "title": "CSRFTokenSettings",
+      "type": "object"
+    },
+    "ConnectorSpec": {
+      "additionalProperties": false,
+      "description": "One entry in ``connectors.registry`` (per connector spec §3.7).\n\nMirrors :class:`ProviderSpec` + :class:`ToolSpec` shape: a dotted-path\n``impl`` plus optional ``args`` filtered against the target ``__init__``\nby ``tether.core.factory.load`` (so adding a new arg doesn't\ncrash older configs). ``enabled`` defaults to True so YAML entries are\nlive unless explicitly disabled.\n\nPhase 4.5 ships the schema; concrete ``connectors.registry`` entries\narrive in Phase 2a (WhatsApp) / 2b (Gmail) sessions.",
+      "properties": {
+        "args": {
+          "additionalProperties": true,
+          "title": "Args",
+          "type": "object"
+        },
+        "enabled": {
+          "default": true,
+          "title": "Enabled",
+          "type": "boolean"
+        },
+        "impl": {
+          "title": "Impl",
+          "type": "string"
+        }
+      },
+      "required": [
+        "impl"
+      ],
+      "title": "ConnectorSpec",
+      "type": "object"
+    },
+    "ConnectorsSettings": {
+      "additionalProperties": false,
+      "description": "``connectors:`` section (per connector spec §3.7).\n\n``registry`` maps stable connector ids (``\"whatsapp\"``, ``\"gmail\"``,\n``\"echo\"``) to their :class:`ConnectorSpec`. The future\n``ConnectorRegistry`` (``p4_5-connector-registry``) consumes this map\nat app construction.\n\nPhase 4.5 ships the schema; concrete entries arrive in Phase 2a / 2b.",
+      "properties": {
+        "registry": {
+          "additionalProperties": {
+            "$ref": "#/$defs/ConnectorSpec"
+          },
+          "title": "Registry",
+          "type": "object"
+        }
+      },
+      "title": "ConnectorsSettings",
+      "type": "object"
+    },
+    "ContextSettings": {
+      "additionalProperties": false,
+      "description": "``context:`` section — thinking persistence flags.",
+      "properties": {
+        "include_thinking_in_history": {
+          "default": false,
+          "title": "Include Thinking In History",
+          "type": "boolean"
+        },
+        "save_thinking": {
+          "default": true,
+          "title": "Save Thinking",
+          "type": "boolean"
+        }
+      },
+      "title": "ContextSettings",
+      "type": "object"
+    },
+    "HttpSettings": {
+      "additionalProperties": false,
+      "description": "Top-level host/port for the HTTP server (``http:`` section).",
+      "properties": {
+        "host": {
+          "default": "127.0.0.1",
+          "title": "Host",
+          "type": "string"
+        },
+        "port": {
+          "default": 8080,
+          "maximum": 65535,
+          "minimum": 1,
+          "title": "Port",
+          "type": "integer"
+        }
+      },
+      "title": "HttpSettings",
+      "type": "object"
+    },
+    "InboxSettings": {
+      "additionalProperties": false,
+      "description": "``inbox:`` section (per connector spec §3.7 + §3.4).\n\nPhase 4.5 ships the schema; the SqliteInbox impl lands in Phase 6.5.\nThe defaults match the connector spec recommendations: 30-day\nretention, 64 KiB payload cap, 512-char summary cap. Connectors are\nresponsible for clamping to ``max_payload_bytes`` /\n``max_summary_chars`` when constructing :class:`InboundEvent` values\n— the inbox layer validates as defense in depth (Phase 6.5).",
+      "properties": {
+        "enabled": {
+          "default": true,
+          "title": "Enabled",
+          "type": "boolean"
+        },
+        "max_payload_bytes": {
+          "default": 64000,
+          "minimum": 1024,
+          "title": "Max Payload Bytes",
+          "type": "integer"
+        },
+        "max_summary_chars": {
+          "default": 512,
+          "minimum": 64,
+          "title": "Max Summary Chars",
+          "type": "integer"
+        },
+        "retention_days": {
+          "default": 30,
+          "maximum": 3650,
+          "minimum": 1,
+          "title": "Retention Days",
+          "type": "integer"
+        }
+      },
+      "title": "InboxSettings",
+      "type": "object"
+    },
+    "LimitsSettings": {
+      "additionalProperties": false,
+      "description": "``limits:`` section.",
+      "properties": {
+        "auto_reload_on_fatal_error": {
+          "default": true,
+          "title": "Auto Reload On Fatal Error",
+          "type": "boolean"
+        },
+        "loop_limit_policy": {
+          "default": "emit_limit_event",
+          "description": "LoopLimitPolicy enum value.",
+          "enum": [
+            "raise",
+            "emit_limit_event"
+          ],
+          "title": "Loop Limit Policy",
+          "type": "string"
+        },
+        "max_tool_loops": {
+          "default": 5,
+          "maximum": 50,
+          "minimum": 1,
+          "title": "Max Tool Loops",
+          "type": "integer"
+        },
+        "tool_error_policy": {
+          "default": "feed_back_to_model",
+          "description": "ToolErrorPolicy enum value.",
+          "enum": [
+            "break_loop",
+            "feed_back_to_model"
+          ],
+          "title": "Tool Error Policy",
+          "type": "string"
+        },
+        "tool_timeout_sec": {
+          "default": 15,
+          "minimum": 1,
+          "title": "Tool Timeout Sec",
+          "type": "integer"
+        }
+      },
+      "title": "LimitsSettings",
+      "type": "object"
+    },
+    "LogFileSettings": {
+      "additionalProperties": false,
+      "description": "``observability.logs.file:`` sub-model.\n\n``path`` (default None) resolves via platformdirs.user_log_dir to a\ncross-platform default (e.g., ``%LOCALAPPDATA%\\Tether\\Logs\\tether.jsonl``\non Windows, ``~/.cache/Tether/log/tether.jsonl`` on Linux).\n\nSynthesis §3 (observability), §4 Phase 7 step 67.",
+      "properties": {
+        "enabled": {
+          "default": true,
+          "title": "Enabled",
+          "type": "boolean"
+        },
+        "path": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Path"
+        }
+      },
+      "title": "LogFileSettings",
+      "type": "object"
+    },
+    "LogsSettings": {
+      "additionalProperties": false,
+      "description": "``observability.logs:`` sub-model.\n\nSynthesis §3 (observability), §4 Phase 7 step 67.",
+      "properties": {
+        "console": {
+          "default": true,
+          "title": "Console",
+          "type": "boolean"
+        },
+        "file": {
+          "$ref": "#/$defs/LogFileSettings"
+        },
+        "format": {
+          "default": "json",
+          "title": "Format",
+          "type": "string"
+        },
+        "level": {
+          "default": "INFO",
+          "title": "Level",
+          "type": "string"
+        }
+      },
+      "title": "LogsSettings",
+      "type": "object"
+    },
+    "OTelSettings": {
+      "additionalProperties": false,
+      "description": "``observability.otel:`` sub-model.\n\nOpenTelemetry tracing adapter (Phase 7 step 76). Off by default so that\nthe OTel packages are never imported at runtime unless explicitly enabled.\n\nRequires ``pip install tether[otel]`` when ``enabled=True``.\n\nSynthesis §3 (observability), B3 step 10.",
+      "properties": {
+        "enabled": {
+          "default": false,
+          "description": "Enable OpenTelemetry tracing adapter. Off by default. Requires `tether[otel]` extra.",
+          "title": "Enabled",
+          "type": "boolean"
+        },
+        "exporter": {
+          "default": "console",
+          "description": "OTel span exporter. 'console' prints spans to stdout for local debugging; 'otlp_http'/'otlp_grpc' send to an OTel collector at exporter_endpoint.",
+          "enum": [
+            "console",
+            "otlp_http",
+            "otlp_grpc"
+          ],
+          "title": "Exporter",
+          "type": "string"
+        },
+        "exporter_endpoint": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "OTLP collector endpoint when exporter is 'otlp_http' or 'otlp_grpc'. If None and exporter requires it, raises at startup.",
+          "title": "Exporter Endpoint"
+        },
+        "sample_rate": {
+          "default": 1.0,
+          "description": "Span sampling rate. 1.0 = sample all, 0.0 = sample none.",
+          "maximum": 1.0,
+          "minimum": 0.0,
+          "title": "Sample Rate",
+          "type": "number"
+        },
+        "service_name": {
+          "default": "tether",
+          "description": "OTel resource service.name attribute.",
+          "title": "Service Name",
+          "type": "string"
+        }
+      },
+      "title": "OTelSettings",
+      "type": "object"
+    },
+    "ObservabilitySettings": {
+      "additionalProperties": false,
+      "description": "``observability:`` section. Phase 7 structured logging foundation.",
+      "properties": {
+        "log_level": {
+          "default": "INFO",
+          "enum": [
+            "DEBUG",
+            "INFO",
+            "WARNING",
+            "ERROR"
+          ],
+          "title": "Log Level",
+          "type": "string"
+        },
+        "logs": {
+          "$ref": "#/$defs/LogsSettings"
+        },
+        "otel": {
+          "$ref": "#/$defs/OTelSettings",
+          "description": "OpenTelemetry tracing adapter. See OTelSettings."
+        },
+        "provider_chunk_log_sample": {
+          "default": 50,
+          "description": "Sample rate for provider.stream.chunk log events. 1 = log every chunk, 50 = log first + every 50th chunk, 0 = disable chunk logging entirely. Synthesis §3 (observability), §4 Phase 7 step 72.",
+          "minimum": 0,
+          "title": "Provider Chunk Log Sample",
+          "type": "integer"
+        }
+      },
+      "title": "ObservabilitySettings",
+      "type": "object"
+    },
+    "OrchestratorSettings": {
+      "additionalProperties": false,
+      "description": "``orchestrator:`` section — strategy registry.\n\nMirrors the ``tools.registry`` pattern. The registry maps mode\nnames (e.g., \"chat\", \"research\") to dotted impl paths. Engine.chat\nresolves the requested mode at call time via\n``protocol.orchestration.registry.resolve_orchestrator_class``.\n\nBriefing §2 Seam B item 4; §5 anti-pattern (no auto-routing).",
+      "properties": {
+        "default": {
+          "default": "chat",
+          "description": "Mode used when the request omits it.",
+          "title": "Default",
+          "type": "string"
+        },
+        "registry": {
+          "additionalProperties": {
+            "type": "string"
+          },
+          "description": "Mode -> dotted impl path (e.g., 'pkg.module.Class').",
+          "title": "Registry",
+          "type": "object"
+        }
+      },
+      "title": "OrchestratorSettings",
+      "type": "object"
+    },
+    "OutboundAllowlistSettings": {
+      "additionalProperties": false,
+      "description": "``security.outbound_allowlist:`` sub-model.\n\nRestricts outbound HTTP(S) URLs that tools may fetch.\n\nWhen ``enabled=False`` (default), assert_safe_url is a no-op\n(Tether's default deployment is single-user local; no hardening needed).\nWhen ``enabled=True``, only URLs matching one of the patterns in\n``allowed_hosts`` (literal or wildcard) are permitted. Schemes are\nalways restricted to http(s); private network ranges are always\nblocked unless ``allow_private=True``.\n\nSynthesis Section 3 (security), Section 4 Phase 7 step 78.",
+      "properties": {
+        "allow_private": {
+          "default": false,
+          "description": "Allow private/loopback IP ranges (RFC 1918 + 127.0.0.0/8 + link-local). Off by default to prevent SSRF against internal services.",
+          "title": "Allow Private",
+          "type": "boolean"
+        },
+        "allowed_hosts": {
+          "description": "Allowed host patterns. Each may be a literal hostname ('api.example.com') or a wildcard ('*.example.com'). When enabled=True, requests to hosts not matching any pattern are rejected.",
+          "items": {
+            "type": "string"
+          },
+          "title": "Allowed Hosts",
+          "type": "array"
+        },
+        "enabled": {
+          "default": false,
+          "description": "Enable outbound URL allowlist enforcement. Off by default; Tether's local-only deployment doesn't require this.",
+          "title": "Enabled",
+          "type": "boolean"
+        }
+      },
+      "title": "OutboundAllowlistSettings",
+      "type": "object"
+    },
+    "ProviderSpec": {
+      "additionalProperties": false,
+      "description": "``impl: ..., args: {...}`` shape used in ``providers.*`` sections.",
+      "properties": {
+        "args": {
+          "additionalProperties": true,
+          "title": "Args",
+          "type": "object"
+        },
+        "impl": {
+          "title": "Impl",
+          "type": "string"
+        }
+      },
+      "required": [
+        "impl"
+      ],
+      "title": "ProviderSpec",
+      "type": "object"
+    },
+    "ProvidersSettings": {
+      "additionalProperties": false,
+      "description": "``providers:`` section — model / parser / session_store implementations.",
+      "properties": {
+        "model": {
+          "$ref": "#/$defs/ProviderSpec"
+        },
+        "parser": {
+          "$ref": "#/$defs/ProviderSpec"
+        },
+        "session_store": {
+          "$ref": "#/$defs/ProviderSpec"
+        }
+      },
+      "required": [
+        "model",
+        "parser",
+        "session_store"
+      ],
+      "title": "ProvidersSettings",
+      "type": "object"
+    },
+    "SecuritySettings": {
+      "additionalProperties": false,
+      "description": "``security:`` section. Phase 4/7 hardening hooks.",
+      "properties": {
+        "audit_log": {
+          "$ref": "#/$defs/AuditLogSettings"
+        },
+        "capability_allowlist": {
+          "anyOf": [
+            {
+              "items": {
+                "type": "string"
+              },
+              "type": "array"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Capability Allowlist"
+        },
+        "cors": {
+          "$ref": "#/$defs/CORSSettings",
+          "description": "CORS policy. See CORSSettings."
+        },
+        "csrf_token": {
+          "$ref": "#/$defs/CSRFTokenSettings",
+          "description": "CSRF token policy. See CSRFTokenSettings."
+        },
+        "outbound_allowlist": {
+          "$ref": "#/$defs/OutboundAllowlistSettings",
+          "description": "Outbound URL allowlist policy. See OutboundAllowlistSettings."
+        },
+        "tool_result_max_bytes": {
+          "default": 262144,
+          "description": "Reject tool results exceeding this byte size; replaces with a structured error so the model can retry with smaller args. Phase 7 step 77.",
+          "minimum": 1024,
+          "title": "Tool Result Max Bytes",
+          "type": "integer"
+        },
+        "trusted_host": {
+          "$ref": "#/$defs/TrustedHostSettings",
+          "description": "TrustedHost policy. See TrustedHostSettings."
+        }
+      },
+      "title": "SecuritySettings",
+      "type": "object"
+    },
+    "SqliteSettings": {
+      "additionalProperties": false,
+      "description": "``storage.sqlite:`` sub-model.\n\n``dsn`` (default ``None``) resolves to\n``platformdirs.user_data_dir('Tether')/tether.db`` via\n:meth:`StorageSettings.resolved_dsn`. Library callers can override\nby passing ``dsn=\"sqlite:///path/to/db\"`` at config load time.\n\nSynthesis §3.6, §4 Phase 6 step 60.",
+      "properties": {
+        "dsn": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Dsn"
+        }
+      },
+      "title": "SqliteSettings",
+      "type": "object"
+    },
+    "StorageSettings": {
+      "additionalProperties": false,
+      "description": "``storage:`` section.\n\nPhase 6 step 60: replaces the previous hardcoded\n``sqlite:///./data/tether.db`` with platformdirs-resolved default\nso library users importing tether_service don't write into the\nconsumer's CWD. Synthesis §3.6, §10.8 #2.",
+      "properties": {
+        "sqlite": {
+          "$ref": "#/$defs/SqliteSettings"
+        }
+      },
+      "title": "StorageSettings",
+      "type": "object"
+    },
+    "StreamParserSettings": {
+      "additionalProperties": false,
+      "properties": {
+        "strict_balancing": {
+          "default": true,
+          "title": "Strict Balancing",
+          "type": "boolean"
+        }
+      },
+      "title": "StreamParserSettings",
+      "type": "object"
+    },
+    "StreamSettings": {
+      "additionalProperties": false,
+      "description": "``stream:`` section.",
+      "properties": {
+        "parser": {
+          "$ref": "#/$defs/StreamParserSettings"
+        }
+      },
+      "title": "StreamSettings",
+      "type": "object"
+    },
+    "SystemSettings": {
+      "additionalProperties": false,
+      "description": "``system:`` section — system prompt prefix.",
+      "properties": {
+        "prompt": {
+          "default": "",
+          "title": "Prompt",
+          "type": "string"
+        }
+      },
+      "title": "SystemSettings",
+      "type": "object"
+    },
+    "ToolSpec": {
+      "additionalProperties": false,
+      "description": "One entry in ``tools.registry`` (name + impl + optional args).",
+      "properties": {
+        "args": {
+          "additionalProperties": true,
+          "title": "Args",
+          "type": "object"
+        },
+        "impl": {
+          "title": "Impl",
+          "type": "string"
+        },
+        "name": {
+          "title": "Name",
+          "type": "string"
+        }
+      },
+      "required": [
+        "name",
+        "impl"
+      ],
+      "title": "ToolSpec",
+      "type": "object"
+    },
+    "ToolsSettings": {
+      "additionalProperties": false,
+      "description": "``tools:`` section.",
+      "properties": {
+        "call_contract": {
+          "const": "marker_json",
+          "default": "marker_json",
+          "title": "Call Contract",
+          "type": "string"
+        },
+        "continue_after_tool": {
+          "default": true,
+          "title": "Continue After Tool",
+          "type": "boolean"
+        },
+        "disabled": {
+          "items": {
+            "type": "string"
+          },
+          "title": "Disabled",
+          "type": "array"
+        },
+        "enabled": {
+          "items": {
+            "type": "string"
+          },
+          "title": "Enabled",
+          "type": "array"
+        },
+        "registry": {
+          "items": {
+            "$ref": "#/$defs/ToolSpec"
+          },
+          "title": "Registry",
+          "type": "array"
+        },
+        "web_search": {
+          "$ref": "#/$defs/WebSearchSettings"
+        }
+      },
+      "title": "ToolsSettings",
+      "type": "object"
+    },
+    "TrustedHostSettings": {
+      "additionalProperties": false,
+      "description": "``security.trusted_host:`` sub-model. Phase 7 step 79.",
+      "properties": {
+        "allowed_hosts": {
+          "description": "Allowed Host header values. '*' matches any. Wildcards like '*.example.com' supported per Starlette TrustedHostMiddleware.",
+          "items": {
+            "type": "string"
+          },
+          "title": "Allowed Hosts",
+          "type": "array"
+        },
+        "enabled": {
+          "default": false,
+          "description": "Enable TrustedHost middleware.",
+          "title": "Enabled",
+          "type": "boolean"
+        }
+      },
+      "title": "TrustedHostSettings",
+      "type": "object"
+    },
+    "WebSearchDefaults": {
+      "additionalProperties": false,
+      "properties": {
+        "count": {
+          "default": 5,
+          "title": "Count",
+          "type": "integer"
+        },
+        "country": {
+          "default": "us",
+          "title": "Country",
+          "type": "string"
+        },
+        "freshness": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Freshness"
+        },
+        "max_count": {
+          "default": 20,
+          "title": "Max Count",
+          "type": "integer"
+        },
+        "search_lang": {
+          "default": "en",
+          "title": "Search Lang",
+          "type": "string"
+        }
+      },
+      "title": "WebSearchDefaults",
+      "type": "object"
+    },
+    "WebSearchRetries": {
+      "additionalProperties": false,
+      "properties": {
+        "backoff_base_sec": {
+          "default": 0.5,
+          "title": "Backoff Base Sec",
+          "type": "number"
+        },
+        "max_attempts": {
+          "default": 3,
+          "title": "Max Attempts",
+          "type": "integer"
+        }
+      },
+      "title": "WebSearchRetries",
+      "type": "object"
+    },
+    "WebSearchSettings": {
+      "additionalProperties": false,
+      "description": "``tools.web_search`` subtree.",
+      "properties": {
+        "defaults": {
+          "$ref": "#/$defs/WebSearchDefaults"
+        },
+        "provider": {
+          "default": "brave",
+          "title": "Provider",
+          "type": "string"
+        },
+        "retries": {
+          "$ref": "#/$defs/WebSearchRetries"
+        },
+        "timeouts": {
+          "$ref": "#/$defs/WebSearchTimeouts"
+        }
+      },
+      "title": "WebSearchSettings",
+      "type": "object"
+    },
+    "WebSearchTimeouts": {
+      "additionalProperties": false,
+      "properties": {
+        "connect_sec": {
+          "default": 2,
+          "title": "Connect Sec",
+          "type": "number"
+        },
+        "read_sec": {
+          "default": 6,
+          "title": "Read Sec",
+          "type": "number"
+        },
+        "total_sec": {
+          "default": 15,
+          "title": "Total Sec",
+          "type": "number"
+        }
+      },
+      "title": "WebSearchTimeouts",
+      "type": "object"
+    }
+  },
+  "additionalProperties": false,
+  "description": "Tether's typed runtime configuration.\n\nLoaded from (in order, deep-merged):\n  1. ``tether_service/config/default.yml`` (package data; immutable).\n  2. ``tether_service/config/dev.yml`` (if present; deep-merged or\n     full-replaced via the ``_replaces_default: true`` flag).\n  3. Environment variables ``TETHER__SECTION__SUB__KEY`` (parsed as YAML\n     for type coercion).\n\n``extra=\"forbid\"`` on every sub-model catches typos in YAML; ``frozen=True``\nmakes the constructed Settings immutable so callers cannot mutate it as a\nglobal side effect.\n\nCitations: _synthesis.md §13.4 M6, §10.8 #2.",
+  "properties": {
+    "connectors": {
+      "$ref": "#/$defs/ConnectorsSettings"
+    },
+    "context": {
+      "$ref": "#/$defs/ContextSettings"
+    },
+    "http": {
+      "$ref": "#/$defs/HttpSettings"
+    },
+    "inbox": {
+      "$ref": "#/$defs/InboxSettings"
+    },
+    "limits": {
+      "$ref": "#/$defs/LimitsSettings"
+    },
+    "observability": {
+      "$ref": "#/$defs/ObservabilitySettings"
+    },
+    "orchestrator": {
+      "$ref": "#/$defs/OrchestratorSettings"
+    },
+    "providers": {
+      "$ref": "#/$defs/ProvidersSettings"
+    },
+    "security": {
+      "$ref": "#/$defs/SecuritySettings"
+    },
+    "storage": {
+      "$ref": "#/$defs/StorageSettings"
+    },
+    "stream": {
+      "$ref": "#/$defs/StreamSettings"
+    },
+    "system": {
+      "$ref": "#/$defs/SystemSettings"
+    },
+    "tools": {
+      "$ref": "#/$defs/ToolsSettings"
+    }
+  },
+  "required": [
+    "providers"
+  ],
+  "title": "Settings",
+  "type": "object"
+}

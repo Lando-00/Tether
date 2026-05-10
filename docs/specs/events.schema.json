@@ -1,0 +1,615 @@
+{
+  "$defs": {
+    "Error": {
+      "additionalProperties": false,
+      "description": "Non-recoverable error during the turn.",
+      "properties": {
+        "error_type": {
+          "title": "Error Type",
+          "type": "string"
+        },
+        "is_fatal": {
+          "default": false,
+          "title": "Is Fatal",
+          "type": "boolean"
+        },
+        "message": {
+          "title": "Message",
+          "type": "string"
+        },
+        "protocol_version": {
+          "default": "1.0",
+          "title": "Protocol Version",
+          "type": "string"
+        },
+        "seq": {
+          "description": "Per-turn monotonically-increasing sequence number",
+          "minimum": 0,
+          "title": "Seq",
+          "type": "integer"
+        },
+        "session_id": {
+          "title": "Session Id",
+          "type": "string"
+        },
+        "ts": {
+          "description": "Server-side emission timestamp (UTC)",
+          "format": "date-time",
+          "title": "Ts",
+          "type": "string"
+        },
+        "turn_id": {
+          "title": "Turn Id",
+          "type": "string"
+        },
+        "type": {
+          "const": "error",
+          "default": "error",
+          "title": "Type",
+          "type": "string"
+        }
+      },
+      "required": [
+        "session_id",
+        "turn_id",
+        "seq",
+        "ts",
+        "message",
+        "error_type"
+      ],
+      "title": "Error",
+      "type": "object"
+    },
+    "HwReset": {
+      "additionalProperties": false,
+      "description": "``HardwareWatchdog`` performed an ``hw_reset`` on the model.\nInformational; follow-up retry is the orchestrator's choice.",
+      "properties": {
+        "model_name": {
+          "title": "Model Name",
+          "type": "string"
+        },
+        "protocol_version": {
+          "default": "1.0",
+          "title": "Protocol Version",
+          "type": "string"
+        },
+        "seq": {
+          "description": "Per-turn monotonically-increasing sequence number",
+          "minimum": 0,
+          "title": "Seq",
+          "type": "integer"
+        },
+        "session_id": {
+          "title": "Session Id",
+          "type": "string"
+        },
+        "ts": {
+          "description": "Server-side emission timestamp (UTC)",
+          "format": "date-time",
+          "title": "Ts",
+          "type": "string"
+        },
+        "turn_id": {
+          "title": "Turn Id",
+          "type": "string"
+        },
+        "type": {
+          "const": "hw_reset",
+          "default": "hw_reset",
+          "title": "Type",
+          "type": "string"
+        }
+      },
+      "required": [
+        "session_id",
+        "turn_id",
+        "seq",
+        "ts",
+        "model_name"
+      ],
+      "title": "HwReset",
+      "type": "object"
+    },
+    "LoopLimitReached": {
+      "additionalProperties": false,
+      "description": "Tool loop hit ``max_tool_loops``. Emitted by\n``LoopLimitPolicy.EMIT_LIMIT_EVENT`` (the default per the ratified\nplan).",
+      "properties": {
+        "loops": {
+          "title": "Loops",
+          "type": "integer"
+        },
+        "protocol_version": {
+          "default": "1.0",
+          "title": "Protocol Version",
+          "type": "string"
+        },
+        "seq": {
+          "description": "Per-turn monotonically-increasing sequence number",
+          "minimum": 0,
+          "title": "Seq",
+          "type": "integer"
+        },
+        "session_id": {
+          "title": "Session Id",
+          "type": "string"
+        },
+        "ts": {
+          "description": "Server-side emission timestamp (UTC)",
+          "format": "date-time",
+          "title": "Ts",
+          "type": "string"
+        },
+        "turn_id": {
+          "title": "Turn Id",
+          "type": "string"
+        },
+        "type": {
+          "const": "loop_limit_reached",
+          "default": "loop_limit_reached",
+          "title": "Type",
+          "type": "string"
+        }
+      },
+      "required": [
+        "session_id",
+        "turn_id",
+        "seq",
+        "ts",
+        "loops"
+      ],
+      "title": "LoopLimitReached",
+      "type": "object"
+    },
+    "MessageStart": {
+      "additionalProperties": false,
+      "description": "Start of an assistant turn. Emitted before any text/tool events.",
+      "properties": {
+        "available_tools": {
+          "items": {
+            "$ref": "#/$defs/ToolDescriptor"
+          },
+          "title": "Available Tools",
+          "type": "array"
+        },
+        "protocol_version": {
+          "default": "1.0",
+          "title": "Protocol Version",
+          "type": "string"
+        },
+        "seq": {
+          "description": "Per-turn monotonically-increasing sequence number",
+          "minimum": 0,
+          "title": "Seq",
+          "type": "integer"
+        },
+        "session_id": {
+          "title": "Session Id",
+          "type": "string"
+        },
+        "ts": {
+          "description": "Server-side emission timestamp (UTC)",
+          "format": "date-time",
+          "title": "Ts",
+          "type": "string"
+        },
+        "turn_id": {
+          "title": "Turn Id",
+          "type": "string"
+        },
+        "type": {
+          "const": "message_start",
+          "default": "message_start",
+          "title": "Type",
+          "type": "string"
+        }
+      },
+      "required": [
+        "session_id",
+        "turn_id",
+        "seq",
+        "ts"
+      ],
+      "title": "MessageStart",
+      "type": "object"
+    },
+    "MessageStop": {
+      "additionalProperties": false,
+      "description": "End of an assistant turn. Always emitted last (one per turn).\n\n``stop_reason`` values per synthesis §11.3 R1:\n\n``complete``\n    Model produced a final answer.\n``tool_loop_exhausted``\n    ``max_tool_loops`` hit (``LoopLimitPolicy``).\n``cancelled``\n    Orchestrator's ``cancel_event`` was set (or the library user\n    called ``engine.aclose`` mid-stream).\n``client_disconnect``\n    HTTP client closed the connection.\n``error``\n    Recoverable error during the turn.",
+      "properties": {
+        "protocol_version": {
+          "default": "1.0",
+          "title": "Protocol Version",
+          "type": "string"
+        },
+        "seq": {
+          "description": "Per-turn monotonically-increasing sequence number",
+          "minimum": 0,
+          "title": "Seq",
+          "type": "integer"
+        },
+        "session_id": {
+          "title": "Session Id",
+          "type": "string"
+        },
+        "stop_reason": {
+          "enum": [
+            "complete",
+            "tool_loop_exhausted",
+            "cancelled",
+            "client_disconnect",
+            "error"
+          ],
+          "title": "Stop Reason",
+          "type": "string"
+        },
+        "ts": {
+          "description": "Server-side emission timestamp (UTC)",
+          "format": "date-time",
+          "title": "Ts",
+          "type": "string"
+        },
+        "turn_id": {
+          "title": "Turn Id",
+          "type": "string"
+        },
+        "type": {
+          "const": "message_stop",
+          "default": "message_stop",
+          "title": "Type",
+          "type": "string"
+        }
+      },
+      "required": [
+        "session_id",
+        "turn_id",
+        "seq",
+        "ts",
+        "stop_reason"
+      ],
+      "title": "MessageStop",
+      "type": "object"
+    },
+    "TextDelta": {
+      "additionalProperties": false,
+      "description": "Assistant text token (incremental).",
+      "properties": {
+        "protocol_version": {
+          "default": "1.0",
+          "title": "Protocol Version",
+          "type": "string"
+        },
+        "seq": {
+          "description": "Per-turn monotonically-increasing sequence number",
+          "minimum": 0,
+          "title": "Seq",
+          "type": "integer"
+        },
+        "session_id": {
+          "title": "Session Id",
+          "type": "string"
+        },
+        "text": {
+          "title": "Text",
+          "type": "string"
+        },
+        "ts": {
+          "description": "Server-side emission timestamp (UTC)",
+          "format": "date-time",
+          "title": "Ts",
+          "type": "string"
+        },
+        "turn_id": {
+          "title": "Turn Id",
+          "type": "string"
+        },
+        "type": {
+          "const": "text_delta",
+          "default": "text_delta",
+          "title": "Type",
+          "type": "string"
+        }
+      },
+      "required": [
+        "session_id",
+        "turn_id",
+        "seq",
+        "ts",
+        "text"
+      ],
+      "title": "TextDelta",
+      "type": "object"
+    },
+    "ThinkingDelta": {
+      "additionalProperties": false,
+      "description": "Reasoning channel token (incremental). Used by models that emit\nthinking separately (e.g., R1, future Tether-supported reasoning\nmodels).",
+      "properties": {
+        "protocol_version": {
+          "default": "1.0",
+          "title": "Protocol Version",
+          "type": "string"
+        },
+        "seq": {
+          "description": "Per-turn monotonically-increasing sequence number",
+          "minimum": 0,
+          "title": "Seq",
+          "type": "integer"
+        },
+        "session_id": {
+          "title": "Session Id",
+          "type": "string"
+        },
+        "text": {
+          "title": "Text",
+          "type": "string"
+        },
+        "ts": {
+          "description": "Server-side emission timestamp (UTC)",
+          "format": "date-time",
+          "title": "Ts",
+          "type": "string"
+        },
+        "turn_id": {
+          "title": "Turn Id",
+          "type": "string"
+        },
+        "type": {
+          "const": "thinking_delta",
+          "default": "thinking_delta",
+          "title": "Type",
+          "type": "string"
+        }
+      },
+      "required": [
+        "session_id",
+        "turn_id",
+        "seq",
+        "ts",
+        "text"
+      ],
+      "title": "ThinkingDelta",
+      "type": "object"
+    },
+    "ToolCall": {
+      "additionalProperties": false,
+      "description": "Model decides to call a tool. Followed by :class:`ToolResult` after\nexecution.",
+      "properties": {
+        "arguments": {
+          "additionalProperties": true,
+          "title": "Arguments",
+          "type": "object"
+        },
+        "name": {
+          "title": "Name",
+          "type": "string"
+        },
+        "protocol_version": {
+          "default": "1.0",
+          "title": "Protocol Version",
+          "type": "string"
+        },
+        "seq": {
+          "description": "Per-turn monotonically-increasing sequence number",
+          "minimum": 0,
+          "title": "Seq",
+          "type": "integer"
+        },
+        "session_id": {
+          "title": "Session Id",
+          "type": "string"
+        },
+        "tool_call_id": {
+          "title": "Tool Call Id",
+          "type": "string"
+        },
+        "ts": {
+          "description": "Server-side emission timestamp (UTC)",
+          "format": "date-time",
+          "title": "Ts",
+          "type": "string"
+        },
+        "turn_id": {
+          "title": "Turn Id",
+          "type": "string"
+        },
+        "type": {
+          "const": "tool_call",
+          "default": "tool_call",
+          "title": "Type",
+          "type": "string"
+        }
+      },
+      "required": [
+        "session_id",
+        "turn_id",
+        "seq",
+        "ts",
+        "tool_call_id",
+        "name"
+      ],
+      "title": "ToolCall",
+      "type": "object"
+    },
+    "ToolDescriptor": {
+      "additionalProperties": false,
+      "description": "Tool descriptor used in :class:`MessageStart` ``available_tools``.",
+      "properties": {
+        "description": {
+          "default": "",
+          "title": "Description",
+          "type": "string"
+        },
+        "name": {
+          "title": "Name",
+          "type": "string"
+        },
+        "parameters": {
+          "additionalProperties": true,
+          "title": "Parameters",
+          "type": "object"
+        }
+      },
+      "required": [
+        "name"
+      ],
+      "title": "ToolDescriptor",
+      "type": "object"
+    },
+    "ToolResult": {
+      "additionalProperties": false,
+      "description": "Result of a tool call. Always paired with a preceding\n:class:`ToolCall`.\n\n``error_kind`` values per synthesis §11.3 R6:\n\n``permission``\n    Capability denied (``missing_capabilities`` populated).\n``execution``\n    Tool raised during run.\n``timeout``\n    Tool exceeded timeout budget.\n``cancelled``\n    Tool task was cancelled mid-run.",
+      "properties": {
+        "error": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Error"
+        },
+        "error_kind": {
+          "anyOf": [
+            {
+              "enum": [
+                "permission",
+                "execution",
+                "timeout",
+                "cancelled"
+              ],
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Error Kind"
+        },
+        "missing_capabilities": {
+          "items": {
+            "type": "string"
+          },
+          "title": "Missing Capabilities",
+          "type": "array"
+        },
+        "name": {
+          "title": "Name",
+          "type": "string"
+        },
+        "protocol_version": {
+          "default": "1.0",
+          "title": "Protocol Version",
+          "type": "string"
+        },
+        "result": {
+          "anyOf": [
+            {
+              "additionalProperties": true,
+              "type": "object"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Result"
+        },
+        "seq": {
+          "description": "Per-turn monotonically-increasing sequence number",
+          "minimum": 0,
+          "title": "Seq",
+          "type": "integer"
+        },
+        "session_id": {
+          "title": "Session Id",
+          "type": "string"
+        },
+        "status": {
+          "enum": [
+            "ok",
+            "error"
+          ],
+          "title": "Status",
+          "type": "string"
+        },
+        "tool_call_id": {
+          "title": "Tool Call Id",
+          "type": "string"
+        },
+        "ts": {
+          "description": "Server-side emission timestamp (UTC)",
+          "format": "date-time",
+          "title": "Ts",
+          "type": "string"
+        },
+        "turn_id": {
+          "title": "Turn Id",
+          "type": "string"
+        },
+        "type": {
+          "const": "tool_result",
+          "default": "tool_result",
+          "title": "Type",
+          "type": "string"
+        }
+      },
+      "required": [
+        "session_id",
+        "turn_id",
+        "seq",
+        "ts",
+        "tool_call_id",
+        "name",
+        "status"
+      ],
+      "title": "ToolResult",
+      "type": "object"
+    }
+  },
+  "discriminator": {
+    "mapping": {
+      "error": "#/$defs/Error",
+      "hw_reset": "#/$defs/HwReset",
+      "loop_limit_reached": "#/$defs/LoopLimitReached",
+      "message_start": "#/$defs/MessageStart",
+      "message_stop": "#/$defs/MessageStop",
+      "text_delta": "#/$defs/TextDelta",
+      "thinking_delta": "#/$defs/ThinkingDelta",
+      "tool_call": "#/$defs/ToolCall",
+      "tool_result": "#/$defs/ToolResult"
+    },
+    "propertyName": "type"
+  },
+  "oneOf": [
+    {
+      "$ref": "#/$defs/MessageStart"
+    },
+    {
+      "$ref": "#/$defs/MessageStop"
+    },
+    {
+      "$ref": "#/$defs/TextDelta"
+    },
+    {
+      "$ref": "#/$defs/ThinkingDelta"
+    },
+    {
+      "$ref": "#/$defs/ToolCall"
+    },
+    {
+      "$ref": "#/$defs/ToolResult"
+    },
+    {
+      "$ref": "#/$defs/Error"
+    },
+    {
+      "$ref": "#/$defs/LoopLimitReached"
+    },
+    {
+      "$ref": "#/$defs/HwReset"
+    }
+  ]
+}
