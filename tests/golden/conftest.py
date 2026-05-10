@@ -84,7 +84,7 @@ class MinimalMemoryStore(SessionStore):
         if not history:
             history.insert(0, {"role": "system", "content": prompt})
 
-    async def add_user(self, session_id: str, text: str) -> None:
+    async def add_user(self, session_id: str, text: str, *, turn_id=None, seq_start=None) -> None:
         self._sessions.setdefault(session_id, []).append(
             {"role": "user", "content": text}
         )
@@ -95,20 +95,26 @@ class MinimalMemoryStore(SessionStore):
         text: str,
         thinking_text: Optional[str] = None,
         save_thinking: bool = True,
+        *,
+        turn_id=None,
+        seq_start=None,
     ) -> None:
         self._sessions.setdefault(session_id, []).append(
             {"role": "assistant", "content": text}
         )
 
     async def add_assistant_toolcall(
-        self, session_id: str, tool_name: str, args: Dict[str, Any]
+        self, session_id: str, tool_name: str, args: Dict[str, Any],
+        *, turn_id=None, tool_call_id=None, seq_start=None,
     ) -> None:
         self._sessions.setdefault(session_id, []).append(
             {"role": "tool", "tool": tool_name, "args": args}
         )
 
     async def add_tool_result(
-        self, session_id: str, tool_name: str, result: Any
+        self, session_id: str, tool_name: str, result: Any,
+        *, turn_id=None, tool_call_id=None, seq_start=None,
+        status="ok", error=None, duration_ms=None,
     ) -> None:
         self._sessions.setdefault(session_id, []).append(
             {"role": "tool_result", "tool": tool_name, "result": result}
@@ -118,6 +124,16 @@ class MinimalMemoryStore(SessionStore):
         self, session_id: str, include_thinking: bool = False
     ) -> List[Dict[str, Any]]:
         return list(self._sessions.get(session_id, []))
+
+    # --- v2 lifecycle stubs (no-op; test fakes don't need v2 state) ---
+    async def start_turn(self, session_id: str, turn_id: str, *, model_name=None) -> None:
+        pass
+
+    async def complete_turn(self, turn_id: str, *, status="completed", stop_reason=None, error_json=None) -> None:
+        pass
+
+    async def record_raw_event(self, session_id, turn_id, seq, event_type, payload, *, tool_call_id=None) -> None:
+        pass
 
 
 # ---------------------------------------------------------------------------
