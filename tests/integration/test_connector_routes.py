@@ -235,6 +235,15 @@ class _OAuthBeginConnector(Connector):
 
     def __init__(self, *, state_token: Optional[str] = "abc123") -> None:
         self._state_token = state_token
+        # Phase 8 RD Fix 2: track auth state so ``auth_status`` reflects
+        # post-``complete_login`` reality. Real OAuth connectors transition
+        # to ``READY`` inside ``complete_login`` before returning the
+        # ``LoginContinueResult``; the registry's pre-check
+        # (``start_connector`` / ``start_all``) reads ``auth_status`` to
+        # decide whether to call ``start()``. Without this counter, the
+        # fake stays ``UNCONFIGURED`` forever and the pre-check skips
+        # ``start()`` even after a successful login.
+        self._auth_state: ConnectorState = ConnectorState.UNCONFIGURED
         extra: Dict[str, Any] = {}
         if state_token is not None:
             extra["oauth_state"] = state_token
@@ -259,10 +268,10 @@ class _OAuthBeginConnector(Connector):
         return None
 
     async def health(self) -> HealthStatus:
-        return HealthStatus(state=ConnectorState.UNCONFIGURED)
+        return HealthStatus(state=self._auth_state)
 
     async def auth_status(self) -> AuthStatus:
-        return AuthStatus(state=ConnectorState.UNCONFIGURED)
+        return AuthStatus(state=self._auth_state)
 
     async def begin_login(self) -> LoginPrompt:
         return self._prompt
@@ -270,7 +279,12 @@ class _OAuthBeginConnector(Connector):
     async def complete_login(
         self, *, payload: Dict[str, Any]
     ) -> LoginContinueResult:
-        return await self.complete_login_mock(payload=payload)
+        result = await self.complete_login_mock(payload=payload)
+        # Mirror real-connector behaviour: transition internal state to
+        # match the returned ``LoginContinueResult.state``. Required for
+        # the registry's ``start_connector`` pre-check (Phase 8 RD Fix 2).
+        self._auth_state = result.state
+        return result
 
     def tools(self) -> Dict[str, Tool]:
         return {}

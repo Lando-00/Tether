@@ -219,10 +219,38 @@ def install_otel_adapter(settings: "Settings") -> None:
                         or event_dict.get("exception")
                         or ""
                     )
-                    span.set_status(StatusCode.ERROR, description=str(error_msg))
+                    # Phase 8 RD followup (FIX 1): redact span.set_status
+                    # description. Span status descriptions go through a
+                    # different code path than _make_attrs and would
+                    # otherwise leak Bearer tokens / api_keys to the OTel
+                    # exporter.
+                    span.set_status(
+                        StatusCode.ERROR,
+                        description=redact_text(str(error_msg)),
+                    )
                     exc = event_dict.get("_exc_info")
                     if isinstance(exc, BaseException):
-                        span.record_exception(exc)
+                        # Phase 8 RD followup (FIX 1): record_exception's
+                        # default args build {exception.type,
+                        # exception.message, exception.stacktrace} from the
+                        # exception object directly. Override exception.message
+                        # and exception.type with redacted values so a Bearer
+                        # token in the exception's __str__ doesn't leak. The
+                        # SDK's _attributes.update(attributes) lets our keys
+                        # win.
+                        # TODO(fu-otel-traceback-redaction): exception.stacktrace
+                        # is still produced by the SDK from the live traceback
+                        # (frame locals + arg reprs) and is NOT redacted by
+                        # this override. Full traceback redaction needs a
+                        # custom span processor that intercepts the "exception"
+                        # event before export.
+                        span.record_exception(
+                            exc,
+                            attributes={
+                                "exception.message": redact_text(str(exc)),
+                                "exception.type": type(exc).__name__,
+                            },
+                        )
 
         elif event in _SPAN_EVENT_NAMES:
             # Lightweight: attach a span event to whatever span is currently

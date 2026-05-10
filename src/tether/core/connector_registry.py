@@ -281,8 +281,33 @@ class ConnectorRegistry:
         ``Connector.start()`` is contractually idempotent (connector spec
         §3.1) so this method is safe to call repeatedly; the data dir
         ``mkdir(..., exist_ok=True)`` mirrors that.
+
+        Phase 8 RD followup (FIX 2): pre-checks ``auth_status`` and skips
+        ``start()`` for connectors that aren't ``READY``. The bulk path
+        :meth:`start_all` already gates on this; the single-connector path
+        used to call ``start()`` unconditionally, which let
+        ``ConnectorNotConfiguredError`` raise from inside the start path
+        for OAuth connectors that lazily build an authenticated client.
+        Aligns the contract for both code paths so callers (HTTP /
+        callbacks / tests) get the same behaviour.
         """
         conn = self.get(connector_id)
+        try:
+            status = await conn.auth_status()
+        except Exception as exc:  # noqa: BLE001 - defensive
+            logger.exception(
+                "start_connector: auth_status(%s) failed: %s",
+                connector_id,
+                exc,
+            )
+            raise
+        if status.state is not ConnectorState.READY:
+            logger.info(
+                "start_connector: skipping %s (auth_status=%s, not READY)",
+                connector_id,
+                status.state.value,
+            )
+            return
         self._ensure_connector_data_dir(connector_id)
         await conn.start()
         logger.info("Started connector: %s", connector_id)

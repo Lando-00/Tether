@@ -224,6 +224,57 @@ def test_login_complete_starts_connector(tmp_path) -> None:
 
 
 # ---------------------------------------------------------------------------
+# (3+) start_connector pre-checks auth_status (Phase 8 RD Fix 2)
+# ---------------------------------------------------------------------------
+
+
+async def test_start_connector_skips_when_not_ready(
+    tmp_path, caplog: pytest.LogCaptureFixture
+) -> None:
+    """``start_connector`` MUST pre-check ``auth_status == READY`` before
+    calling ``conn.start()``.
+
+    Phase 8 RD Fix 2 (xhigh CONCERN #4): the bulk path :meth:`start_all`
+    already gated on this; the single-connector path used to call
+    ``start()`` unconditionally, which would let
+    ``ConnectorNotConfiguredError`` raise from inside the start path
+    for OAuth connectors that lazily build an authenticated client.
+    """
+
+    class _CountingEcho(EchoConnector):
+        """EchoConnector that counts ``start()`` invocations."""
+
+        def __init__(self) -> None:
+            super().__init__()
+            self.start_calls = 0
+
+        async def start(self) -> None:
+            self.start_calls += 1
+            await super().start()
+
+    echo = _CountingEcho()
+    # Fresh EchoConnector is UNCONFIGURED (not READY).
+    assert echo.state is ConnectorState.UNCONFIGURED
+
+    registry = ConnectorRegistry([echo], data_dir=tmp_path)
+
+    with caplog.at_level("INFO", logger="tether.core.connector_registry"):
+        await registry.start_connector("echo")
+
+    # start() must NOT have been called — the pre-check should have
+    # short-circuited.
+    assert echo.start_calls == 0, (
+        f"start() was called {echo.start_calls} time(s) for a non-READY "
+        f"connector — start_connector pre-check regressed."
+    )
+    # And the registry must have logged the skip with the auth state.
+    assert any(
+        "skipping echo" in r.message and "not READY" in r.message
+        for r in caplog.records
+    ), "Expected an INFO log entry recording the skipped start."
+
+
+# ---------------------------------------------------------------------------
 # (4) echo_send via tool runner — outbound side-effect
 # ---------------------------------------------------------------------------
 
