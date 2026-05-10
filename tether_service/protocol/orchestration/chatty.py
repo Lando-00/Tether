@@ -179,6 +179,7 @@ class ChattyAgentOrchestrator(OrchestratorABC):
         config: OrchestratorConfig,
         tool_runner: ToolRunner,
         hw_watchdog: Optional["HardwareWatchdog"] = None,
+        audit_store_args: bool = False,
     ):
         self.provider = provider
         self.parser = parser
@@ -188,6 +189,10 @@ class ChattyAgentOrchestrator(OrchestratorABC):
         self.config = config
         self.tool_runner = tool_runner
         self.hw_watchdog = hw_watchdog
+        # Phase 7 step 74: when True, raw args_json is stored in tool_audit
+        # alongside the SHA-256 hash. Default False (privacy-preserving).
+        # Synthesis §3.6 + B5 step 7.
+        self._audit_store_args = audit_store_args
 
     # --- Public entry point ------------------------------------------------
 
@@ -830,6 +835,10 @@ class ChattyAgentOrchestrator(OrchestratorABC):
         dispatch_state["active_task_holder"][0] = task
 
         sha = _args_sha256(tool_args)
+        # Canonical JSON for args_json column (populated only when
+        # audit_store_args=True; same encoding as sha input so the hash
+        # is always verifiable against the stored JSON). Phase 7 step 74.
+        _args_json_str = json.dumps(tool_args, sort_keys=True, default=str)
 
         try:
             # Poll cancel_token while the tool runs. Don't busy-spin —
@@ -868,7 +877,9 @@ class ChattyAgentOrchestrator(OrchestratorABC):
                     await self._audit_tool_call(
                         session_id=session_id,
                         turn_id=turn_id,
+                        tool_call_id=tool_call_id,
                         tool_name=tool_name,
+                        args_json=_args_json_str,
                         args_sha256=sha,
                         status="cancelled",
                         error_kind="cancelled",
@@ -898,14 +909,16 @@ class ChattyAgentOrchestrator(OrchestratorABC):
                     error=error_msg,
                 )
                 await self._audit_tool_call(
-                    session_id=session_id,
-                    turn_id=turn_id,
-                    tool_name=tool_name,
-                    args_sha256=sha,
-                    status="error",
-                    error_kind="timeout",
-                    duration_ms=int((time.monotonic() - _tool_dispatch_start) * 1000),
-                )
+                        session_id=session_id,
+                        turn_id=turn_id,
+                        tool_call_id=tool_call_id,
+                        tool_name=tool_name,
+                        args_json=_args_json_str,
+                        args_sha256=sha,
+                        status="error",
+                        error_kind="timeout",
+                        duration_ms=int((time.monotonic() - _tool_dispatch_start) * 1000),
+                    )
                 if (
                     self.config.tool_error_policy
                     is ToolErrorPolicy.BREAK_LOOP
@@ -934,14 +947,16 @@ class ChattyAgentOrchestrator(OrchestratorABC):
                     error=error_msg,
                 )
                 await self._audit_tool_call(
-                    session_id=session_id,
-                    turn_id=turn_id,
-                    tool_name=tool_name,
-                    args_sha256=sha,
-                    status="error",
-                    error_kind="execution",
-                    duration_ms=int((time.monotonic() - _tool_dispatch_start) * 1000),
-                )
+                        session_id=session_id,
+                        turn_id=turn_id,
+                        tool_call_id=tool_call_id,
+                        tool_name=tool_name,
+                        args_json=_args_json_str,
+                        args_sha256=sha,
+                        status="error",
+                        error_kind="execution",
+                        duration_ms=int((time.monotonic() - _tool_dispatch_start) * 1000),
+                    )
                 if (
                     self.config.tool_error_policy
                     is ToolErrorPolicy.BREAK_LOOP
@@ -984,7 +999,9 @@ class ChattyAgentOrchestrator(OrchestratorABC):
                 await self._audit_tool_call(
                     session_id=session_id,
                     turn_id=turn_id,
+                    tool_call_id=tool_call_id,
                     tool_name=tool_name,
+                    args_json=_args_json_str,
                     args_sha256=sha,
                     status="error",
                     error_kind="execution",
@@ -1014,7 +1031,9 @@ class ChattyAgentOrchestrator(OrchestratorABC):
             await self._audit_tool_call(
                 session_id=session_id,
                 turn_id=turn_id,
+                tool_call_id=tool_call_id,
                 tool_name=tool_name,
+                args_json=_args_json_str,
                 args_sha256=sha,
                 status="ok",
                 duration_ms=int((time.monotonic() - _tool_dispatch_start) * 1000),
@@ -1142,22 +1161,48 @@ class ChattyAgentOrchestrator(OrchestratorABC):
         *,
         session_id: str,
         turn_id: str,
+        tool_call_id: Optional[str] = None,
         tool_name: str,
+        args_json: Optional[str] = None,
         args_sha256: str,
         status: str,
         error_kind: Optional[str] = None,
         duration_ms: Optional[int] = None,
     ) -> None:
-        """Audit-log hook (no-op until Phase 7 step 73 ships ``tool_audit``).
+        """Write a tool_audit row through the SessionStore. Phase 7 step 74.
 
-        Synthesis §11.3 R3 + Phase 7 step 73-74. The orchestrator
-        already calls this at success / error / timeout / cancel
-        sites; Phase 7 swaps the body for an actual SQL ``INSERT INTO
-        tool_audit``. Do NOT add the table here — that's strictly
-        Phase 7's column ownership (synthesis B5).
+        ``correlation_id`` prefers the ``request_id`` structlog contextvar
+        (set by the HTTP request middleware for each incoming HTTP request)
+        and falls back to ``turn_id`` for library-mode callers that run
+        without HTTP middleware. Synthesis §3.6 + B5 step 7.
+
+        The call is wrapped in try/except so an audit write failure never
+        breaks the orchestrator — tool execution continues regardless.
         """
-        # TODO(phase7-step73): implement real audit log row insert.
-        return None
+        ctx = structlog.contextvars.get_contextvars()
+        correlation_id: str = ctx.get("request_id") or turn_id
+
+        try:
+            await self.store.audit_tool_call(
+                correlation_id=correlation_id,
+                session_id=session_id,
+                turn_id=turn_id,
+                tool_call_id=tool_call_id,
+                tool_name=tool_name,
+                args_sha256=args_sha256,
+                args_json=args_json if self._audit_store_args else None,
+                status=status,
+                error_kind=error_kind,
+                duration_ms=duration_ms,
+            )
+        except Exception as e:
+            # Audit write must never break the orchestrator. Log and continue.
+            logger.warning(
+                "tool_audit.write_failed",
+                tool_name=tool_name,
+                tool_call_id=tool_call_id,
+                error=str(e)[:200],
+            )
 
 
 __all__ = ["ChattyAgentOrchestrator"]

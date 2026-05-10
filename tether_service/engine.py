@@ -143,6 +143,10 @@ class Engine:
             "research": "tether_service.protocol.orchestration.notebook.NotebookOrchestrator",
         }
         self._orchestrator_default_mode = orchestrator_default_mode
+        # Phase 7 step 74: whether to store raw args_json in tool_audit.
+        # Default False (privacy-preserving). Set by Engine.from_settings
+        # from settings.security.audit_log.store_args. Synthesis B5 step 7.
+        self._audit_store_args: bool = False
         # Phase 4.5 step 47d: __aenter__ schedules start_connector(id) for
         # each READY connector; __aexit__/aclose cancels any still-pending
         # tasks before invoking stop_all so we never tear down a connector
@@ -278,7 +282,7 @@ class Engine:
                     f"{mode!r} -> {registry_dict[mode]!r} is invalid: {e}"
                 ) from e
 
-        return cls(
+        engine = cls(
             provider=provider,
             parser_factory=_new_parser,
             session_store=store,
@@ -292,6 +296,11 @@ class Engine:
             orchestrator_registry=registry_dict,
             orchestrator_default_mode=settings.orchestrator.default,
         )
+        # Phase 7 step 74: wire audit_log.store_args so the orchestrator
+        # knows whether to populate args_json in tool_audit rows.
+        # Synthesis B5 step 7.
+        engine._audit_store_args = settings.security.audit_log.store_args
+        return engine
 
     # --- Streaming chat (the core API) ---
 
@@ -368,7 +377,13 @@ class Engine:
         # two requests interleave (rubber-duck review by gpt-5.5).
         per_turn_parser = self._parser_factory()
 
-        orch = orchestrator_cls(
+        # Phase 7 step 74: pass audit_store_args to orchestrators that
+        # support it. inspect.signature check avoids breaking stub
+        # orchestrators (e.g., NotebookOrchestrator) that don't yet
+        # have the kwarg in their __init__. Synthesis B5 step 7.
+        import inspect as _inspect
+        _orch_sig = _inspect.signature(orchestrator_cls.__init__)
+        _orch_kwargs: Dict[str, Any] = dict(
             provider=self.provider,
             parser=per_turn_parser,
             store=self.store,
@@ -378,6 +393,10 @@ class Engine:
             tool_runner=self.tool_runner,
             hw_watchdog=self.hw_watchdog,
         )
+        if "audit_store_args" in _orch_sig.parameters:
+            _orch_kwargs["audit_store_args"] = self._audit_store_args
+
+        orch = orchestrator_cls(**_orch_kwargs)
         async for wire_event in orch.run(
             session_id=session_id,
             prompt=prompt,

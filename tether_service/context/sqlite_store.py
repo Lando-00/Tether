@@ -620,3 +620,44 @@ class SqliteSessionStore(SessionStore):
             logger.warning(
                 "Duplicate raw_event skipped: turn_id=%s seq=%s", turn_id, seq
             )
+
+    # ------------------------------------------------------------------
+    # Audit log
+    # ------------------------------------------------------------------
+
+    async def audit_tool_call(
+        self,
+        *,
+        correlation_id: str,
+        session_id: str,
+        turn_id: str,
+        tool_call_id: Optional[str],
+        tool_name: str,
+        args_sha256: str,
+        args_json: Optional[str],
+        status: str,
+        error_kind: Optional[str],
+        duration_ms: Optional[int],
+    ) -> None:
+        """INSERT a tool_audit row. Phase 7 step 74.
+
+        Append-only; ``started_at`` / ``completed_at`` default to
+        ``strftime('%Y-%m-%dT%H:%M:%fZ','now')`` in the schema.
+        ``capabilities`` is stubbed as ``'[]'`` — Phase 8 populates it.
+        Synthesis §3.6 + B5 step 7.
+        """
+        conn = await self._ensure_connected()
+        await conn.execute(
+            """
+            INSERT INTO tool_audit(
+                correlation_id, session_id, turn_id, tool_call_id, tool_name,
+                args_sha256, args_json, capabilities, status, error_kind, duration_ms
+            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+            """,
+            (
+                correlation_id, session_id, turn_id, tool_call_id, tool_name,
+                args_sha256, args_json, "[]",
+                status, error_kind, duration_ms,
+            ),
+        )
+        await conn.commit()
