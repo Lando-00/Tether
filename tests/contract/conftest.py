@@ -27,7 +27,11 @@ async def sqlite_store(tmp_path):
     db_path = tmp_path / "contract_test.db"
     dsn = f"sqlite:///{db_path}"
     store = SqliteSessionStore(dsn=dsn)
-    yield store
+    await store.connect()
+    try:
+        yield store
+    finally:
+        await store.aclose()
 
 
 @pytest.fixture(params=["memory", "sqlite"])

@@ -29,7 +29,10 @@ async def fresh_sqlite(tmp_path):
     """Isolated SqliteSessionStore + raw db_path per test."""
     db_path = tmp_path / "v2_pop.db"
     store = SqliteSessionStore(dsn=f"sqlite:///{db_path}")
-    yield store, db_path
+    try:
+        yield store, db_path
+    finally:
+        await store.aclose()
 
 
 @pytest.fixture
