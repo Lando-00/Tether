@@ -49,6 +49,10 @@ class OrchestratorConfig:
     # explicit YAML / env values.
     loop_limit_policy: LoopLimitPolicy = LoopLimitPolicy.EMIT_LIMIT_EVENT
     tool_error_policy: ToolErrorPolicy = ToolErrorPolicy.FEED_BACK_TO_MODEL
+    # Phase 7 step 72: chunk sampling for provider.stream.chunk log spans.
+    # 0 = disabled, 1 = every chunk, 50 = first + every 50th.
+    # Synthesis §3 (observability), §4 Phase 7 step 72.
+    provider_chunk_log_sample: int = 50
 
     @classmethod
     def from_settings(cls, settings: "Settings") -> "OrchestratorConfig":
@@ -59,6 +63,7 @@ class OrchestratorConfig:
             include_thinking_in_history=settings.context.include_thinking_in_history,
             loop_limit_policy=LoopLimitPolicy(settings.limits.loop_limit_policy),
             tool_error_policy=ToolErrorPolicy(settings.limits.tool_error_policy),
+            provider_chunk_log_sample=settings.observability.provider_chunk_log_sample,
         )
 
 

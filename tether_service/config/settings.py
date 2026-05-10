@@ -207,6 +207,16 @@ class ObservabilitySettings(StrictModel):
 
     log_level: Literal["DEBUG", "INFO", "WARNING", "ERROR"] = "INFO"
     logs: LogsSettings = Field(default_factory=LogsSettings)
+    provider_chunk_log_sample: int = Field(
+        default=50,
+        description=(
+            "Sample rate for provider.stream.chunk log events. "
+            "1 = log every chunk, 50 = log first + every 50th chunk, "
+            "0 = disable chunk logging entirely. "
+            "Synthesis §3 (observability), §4 Phase 7 step 72."
+        ),
+        ge=0,
+    )
 
 
 class SqliteSettings(StrictModel):
