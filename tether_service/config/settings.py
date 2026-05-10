@@ -146,10 +146,25 @@ class StreamSettings(StrictModel):
     parser: StreamParserSettings = Field(default_factory=StreamParserSettings)
 
 
+class AuditLogSettings(StrictModel):
+    """``security.audit_log:`` sub-model.
+
+    Phase 7 step 73: tool_audit table receives one row per tool call.
+    By default args are stored as SHA-256 hash (privacy-preserving).
+    Set ``store_args=True`` to also persist raw args_json (debug-only;
+    contains potentially-PII tool input).
+
+    Synthesis §3.6 + B5 step 7.
+    """
+
+    store_args: bool = False
+
+
 class SecuritySettings(StrictModel):
     """``security:`` section. Phase 4 will populate ``capability_allowlist``."""
 
     capability_allowlist: Optional[List[str]] = None
+    audit_log: AuditLogSettings = Field(default_factory=AuditLogSettings)
 
 
 class LogFileSettings(StrictModel):
