@@ -492,4 +492,112 @@ async def test_complete_turn_timeout_swallowed_when_store_too_slow():
     )
 
 
+# ---------------------------------------------------------------------------
+# FIX 3 — RD followup: cancel-path _audit_tool_call() has a 200ms write budget.
+# Synthesis §3.5 cancellation contract: tool grace 250ms + persist budget 200ms.
+# Phase 7 step 71 added _audit_tool_call calls in 5 places — only the cancel
+# path (reachable during outer cancel) is bounded; success/exception/timeout
+# paths run on normal time.
+# ---------------------------------------------------------------------------
+
+
+class _AuditSlowStore(MinimalMemoryStore):
+    """SessionStore whose ``audit_tool_call`` sleeps for ``sleep_sec``.
+
+    Triggers FIX 3's wait_for budget around the cancel-path
+    ``_audit_tool_call`` invocation: the orchestrator's call routes through
+    ``self.store.audit_tool_call`` (bottom of ``_audit_tool_call``).
+    """
+
+    def __init__(self, sleep_sec: float):
+        super().__init__()
+        self._sleep_sec = sleep_sec
+        self.audit_called = 0
+        self.audit_completed = 0
+
+    async def audit_tool_call(
+        self,
+        *,
+        correlation_id,
+        session_id,
+        turn_id,
+        tool_call_id=None,
+        tool_name,
+        args_sha256,
+        args_json=None,
+        status,
+        error_kind=None,
+        duration_ms=None,
+    ) -> None:
+        self.audit_called += 1
+        await asyncio.sleep(self._sleep_sec)
+        self.audit_completed += 1
+
+
+@pytest.mark.anyio
+async def test_audit_tool_call_cancel_path_bounded_when_store_too_slow():
+    """If ``_audit_tool_call`` exceeds ``_PARTIAL_PERSIST_TIMEOUT_SEC`` on
+    the cancel path, the wait_for fires, the TimeoutError is swallowed
+    (with a ``tool_audit.cancel_path_timeout`` warning), and the
+    orchestrator still emits MessageStop within the budget. FIX 3.
+
+    Mirrors :func:`test_audit_call_status_cancelled` — fires cancel while
+    a tool is running — but routes the audit write through a slow store
+    so the budget kicks in.
+    """
+    token = AsyncEventCancelToken()
+    slow_tool = _SlowTool(sleep_sec=2.0)
+    tools = {"slow": slow_tool}
+    # audit_tool_call sleeps 1.0s — 5x the 0.2s budget.
+    audit_store = _AuditSlowStore(sleep_sec=1.0)
+
+    orch = ChattyAgentOrchestrator(
+        provider=_ToolCallProvider(),
+        parser=SlidingParser(),
+        store=audit_store,
+        tools=tools,
+        system_prompt="sys",
+        config=_config(),
+        tool_runner=ToolRunner(tools, timeout_sec=10),
+    )
+
+    events: List[Any] = []
+
+    async def consumer():
+        async for evt in orch.run(
+            session_id="sid-audit-slow",
+            prompt="hi",
+            model_name="scripted",
+            cancel_token=token,
+        ):
+            events.append(evt)
+            if isinstance(evt, ToolCall):
+                # Cancel after the tool starts so we hit the cancel-path
+                # _audit_tool_call branch (the slow audit_store coroutine).
+                asyncio.get_running_loop().call_later(0.1, token.set)
+
+    start = time.monotonic()
+    # 0.9s ceiling: the FIX 3 budget caps audit at 0.2s; the FIX 5 budget caps
+    # complete_turn at 0.2s; tool cancel grace is 0.25s. Without FIX 3, this
+    # would have stalled ~1.0s on audit alone, pushing total over 1.4s.
+    await asyncio.wait_for(consumer(), timeout=3.0)
+    elapsed = time.monotonic() - start
+    assert elapsed < 0.9, (
+        f"Cancel-path audit timeout should bound runtime; observed {elapsed:.2f}s"
+    )
+
+    # MessageStop emitted with cancelled.
+    stops = [e for e in events if isinstance(e, MessageStop)]
+    assert len(stops) == 1
+    assert stops[0].stop_reason == "cancelled"
+
+    # The audit was called but did NOT complete — wait_for cancelled it.
+    assert audit_store.audit_called >= 1
+    assert audit_store.audit_completed == 0, (
+        "_audit_tool_call should have been cancelled by wait_for; "
+        f"got audit_completed={audit_store.audit_completed}"
+    )
+
+
+
 

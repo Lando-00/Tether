@@ -950,17 +950,34 @@ class ChattyAgentOrchestrator(OrchestratorABC):
                         error_kind="cancelled",
                         error=error_msg,
                     )
-                    await self._audit_tool_call(
-                        session_id=session_id,
-                        turn_id=turn_id,
-                        tool_call_id=tool_call_id,
-                        tool_name=tool_name,
-                        args_json=_args_json_str,
-                        args_sha256=sha,
-                        status="cancelled",
-                        error_kind="cancelled",
-                        duration_ms=int((time.monotonic() - _tool_dispatch_start) * 1000),
-                    )
+                    # Phase 7 RD followup (FIX 3): cancel-path _audit_tool_call
+                    # bounded with the same 200ms budget as _persist_partial /
+                    # complete_turn. The success / exception / timeout paths
+                    # below run on normal time and don't need the budget — only
+                    # the soft-cancel branch is reached during outer cancel and
+                    # must respect the cancellation deadline.
+                    try:
+                        await asyncio.wait_for(
+                            self._audit_tool_call(
+                                session_id=session_id,
+                                turn_id=turn_id,
+                                tool_call_id=tool_call_id,
+                                tool_name=tool_name,
+                                args_json=_args_json_str,
+                                args_sha256=sha,
+                                status="cancelled",
+                                error_kind="cancelled",
+                                duration_ms=int((time.monotonic() - _tool_dispatch_start) * 1000),
+                            ),
+                            timeout=_PARTIAL_PERSIST_TIMEOUT_SEC,
+                        )
+                    except asyncio.TimeoutError:
+                        logger.warning(
+                            "tool_audit.cancel_path_timeout",
+                            tool_name=tool_name,
+                            tool_call_id=tool_call_id,
+                            timeout_sec=_PARTIAL_PERSIST_TIMEOUT_SEC,
+                        )
                     dispatch_state["cancelled"] = True
                     dispatch_state["should_break"] = True
                     return
