@@ -3,10 +3,12 @@ import json
 import os
 import platform
 import re
-import sys
 import threading
-import traceback
 import uuid
+
+import structlog
+
+_log = structlog.get_logger(__name__)
 from pathlib import Path
 from threading import Lock
 from typing import Any, AsyncGenerator, Dict, List, Optional
@@ -210,11 +212,11 @@ class MLCProvider(ModelProvider):
             _abort_all_requests(to_terminate)
             _terminate_bounded(to_terminate, timeout=0.75)
         except TimeoutError:
-            print(f"Timeout terminating engine for {model_name} — abandoning")
+            _log.warning("provider.engine.terminate_timeout", model_name=model_name)
         except Exception as e:
-            print(f"Warning: Error terminating engine for {model_name}: {e}")
+            _log.warning("provider.engine.terminate_error", model_name=model_name, error=str(e))
 
-        print(f"==== MODEL UNLOADED: {model_name} ====")
+        _log.info("provider.engine.unloaded", model_name=model_name)
         return True
 
     def shutdown_all(self, per_engine_timeout: float = 0.75) -> None:
@@ -250,17 +252,14 @@ class MLCProvider(ModelProvider):
         # 1) Snapshot and detach cache quickly (Phase A)
         with self._cache_lock:
             if not self._engine_cache:
-                print("==== NO MODELS TO UNLOAD ====")
+                _log.debug("provider.shutdown.no_models")
                 return
             items = list(self._engine_cache.items())
             self._engine_cache = {}  # detach in O(1)
 
         n = len(items)
         max_workers = min(n, 4)
-        print(
-            f"==== SHUTTING DOWN: Unloading {n} model(s) in parallel "
-            f"(max_workers={max_workers}) ===="
-        )
+        _log.info("provider.shutdown.started", model_count=n, max_workers=max_workers)
 
         # 2) Parallel teardown (Phase B). Each worker owns its engine ref
         # locally; when the worker function returns, the ref dies before
@@ -269,21 +268,20 @@ class MLCProvider(ModelProvider):
             try:
                 aborted = _abort_all_requests(engine)
                 if aborted:
-                    print(f"Aborted {aborted} in-flight request(s) for {key}")
+                    _log.debug("provider.engine.requests_aborted", cache_key=key, aborted_count=aborted)
             except Exception:
                 pass
 
             try:
-                print(f"Terminating engine: {key}")
+                _log.debug("provider.engine.terminating", cache_key=key)
                 _terminate_bounded(engine, timeout=per_engine_timeout)
-                print(f"Engine terminated: {key}")
+                _log.debug("provider.engine.terminated", cache_key=key)
                 return (key, "ok")
             except TimeoutError:
-                print(f"Timeout terminating engine: {key} — abandoning")
+                _log.warning("provider.engine.terminate_timeout", cache_key=key)
                 return (key, "timeout")
             except Exception as e:
-                print(f"Warning: Error terminating engine {key}: {e}")
-                traceback.print_exc(file=sys.stderr)
+                _log.warning("provider.engine.terminate_error", cache_key=key, error=str(e), exc_info=True)
                 return (key, f"error: {e}")
             # `engine` ref dies on return — no scope-exit destructor pile-up.
 
@@ -316,9 +314,9 @@ class MLCProvider(ModelProvider):
                     except Exception as e:
                         results.append(("?", f"error: {e}"))
             except concurrent.futures.TimeoutError:
-                print(
-                    f"Total shutdown budget {total_budget:.2f}s exceeded; "
-                    "abandoning remaining engines"
+                _log.warning(
+                    "provider.shutdown.budget_exceeded",
+                    budget_sec=round(total_budget, 2),
                 )
         finally:
             # Don't wait for stuck futures; abandoned worker threads are
@@ -327,8 +325,7 @@ class MLCProvider(ModelProvider):
             executor.shutdown(wait=False)
 
         # 3) Phase C — references already dropped by workers; just log.
-        print(f"==== ALL MODELS UNLOADED (parallel): {results} ====")
-
+        _log.info("provider.shutdown.complete", results=results)
     def unload_model_by_cache_key(self, cache_key: str) -> bool:
         """
         Unload a specific model by its cache key.
@@ -356,11 +353,11 @@ class MLCProvider(ModelProvider):
             _abort_all_requests(to_terminate)
             _terminate_bounded(to_terminate, timeout=0.75)
         except TimeoutError:
-            print(f"Timeout terminating engine {cache_key} — abandoning")
+            _log.warning("provider.engine.terminate_timeout", cache_key=cache_key)
         except Exception as e:
-            print(f"Warning: Error terminating engine {cache_key}: {e}")
+            _log.warning("provider.engine.terminate_error", cache_key=cache_key, error=str(e))
         
-        print(f"==== MODEL UNLOADED BY CACHE KEY: {cache_key} ====")
+        _log.info("provider.engine.unloaded_by_key", cache_key=cache_key)
         return True
 
     # ------------------------------------------------------------------
@@ -614,7 +611,11 @@ class MLCProvider(ModelProvider):
             return context_window if context_window is not None else 4096
             
         except (json.JSONDecodeError, IOError, KeyError) as e:
-            print(f"Warning: Failed to read context window from {config_path}: {e}")
+            _log.warning(
+                "provider.config.context_window_read_error",
+                config_path=str(config_path),
+                error=str(e),
+            )
             return 4096
 
     def _get_engine(self, model_name: str) -> AsyncMLCEngine:
@@ -631,14 +632,14 @@ class MLCProvider(ModelProvider):
             if cache_key in self._engine_cache:
                 return self._engine_cache[cache_key]
 
-            print(f"==== LOADING MODEL: {model_name} on {self.device} ====")
+            _log.info("provider.engine.loading", model_name=model_name, device=self.device)
             engine = AsyncMLCEngine(
                 model=str(model_dir),
                 model_lib=model_lib_path,
                 device=self.device,
                 mode="interactive",  # Use server mode for async
             )
-            print(f"==== MODEL LOADED: {model_name} ====")
+            _log.info("provider.engine.loaded", model_name=model_name)
             self._engine_cache[cache_key] = engine
             return engine
 
@@ -705,7 +706,14 @@ class MLCProvider(ModelProvider):
         # Phase 7 step 72: caller request_id available for internal log correlation.
         mlc_request_id = f"tether-{uuid.uuid4().hex}"
 
-        print(f"==== STARTING MODEL STREAM: {model_name} (request_id={request_id or 'none'}, mlc_request_id={mlc_request_id}) ====")
+        # Phase 7 step 70: demoted to DEBUG (no user content emitted).
+        # request_id is the caller's correlation ID; mlc_request_id is the
+        # internal per-request abort handle — log only the internal one.
+        _log.debug(
+            "provider.stream.starting",
+            model_name=model_name,
+            mlc_request_id=mlc_request_id,
+        )
         stream_generator = None
         try:
             stream_generator = await engine.chat.completions.create(
@@ -729,7 +737,11 @@ class MLCProvider(ModelProvider):
                         yield tool_calls_data
             except GeneratorExit:
                 # Client disconnected - abort the engine-side request
-                print(f"==== MODEL STREAM GENERATOR EXIT (client disconnect): {model_name} ====")
+                _log.info(
+                    "provider.stream.client_disconnect",
+                    model_name=model_name,
+                    mlc_request_id=mlc_request_id,
+                )
                 try:
                     engine._abort(mlc_request_id)
                 except Exception:
@@ -737,9 +749,12 @@ class MLCProvider(ModelProvider):
                 raise
             except Exception as iter_error:
                 # Exception during iteration
-                print(f"==== MODEL STREAM ITERATION ERROR: {model_name} ====")
-                print(f"Iteration error: {type(iter_error).__name__}: {iter_error}")
-                traceback.print_exc(file=sys.stderr)
+                _log.error(
+                    "provider.stream.iteration_error",
+                    model_name=model_name,
+                    error_type=type(iter_error).__name__,
+                    exc_info=True,
+                )
                 raise
                 
         except GeneratorExit:
@@ -761,10 +776,16 @@ class MLCProvider(ModelProvider):
 
             error_type = type(e).__name__
             error_msg = str(e)
-            print(f"==== MODEL STREAM ERROR: {model_name} ====")
-            print(f"Error type: {error_type}")
-            print(f"Error message: {error_msg}")
-            traceback.print_exc(file=sys.stderr)
+            # Phase 7 step 70: structured error event replaces 3 print+traceback.
+            # Event name "provider.stream.engine_error" (not "provider.stream.error"
+            # which chatty.py orchestrator already uses for its span). exc_info=True
+            # captures the full traceback via structlog's format_exc_info processor.
+            _log.error(
+                "provider.stream.engine_error",
+                model_name=model_name,
+                error_type=error_type,
+                exc_info=True,
+            )
 
             # Classify using the canonical function — replaces the legacy
             # 3-line substring grep that was here before. Kept as a local
@@ -773,7 +794,11 @@ class MLCProvider(ModelProvider):
             is_fatal = err_class == HwErrorClass.FATAL_RECOVERABLE
 
             if is_fatal:
-                print(f"==== FATAL ERROR DETECTED - Model may need to be reloaded ====")
+                _log.error(
+                    "provider.stream.fatal_classified",
+                    model_name=model_name,
+                    error_type=error_type,
+                )
                 # Watchdog (Phase 3 step 30) handles the reload via hw_reset.
 
             # Re-raise as a typed TetherError so callers can branch on

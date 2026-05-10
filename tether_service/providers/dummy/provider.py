@@ -1,12 +1,16 @@
 import asyncio
 import datetime
 
+import structlog
+
 from tether_service.core.interfaces import ModelProvider
 from tether_service.core.types import Event
 
 
 from typing import List, Dict, Any, Optional, AsyncGenerator
 import asyncio
+
+_log = structlog.get_logger(__name__)
 
 class DummyProvider(ModelProvider):
     async def stream(
@@ -33,7 +37,7 @@ class DummyProvider(ModelProvider):
 
     def unload_model(self, model_name: str) -> bool:
         """Simulate unloading a model."""
-        print(f"Unloaded dummy model: {model_name}")
+        _log.debug("dummy.engine.unloaded", model_name=model_name)
         return True
 
     def get_context_window(self, model_name: str) -> int:
