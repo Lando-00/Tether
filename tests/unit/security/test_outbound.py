@@ -321,3 +321,64 @@ async def test_web_search_run_with_allowlist_mismatch_returns_error_dict():
     result = await tool.run(WebSearchInputs(query="test"))
     assert "error" in result
     assert "Outbound URL blocked" in result["error"] or "allowlist" in result["error"].lower() or "not in" in result["error"].lower()
+
+
+# ---------------------------------------------------------------------------
+# IPv6 SSRF coverage
+# ---------------------------------------------------------------------------
+
+
+def test_ipv6_loopback_blocked(settings_default: Settings):
+    """IPv6 loopback ::1 is blocked.
+
+    ``urlparse("http://[::1]/").hostname`` returns ``"::1"`` (no brackets).
+    ``ipaddress.ip_address("::1").is_loopback`` is ``True``.
+    """
+    with pytest.raises(OutboundUrlBlocked) as exc_info:
+        assert_safe_url("http://[::1]/", settings_default)
+    assert "::1" in exc_info.value.reason or "private" in exc_info.value.reason.lower()
+
+
+def test_ipv6_link_local_blocked(settings_default: Settings):
+    """IPv6 link-local fe80::1 is blocked.
+
+    ``ipaddress.ip_address("fe80::1").is_link_local`` is ``True``.
+    """
+    with pytest.raises(OutboundUrlBlocked):
+        assert_safe_url("http://[fe80::1]/", settings_default)
+
+
+def test_ipv6_mapped_ipv4_loopback_blocked(settings_default: Settings):
+    """IPv6-mapped IPv4 loopback ::ffff:127.0.0.1 is blocked.
+
+    This is a known SSRF bypass vector: an attacker provides an IPv6
+    address that maps to a private IPv4 range. Python's ``ipaddress``
+    handles this correctly in two ways:
+
+    1. ``IPv6Address("::ffff:127.0.0.1").is_private`` is ``True`` on
+       Python ≥ 3.11 (where the definition was tightened).
+    2. We also check ``.ipv4_mapped`` explicitly so that Python 3.10
+       is covered too.
+
+    ``_is_private_address`` checks both paths for defense-in-depth.
+    """
+    with pytest.raises(OutboundUrlBlocked):
+        assert_safe_url("http://[::ffff:127.0.0.1]/", settings_default)
+
+
+def test_ipv6_mapped_ipv4_rfc1918_blocked(settings_default: Settings):
+    """IPv6-mapped IPv4 RFC1918 address ::ffff:192.168.1.1 is blocked."""
+    with pytest.raises(OutboundUrlBlocked):
+        assert_safe_url("http://[::ffff:192.168.1.1]/", settings_default)
+
+
+def test_ipv6_public_passes(settings_default: Settings):
+    """A public IPv6 address (e.g. 2001:db8::1 documentation range) is NOT
+    blocked by the private-IP check when allow_private=False.
+
+    Note: 2001:db8::/32 is the documentation range and is technically
+    'reserved' per RFC 5737; Python marks it as reserved. We use a
+    different well-known public range for this test.
+    """
+    # 2606:4700::6810:1000 is a real Cloudflare address (public).
+    assert_safe_url("https://[2606:4700::6810:1000]/", settings_default)
