@@ -152,10 +152,37 @@ class SecuritySettings(StrictModel):
     capability_allowlist: Optional[List[str]] = None
 
 
+class LogFileSettings(StrictModel):
+    """``observability.logs.file:`` sub-model.
+
+    ``path`` (default None) resolves via platformdirs.user_log_dir to a
+    cross-platform default (e.g., ``%LOCALAPPDATA%\\Tether\\Logs\\tether.jsonl``
+    on Windows, ``~/.cache/Tether/log/tether.jsonl`` on Linux).
+
+    Synthesis §3 (observability), §4 Phase 7 step 67.
+    """
+
+    enabled: bool = True
+    path: Optional[str] = None  # None -> platformdirs default
+
+
+class LogsSettings(StrictModel):
+    """``observability.logs:`` sub-model.
+
+    Synthesis §3 (observability), §4 Phase 7 step 67.
+    """
+
+    level: str = "INFO"
+    file: LogFileSettings = Field(default_factory=LogFileSettings)
+    console: bool = True
+    format: str = "json"  # "json" | "console"
+
+
 class ObservabilitySettings(StrictModel):
-    """``observability:`` section. Phase 7 will populate."""
+    """``observability:`` section. Phase 7 structured logging foundation."""
 
     log_level: Literal["DEBUG", "INFO", "WARNING", "ERROR"] = "INFO"
+    logs: LogsSettings = Field(default_factory=LogsSettings)
 
 
 class SqliteSettings(StrictModel):
