@@ -152,6 +152,11 @@ def configure_logging(settings: Optional["Settings"] = None) -> None:
 
     _CONFIGURED = True
 
+    # Lazy install OTel adapter if enabled.
+    if settings.observability.otel.enabled:
+        from tether_service.observability.otel_adapter import install_otel_adapter
+        install_otel_adapter(settings)
+
 
 # ---------------------------------------------------------------------------
 # Helpers
