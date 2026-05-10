@@ -6,7 +6,7 @@ not the CWD-relative legacy default. Synthesis §3.6, §4.
 import pytest
 from pathlib import Path
 
-from tether_service.config.settings import (
+from tether.config.settings import (
     Settings,
     StorageSettings,
     SqliteSettings,

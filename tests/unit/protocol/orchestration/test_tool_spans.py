@@ -51,7 +51,7 @@ class _RaisingTool:
 
 async def test_tool_start_and_end_logged_on_success():
     """Successful tool dispatch emits tool.start AND tool.end."""
-    from tether_service.protocol.orchestration.tool_runner import ToolRunner
+    from tether.protocol.orchestration.tool_runner import ToolRunner
 
     runner = ToolRunner({"success": _SuccessTool()}, timeout_sec=5)
 
@@ -67,7 +67,7 @@ async def test_tool_start_and_end_logged_on_success():
 
 async def test_tool_start_includes_args_redacted():
     """tool.start log includes args_redacted truncated to ≤214 chars."""
-    from tether_service.protocol.orchestration.tool_runner import ToolRunner
+    from tether.protocol.orchestration.tool_runner import ToolRunner
 
     runner = ToolRunner({"success": _SuccessTool()}, timeout_sec=5)
 
@@ -84,7 +84,7 @@ async def test_tool_start_includes_args_redacted():
 
 async def test_tool_start_includes_args_size_bytes():
     """tool.start log includes args_size_bytes (positive int)."""
-    from tether_service.protocol.orchestration.tool_runner import ToolRunner
+    from tether.protocol.orchestration.tool_runner import ToolRunner
 
     runner = ToolRunner({"success": _SuccessTool()}, timeout_sec=5)
 
@@ -99,7 +99,7 @@ async def test_tool_start_includes_args_size_bytes():
 
 async def test_tool_end_includes_duration_ms():
     """tool.end log includes duration_ms (non-negative integer)."""
-    from tether_service.protocol.orchestration.tool_runner import ToolRunner
+    from tether.protocol.orchestration.tool_runner import ToolRunner
 
     runner = ToolRunner({"success": _SuccessTool()}, timeout_sec=5)
 
@@ -114,7 +114,7 @@ async def test_tool_end_includes_duration_ms():
 
 async def test_tool_end_includes_result_size_bytes():
     """tool.end log includes result_size_bytes."""
-    from tether_service.protocol.orchestration.tool_runner import ToolRunner
+    from tether.protocol.orchestration.tool_runner import ToolRunner
 
     runner = ToolRunner({"success": _SuccessTool()}, timeout_sec=5)
 
@@ -129,7 +129,7 @@ async def test_tool_end_includes_result_size_bytes():
 
 async def test_tool_error_logged_on_exception():
     """When tool raises, tool.error is logged with error_kind='execution'."""
-    from tether_service.protocol.orchestration.tool_runner import ToolRunner
+    from tether.protocol.orchestration.tool_runner import ToolRunner
 
     runner = ToolRunner({"raises": _RaisingTool()}, timeout_sec=5)
 
@@ -148,7 +148,7 @@ async def test_tool_error_logged_on_exception():
 
 async def test_tool_error_logged_on_timeout():
     """When tool times out, tool.error is logged with error_kind='timeout'."""
-    from tether_service.protocol.orchestration.tool_runner import ToolRunner
+    from tether.protocol.orchestration.tool_runner import ToolRunner
 
     runner = ToolRunner({"slow": _SlowTool()}, timeout_sec=1)
 
@@ -165,7 +165,7 @@ async def test_tool_error_logged_on_timeout():
 
 async def test_tool_call_id_propagated_in_spans():
     """tool_call_id kwarg appears in all emitted span events."""
-    from tether_service.protocol.orchestration.tool_runner import ToolRunner
+    from tether.protocol.orchestration.tool_runner import ToolRunner
 
     runner = ToolRunner({"success": _SuccessTool()}, timeout_sec=5)
     test_id = "tcid-abc-123"
@@ -180,7 +180,7 @@ async def test_tool_call_id_propagated_in_spans():
 
 async def test_tool_call_id_none_when_omitted():
     """tool_call_id is None when not provided — no crash."""
-    from tether_service.protocol.orchestration.tool_runner import ToolRunner
+    from tether.protocol.orchestration.tool_runner import ToolRunner
 
     runner = ToolRunner({"success": _SuccessTool()}, timeout_sec=5)
 
@@ -194,7 +194,7 @@ async def test_tool_call_id_none_when_omitted():
 
 async def test_args_redacted_scrubs_bearer_tokens():
     """args_redacted redacts Bearer tokens via redact_text()."""
-    from tether_service.protocol.orchestration.tool_runner import ToolRunner
+    from tether.protocol.orchestration.tool_runner import ToolRunner
 
     runner = ToolRunner({"success": _SuccessTool()}, timeout_sec=5)
 
@@ -218,7 +218,7 @@ async def test_tool_size_cap_logs_tool_error():
         async def invoke(self, args, context=None):
             return {"data": "x" * (300 * 1024)}
 
-    from tether_service.protocol.orchestration.tool_runner import ToolRunner
+    from tether.protocol.orchestration.tool_runner import ToolRunner
 
     runner = ToolRunner(
         {"oversize": _OversizeTool()},

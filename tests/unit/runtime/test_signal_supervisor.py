@@ -1,4 +1,4 @@
-"""Tests for ``tether_service.runtime.signal_supervisor.SignalSupervisor``.
+"""Tests for ``tether.runtime.signal_supervisor.SignalSupervisor``.
 
 Synthesis §4 Phase 3 step 31; B6 step 3.
 
@@ -17,7 +17,7 @@ from unittest.mock import MagicMock
 
 import pytest
 
-from tether_service.runtime.signal_supervisor import (
+from tether.runtime.signal_supervisor import (
     DEFAULT_MAX_SHUTDOWN_SEC,
     SignalSupervisor,
 )

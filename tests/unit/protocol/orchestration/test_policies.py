@@ -5,9 +5,9 @@ from __future__ import annotations
 
 import pytest
 
-from tether_service.config.settings import LimitsSettings, Settings
-from tether_service.core.types import OrchestratorConfig
-from tether_service.protocol.orchestration.policies import (
+from tether.config.settings import LimitsSettings, Settings
+from tether.core.types import OrchestratorConfig
+from tether.protocol.orchestration.policies import (
     LoopLimitPolicy,
     ToolErrorPolicy,
 )
@@ -18,15 +18,15 @@ def _settings_dict(**limits_overrides) -> dict:
         "system": {"prompt": ""},
         "providers": {
             "model": {
-                "impl": "tether_service.providers.dummy.provider.DummyProvider",
+                "impl": "tether.providers.dummy.provider.DummyProvider",
                 "args": {},
             },
             "parser": {
-                "impl": "tether_service.protocol.parsers.sliding.SlidingParser",
+                "impl": "tether.protocol.parsers.sliding.SlidingParser",
                 "args": {},
             },
             "session_store": {
-                "impl": "tether_service.context.sqlite_store.SqliteSessionStore",
+                "impl": "tether.context.sqlite_store.SqliteSessionStore",
                 "args": {"dsn": "sqlite:///:memory:"},
             },
         },

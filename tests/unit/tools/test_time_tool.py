@@ -1,4 +1,4 @@
-"""Functional tests for :class:`tether_service.tools.time_tool.TimeTool`.
+"""Functional tests for :class:`tether.tools.time_tool.TimeTool`.
 
 Style B Annotated migration (synthesis §4 Phase 4 step 43; A2 step 7).
 Covers:
@@ -18,7 +18,7 @@ import re
 
 import pytest
 
-from tether_service.tools.time_tool import TimeTool
+from tether.tools.time_tool import TimeTool
 
 
 @pytest.fixture

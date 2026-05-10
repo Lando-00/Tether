@@ -13,8 +13,8 @@ import pytest
 from fastapi.testclient import TestClient
 from pydantic import TypeAdapter
 
-from tether_service.app.http.api import create_app
-from tether_service.protocol.wire.events import (
+from tether.app.http.api import create_app
+from tether.protocol.wire.events import (
     PROTOCOL_VERSION,
     MessageStart,
     MessageStop,

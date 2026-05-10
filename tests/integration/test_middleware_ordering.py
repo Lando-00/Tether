@@ -37,9 +37,9 @@ from fastapi.middleware.cors import CORSMiddleware
 from fastapi.middleware.trustedhost import TrustedHostMiddleware
 from fastapi.testclient import TestClient
 
-from tether_service.app.http.csrf_middleware import CSRFTokenMiddleware
-from tether_service.app.http.middleware import RequestIdMiddleware
-from tether_service.config.settings import (
+from tether.app.http.csrf_middleware import CSRFTokenMiddleware
+from tether.app.http.middleware import RequestIdMiddleware
+from tether.config.settings import (
     CORSSettings,
     CSRFTokenSettings,
     TrustedHostSettings,
@@ -105,7 +105,7 @@ def test_trusted_host_rejection_carries_request_id_and_skips_csrf(caplog):
 
     app = _make_app_all_enabled(csrf=csrf, cors=cors, trusted_host=th)
 
-    with caplog.at_level(logging.DEBUG, logger="tether_service.app.http.csrf_middleware"):
+    with caplog.at_level(logging.DEBUG, logger="tether.app.http.csrf_middleware"):
         with TestClient(app, raise_server_exceptions=False) as client:
             resp = client.post(
                 "/api/v1/chat/stream",
@@ -131,7 +131,7 @@ def test_trusted_host_rejection_carries_request_id_and_skips_csrf(caplog):
     csrf_request_records = [
         r
         for r in caplog.records
-        if r.name == "tether_service.app.http.csrf_middleware"
+        if r.name == "tether.app.http.csrf_middleware"
         and "csrf.token_generated" not in r.getMessage()
     ]
     assert csrf_request_records == [], (

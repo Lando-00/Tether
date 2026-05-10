@@ -1,6 +1,6 @@
 """Decorated fixture tools used by ``discover()`` walk tests."""
-from tether_service.tools.base import BaseTool
-from tether_service.tools.registration import tool
+from tether.tools.base import BaseTool
+from tether.tools.registration import tool
 
 
 @tool(name="fixture_alpha")

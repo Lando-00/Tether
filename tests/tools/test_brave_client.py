@@ -15,7 +15,7 @@ Tests HTTP client behavior including:
 import pytest
 from unittest.mock import AsyncMock, MagicMock, patch
 import httpx
-from tether_service.tools.brave_client import BraveSearchClient
+from tether.tools.brave_client import BraveSearchClient
 
 
 class TestBraveSearchClientInit:
@@ -445,7 +445,7 @@ class TestBraveSearchClientLogging:
         with patch.object(httpx.AsyncClient, 'get', new_callable=AsyncMock) as mock_get:
             mock_get.return_value = mock_response
             
-            with patch('tether_service.tools.brave_client.logger') as mock_logger:
+            with patch('tether.tools.brave_client.logger') as mock_logger:
                 await client.search(q="test")
                 
                 # Check all logging calls for API key leakage

@@ -17,7 +17,7 @@ async def test_ctrl_c_shutdown_completes_in_time():
     Preserves the assertion intent of the original test_ctrl_c.py
     __main__ block: elapsed > 6 was the sys.exit(1) condition.
     """
-    from tether_service.app.http.api import create_app
+    from tether.app.http.api import create_app
 
     app = create_app()
 

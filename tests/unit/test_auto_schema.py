@@ -11,8 +11,8 @@ from typing import Any, Dict, List, Literal, Optional
 
 import pytest
 
-from tether_service.tools.base import BaseTool
-from tether_service.tools.time_tool import TimeTool
+from tether.tools.base import BaseTool
+from tether.tools.time_tool import TimeTool
 
 
 # ---------------------------------------------------------------------------

@@ -1,4 +1,4 @@
-"""Unit tests for :mod:`tether_service.protocol.wire.events`.
+"""Unit tests for :mod:`tether.protocol.wire.events`.
 
 Phase 5 step 49: WireEvent discriminated union + ``_Base`` envelope.
 
@@ -12,7 +12,7 @@ from datetime import datetime, timezone
 import pytest
 from pydantic import TypeAdapter, ValidationError
 
-from tether_service.protocol.wire.events import (
+from tether.protocol.wire.events import (
     PROTOCOL_VERSION,
     Error,
     HwReset,

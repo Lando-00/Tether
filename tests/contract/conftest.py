@@ -12,8 +12,8 @@ in pyproject.toml). No @pytest.mark.anyio needed.
 """
 import pytest
 
-from tether_service.context.memory_store import MemoryStore
-from tether_service.context.sqlite_store import SqliteSessionStore
+from tether.context.memory_store import MemoryStore
+from tether.context.sqlite_store import SqliteSessionStore
 
 
 @pytest.fixture

@@ -17,22 +17,22 @@ from typing import Any, AsyncGenerator, Dict, List, Optional
 
 import pytest
 
-from tether_service.core.interfaces import ModelProvider, SessionStore, StreamParser
-from tether_service.core.types import OrchestratorConfig
-from tether_service.protocol.orchestration.cancel import AsyncEventCancelToken
-from tether_service.protocol.orchestration.chatty import ChattyAgentOrchestrator
-from tether_service.protocol.orchestration.policies import (
+from tether.core.interfaces import ModelProvider, SessionStore, StreamParser
+from tether.core.types import OrchestratorConfig
+from tether.protocol.orchestration.cancel import AsyncEventCancelToken
+from tether.protocol.orchestration.chatty import ChattyAgentOrchestrator
+from tether.protocol.orchestration.policies import (
     LoopLimitPolicy,
     ToolErrorPolicy,
 )
-from tether_service.protocol.orchestration.tool_runner import ToolRunner
-from tether_service.protocol.parsers.events import (
+from tether.protocol.orchestration.tool_runner import ToolRunner
+from tether.protocol.parsers.events import (
     PText,
     PToolCallParsed,
     ParserEvent,
 )
-from tether_service.protocol.parsers.sliding import SlidingParser
-from tether_service.protocol.wire.events import (
+from tether.protocol.parsers.sliding import SlidingParser
+from tether.protocol.wire.events import (
     MessageStart,
     MessageStop,
     TextDelta,
@@ -212,7 +212,7 @@ async def test_orchestrator_run_message_start_first():
 @pytest.mark.anyio
 async def test_orchestrator_run_message_start_includes_tools():
     """``available_tools`` reflects ``self.tools``."""
-    from tether_service.tools.time_tool import TimeTool
+    from tether.tools.time_tool import TimeTool
 
     tool = TimeTool()
     orch = _build_orch(
@@ -356,7 +356,7 @@ def test_wire_translates_ptext_to_text_delta():
 
 def test_wire_returns_none_for_tool_call_detected():
     """PToolCallDetected has no v2 wire equivalent — caller skips."""
-    from tether_service.protocol.parsers.events import PToolCallDetected
+    from tether.protocol.parsers.events import PToolCallDetected
 
     orch = _build_orch(provider=_ScriptedProvider([["x"]]))
     envelope = {

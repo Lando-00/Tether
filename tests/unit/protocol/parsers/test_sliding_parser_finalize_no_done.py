@@ -8,15 +8,15 @@ finalize() must only flush residual text/think/error — never a tool-call
 event and never a terminal "done".
 
 Phase 5 ``p5-parser-typed-events`` rewrites the assertions to use typed
-:class:`tether_service.protocol.parsers.events.ParserEvent` discriminants
+:class:`tether.protocol.parsers.events.ParserEvent` discriminants
 rather than dict-shape ``StreamEvent`` lookups. Because the parser's
 typed event vocabulary has no PStreamEnd-or-equivalent emitted by
 ``finalize()``, the "no DONE" guarantee is now tighter: finalize() must
 not emit any tool-call event either.
 """
 import pytest
-from tether_service.protocol.parsers.sliding import SlidingParser
-from tether_service.protocol.parsers.events import (
+from tether.protocol.parsers.sliding import SlidingParser
+from tether.protocol.parsers.events import (
     PParseError,
     PText,
     PThink,

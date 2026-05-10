@@ -1,4 +1,4 @@
-"""Tests for :class:`tether_service.core.types.ToolExecutionContext`.
+"""Tests for :class:`tether.core.types.ToolExecutionContext`.
 
 Synthesis §4 Phase 4 step 41a; connector spec §4 footer.
 """
@@ -8,7 +8,7 @@ from dataclasses import FrozenInstanceError
 
 import pytest
 
-from tether_service.core.types import ToolExecutionContext
+from tether.core.types import ToolExecutionContext
 
 
 class TestToolExecutionContext:
@@ -53,8 +53,8 @@ class TestToolExecutionContext:
         assert ctx.user_confirmed_send is False
 
     def test_tec_imports_from_core_types(self):
-        """The canonical import path is ``tether_service.core.types``."""
-        from tether_service.core.types import ToolExecutionContext as TEC
+        """The canonical import path is ``tether.core.types``."""
+        from tether.core.types import ToolExecutionContext as TEC
 
         assert TEC is ToolExecutionContext
 

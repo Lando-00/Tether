@@ -13,7 +13,7 @@ Run sparingly during development. CI/CD should mock these tests.
 import pytest
 import os
 import asyncio
-from tether_service.tools.brave_client import BraveSearchClient
+from tether.tools.brave_client import BraveSearchClient
 
 
 # Skip all tests in this module if BRAVE_API_KEY is not set

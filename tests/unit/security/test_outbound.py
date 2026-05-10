@@ -1,4 +1,4 @@
-"""Tests for tether_service.security.outbound (assert_safe_url + OutboundUrlBlocked).
+"""Tests for tether.security.outbound (assert_safe_url + OutboundUrlBlocked).
 
 Phase 7 step 78. Synthesis Section 3 (security), B5 steps 9-10.
 
@@ -16,12 +16,12 @@ from __future__ import annotations
 
 import pytest
 
-from tether_service.config.settings import (
+from tether.config.settings import (
     OutboundAllowlistSettings,
     SecuritySettings,
     Settings,
 )
-from tether_service.security.outbound import OutboundUrlBlocked, assert_safe_url
+from tether.security.outbound import OutboundUrlBlocked, assert_safe_url
 
 
 # ---------------------------------------------------------------------------
@@ -42,9 +42,9 @@ def _make_settings(
     return Settings.model_validate(
         {
             "providers": {
-                "model": {"impl": "tether_service.providers.dummy.provider.DummyProvider"},
-                "parser": {"impl": "tether_service.protocol.parsers.sliding.SlidingWindowParser"},
-                "session_store": {"impl": "tether_service.context.sqlite_store.SqliteSessionStore"},
+                "model": {"impl": "tether.providers.dummy.provider.DummyProvider"},
+                "parser": {"impl": "tether.protocol.parsers.sliding.SlidingWindowParser"},
+                "session_store": {"impl": "tether.context.sqlite_store.SqliteSessionStore"},
             },
             "security": {
                 "outbound_allowlist": {
@@ -267,7 +267,7 @@ def test_exception_carries_url_and_reason():
 
 def test_exception_is_tether_error():
     """OutboundUrlBlocked is a TetherError (fits existing error taxonomy)."""
-    from tether_service.core.errors import TetherError
+    from tether.core.errors import TetherError
 
     with pytest.raises(TetherError):
         assert_safe_url("file:///etc/shadow")
@@ -283,8 +283,8 @@ async def test_web_search_assert_safe_url_brave_endpoint_passes():
     """assert_safe_url on BraveSearchClient.BASE_URL passes with default policy."""
     from unittest.mock import AsyncMock
 
-    from tether_service.tools.brave_client import BraveSearchClient
-    from tether_service.tools.web_search_tool import WebSearchInputs, WebSearchTool
+    from tether.tools.brave_client import BraveSearchClient
+    from tether.tools.web_search_tool import WebSearchInputs, WebSearchTool
 
     class _FakeSecrets:
         def get(self, key: str):
@@ -292,7 +292,7 @@ async def test_web_search_assert_safe_url_brave_endpoint_passes():
 
     tool = WebSearchTool(secrets=_FakeSecrets(), settings=settings_default)
     # _client is None → early return before assert_safe_url; test the helper directly.
-    from tether_service.security.outbound import assert_safe_url as _assert
+    from tether.security.outbound import assert_safe_url as _assert
     _assert(BraveSearchClient.BASE_URL)  # must not raise
 
 
@@ -301,8 +301,8 @@ async def test_web_search_run_with_allowlist_mismatch_returns_error_dict():
     """When allowlist blocks the Brave endpoint, run() returns an error dict."""
     from unittest.mock import AsyncMock
 
-    from tether_service.tools.brave_client import BraveSearchClient
-    from tether_service.tools.web_search_tool import WebSearchInputs, WebSearchTool
+    from tether.tools.brave_client import BraveSearchClient
+    from tether.tools.web_search_tool import WebSearchInputs, WebSearchTool
 
     class _FakeSecrets:
         def get(self, key: str):

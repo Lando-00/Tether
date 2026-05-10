@@ -2,7 +2,7 @@
 import pytest
 from pydantic import Field, ValidationError
 
-from tether_service.config._strict import StrictModel
+from tether.config._strict import StrictModel
 
 
 class _Inner(StrictModel):

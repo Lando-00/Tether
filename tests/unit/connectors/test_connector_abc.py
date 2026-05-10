@@ -1,4 +1,4 @@
-"""Unit tests for the :class:`tether_service.connectors.base.Connector` ABC.
+"""Unit tests for the :class:`tether.connectors.base.Connector` ABC.
 
 Per connector spec §3.1; synthesis §4 Phase 4.5 step 47a.
 """
@@ -10,8 +10,8 @@ from typing import Any, AsyncIterator, Dict
 
 import pytest
 
-from tether_service.connectors.base import Connector
-from tether_service.connectors.types import (
+from tether.connectors.base import Connector
+from tether.connectors.types import (
     AuthStatus,
     ConnectorState,
     HealthStatus,
@@ -19,7 +19,7 @@ from tether_service.connectors.types import (
     LoginContinueResult,
     LoginPrompt,
 )
-from tether_service.core.interfaces import Tool
+from tether.core.interfaces import Tool
 
 
 # ---------------------------------------------------------------------------

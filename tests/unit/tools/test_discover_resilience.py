@@ -17,7 +17,7 @@ from pathlib import Path
 
 import pytest
 
-from tether_service.tools.registration import (
+from tether.tools.registration import (
     _DECORATED_TOOLS,
     _clear_registry,
     discover,
@@ -72,8 +72,8 @@ def test_discover_skips_buggy_in_tree_module(tmp_path: Path, caplog) -> None:
         textwrap.dedent(
             '''
             """Good fixture module — registers a tool via @tool()."""
-            from tether_service.tools.base import BaseTool
-            from tether_service.tools.registration import tool
+            from tether.tools.base import BaseTool
+            from tether.tools.registration import tool
 
 
             @tool(name="resilience_good")
@@ -131,7 +131,7 @@ def test_discover_skips_buggy_entry_point(caplog) -> None:
     broader ``except Exception`` before this PR — this test pins the
     behaviour so any future regression surfaces.
     """
-    from tether_service.tools.base import BaseTool
+    from tether.tools.base import BaseTool
 
     class _GoodEPTool(BaseTool):
         @property

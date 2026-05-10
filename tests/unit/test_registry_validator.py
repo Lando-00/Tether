@@ -1,14 +1,14 @@
-"""Tests for ``tether_service.core.registry_validator.validate_unique_names``.
+"""Tests for ``tether.core.registry_validator.validate_unique_names``.
 
 Synthesis §13.4 M5. The validator is a pure function shared by
-:class:`tether_service.core.tool_registry.ToolRegistry` (Phase 4) and the
+:class:`tether.core.tool_registry.ToolRegistry` (Phase 4) and the
 future connector registry (Phase 4.5).
 """
 from __future__ import annotations
 
 import pytest
 
-from tether_service.core.registry_validator import validate_unique_names
+from tether.core.registry_validator import validate_unique_names
 
 
 def test_validate_unique_names_clean_passes():

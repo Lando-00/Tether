@@ -40,7 +40,7 @@ def get_available_models() -> list:
         return response.json()
     except requests.RequestException as e:
         console.print(f"[bold red]Error:[/bold red] Could not connect to the service at {API_BASE_URL}.")
-        console.print(f"Please ensure the Tether service is running: [bold]python -m tether_service.app[/bold]")
+        console.print(f"Please ensure the Tether service is running: [bold]python -m tether.app[/bold]")
         console.print(f"Details: {e}")
         raise typer.Exit(1)
 

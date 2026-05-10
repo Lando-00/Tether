@@ -22,12 +22,12 @@ import asyncio
 
 import pytest
 
-from tether_service.core.errors import (
+from tether.core.errors import (
     FatalProviderError,
     TransientProviderError,
 )
-from tether_service.providers.hw import HwErrorClass
-from tether_service.providers.mlc.errors import classify_mlc_error
+from tether.providers.hw import HwErrorClass
+from tether.providers.mlc.errors import classify_mlc_error
 
 
 # ---------------------------------------------------------------------------

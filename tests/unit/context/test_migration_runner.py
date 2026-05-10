@@ -12,7 +12,7 @@ from pathlib import Path
 
 import pytest
 
-from tether_service.context.migration_runner import apply_pending_migrations
+from tether.context.migration_runner import apply_pending_migrations
 
 # yoyo 8.x uses datetime.utcnow() internally — suppress its DeprecationWarning
 # so that `-W error::DeprecationWarning` sweeps stay clean. The warning is in
@@ -50,7 +50,7 @@ def test_fresh_db_applies_baseline(tmp_dsn: str) -> None:
 def test_idempotent_second_apply(tmp_dsn: str) -> None:
     """Applying twice is a no-op the second time — both via in-process
     cache (fast path) and via yoyo's own tracking table (slow path)."""
-    import tether_service.context.migration_runner as _runner
+    import tether.context.migration_runner as _runner
 
     first = apply_pending_migrations(tmp_dsn)
     assert first >= 1
@@ -127,7 +127,7 @@ def test_lazy_import_via_subprocess() -> None:
             "-c",
             (
                 "import sys; "
-                "import tether_service.context.migration_runner; "
+                "import tether.context.migration_runner; "
                 "assert 'yoyo' not in sys.modules, "
                 "'yoyo eagerly imported by migration_runner'; "
                 "print('OK')"

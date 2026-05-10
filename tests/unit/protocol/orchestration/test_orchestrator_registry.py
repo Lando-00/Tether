@@ -7,27 +7,27 @@ from __future__ import annotations
 
 import pytest
 
-from tether_service.protocol.orchestration.registry import (
+from tether.protocol.orchestration.registry import (
     UnknownOrchestratorMode,
     resolve_orchestrator_class,
 )
 
 # Default registry matching OrchestratorSettings defaults.
 _DEFAULT_REGISTRY = {
-    "chat": "tether_service.protocol.orchestration.chatty.ChattyAgentOrchestrator",
-    "research": "tether_service.protocol.orchestration.notebook.NotebookOrchestrator",
+    "chat": "tether.protocol.orchestration.chatty.ChattyAgentOrchestrator",
+    "research": "tether.protocol.orchestration.notebook.NotebookOrchestrator",
 }
 
 
 def test_resolve_chat_returns_chatty():
-    from tether_service.protocol.orchestration.chatty import ChattyAgentOrchestrator
+    from tether.protocol.orchestration.chatty import ChattyAgentOrchestrator
 
     cls = resolve_orchestrator_class("chat", _DEFAULT_REGISTRY)
     assert cls is ChattyAgentOrchestrator
 
 
 def test_resolve_research_returns_notebook():
-    from tether_service.protocol.orchestration.notebook import NotebookOrchestrator
+    from tether.protocol.orchestration.notebook import NotebookOrchestrator
 
     cls = resolve_orchestrator_class("research", _DEFAULT_REGISTRY)
     assert cls is NotebookOrchestrator
@@ -50,7 +50,7 @@ def test_resolve_invalid_dotted_path_raises_importerror():
 
 def test_resolve_nonexistent_module_raises_importerror():
     """A registry entry pointing to a missing module raises ImportError."""
-    bad_registry = {"chat": "tether_service.nonexistent.module.SomeClass"}
+    bad_registry = {"chat": "tether.nonexistent.module.SomeClass"}
     with pytest.raises((ImportError, ModuleNotFoundError)):
         resolve_orchestrator_class("chat", bad_registry)
 
@@ -58,7 +58,7 @@ def test_resolve_nonexistent_module_raises_importerror():
 def test_resolve_non_orchestrator_class_raises_typeerror():
     """A registry entry pointing to a non-Orchestrator class raises TypeError."""
     # Use a real importable class that is NOT an Orchestrator subclass.
-    non_orch_registry = {"chat": "tether_service.protocol.parsers.sliding.SlidingParser"}
+    non_orch_registry = {"chat": "tether.protocol.parsers.sliding.SlidingParser"}
     with pytest.raises(TypeError) as exc_info:
         resolve_orchestrator_class("chat", non_orch_registry)
 

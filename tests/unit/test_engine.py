@@ -1,4 +1,4 @@
-"""Tests for ``tether_service.engine.Engine``.
+"""Tests for ``tether.engine.Engine``.
 
 Cited in _synthesis.md §4 Phase 2 (steps 21, 22, 25).
 """
@@ -8,9 +8,9 @@ from unittest.mock import MagicMock
 
 import pytest
 
-from tether_service import Engine
-from tether_service.config.settings import Settings
-from tether_service.runtime.watchdog_mode import WatchdogMode
+from tether import Engine
+from tether.config.settings import Settings
+from tether.runtime.watchdog_mode import WatchdogMode
 
 
 def _settings_dict(tmp_db: str) -> dict:
@@ -19,15 +19,15 @@ def _settings_dict(tmp_db: str) -> dict:
         "system": {"prompt": "test-prompt"},
         "providers": {
             "model": {
-                "impl": "tether_service.providers.dummy.provider.DummyProvider",
+                "impl": "tether.providers.dummy.provider.DummyProvider",
                 "args": {},
             },
             "parser": {
-                "impl": "tether_service.protocol.parsers.sliding.SlidingParser",
+                "impl": "tether.protocol.parsers.sliding.SlidingParser",
                 "args": {},
             },
             "session_store": {
-                "impl": "tether_service.context.sqlite_store.SqliteSessionStore",
+                "impl": "tether.context.sqlite_store.SqliteSessionStore",
                 "args": {"dsn": f"sqlite:///{tmp_db}"},
             },
         },

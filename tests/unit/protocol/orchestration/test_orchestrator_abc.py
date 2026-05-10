@@ -7,9 +7,9 @@ from __future__ import annotations
 
 import pytest
 
-from tether_service.core.interfaces import Orchestrator
-from tether_service.protocol.orchestration.chatty import ChattyAgentOrchestrator
-from tether_service.protocol.orchestration.notebook import NotebookOrchestrator
+from tether.core.interfaces import Orchestrator
+from tether.protocol.orchestration.chatty import ChattyAgentOrchestrator
+from tether.protocol.orchestration.notebook import NotebookOrchestrator
 
 
 def test_orchestrator_abc_is_abstract():

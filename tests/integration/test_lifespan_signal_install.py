@@ -22,10 +22,10 @@ from unittest.mock import AsyncMock, patch
 import pytest
 from fastapi.testclient import TestClient
 
-import tether_service.app.__main__ as main_mod
-import tether_service.app.http.api as api_mod
-from tether_service.app.http.api import create_app
-from tether_service.runtime.signal_supervisor import SignalSupervisor
+import tether.app.__main__ as main_mod
+import tether.app.http.api as api_mod
+from tether.app.http.api import create_app
+from tether.runtime.signal_supervisor import SignalSupervisor
 
 
 @pytest.fixture(autouse=True)
@@ -88,7 +88,7 @@ def test_main_does_not_install_signal_supervisor():
     """
     src = inspect.getsource(main_mod)
     assert "SignalSupervisor" not in src, (
-        "tether_service/app/__main__.py still references SignalSupervisor; "
+        "tether/app/__main__.py still references SignalSupervisor; "
         "the install must live ONLY in the FastAPI lifespan startup so it "
         "runs AFTER uvicorn's capture_signals."
     )

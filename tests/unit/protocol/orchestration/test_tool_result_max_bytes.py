@@ -5,7 +5,7 @@ Settings.security.tool_result_max_bytes.
 """
 import pytest
 
-from tether_service.protocol.orchestration.tool_runner import ToolRunner
+from tether.protocol.orchestration.tool_runner import ToolRunner
 
 pytestmark = pytest.mark.anyio
 

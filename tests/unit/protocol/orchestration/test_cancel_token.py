@@ -7,7 +7,7 @@ import asyncio
 
 import pytest
 
-from tether_service.protocol.orchestration.cancel import (
+from tether.protocol.orchestration.cancel import (
     AsyncEventCancelToken,
     CancelToken,
 )

@@ -4,7 +4,7 @@ Verifies that:
 - The stub correctly implements the Provider v2 typed contract (kind, capabilities).
 - Every concrete operation raises NotImplementedError (no accidental no-ops).
 - NexaProvider is NOT a HardwareLifecycle (NPU teardown deferred to future session).
-- The stub is importable from tether_service.providers.nexa namespace.
+- The stub is importable from tether.providers.nexa namespace.
 
 Synthesis §11.3 R20: no NexaProvider impl ships in this refactor; the stub
 verifies forward compatibility only. Briefing §12.6 (Seam A).
@@ -13,9 +13,9 @@ from __future__ import annotations
 
 import pytest
 
-from tether_service.core.interfaces import ModelProvider
-from tether_service.providers.hw import HardwareLifecycle
-from tether_service.providers.nexa.provider import NexaProvider
+from tether.core.interfaces import ModelProvider
+from tether.providers.hw import HardwareLifecycle
+from tether.providers.nexa.provider import NexaProvider
 
 
 @pytest.fixture

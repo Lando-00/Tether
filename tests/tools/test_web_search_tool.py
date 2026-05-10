@@ -24,8 +24,8 @@ by ``tests/unit/tools/test_web_search_tool_lifecycle.py``.
 import pytest
 from pydantic import ValidationError
 from unittest.mock import AsyncMock
-from tether_service.tools.web_search_tool import WebSearchTool, WebSearchInputs
-from tether_service.tools.base import BaseTool
+from tether.tools.web_search_tool import WebSearchTool, WebSearchInputs
+from tether.tools.base import BaseTool
 
 
 class TestWebSearchToolSchema:

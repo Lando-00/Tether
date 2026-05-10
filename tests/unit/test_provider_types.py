@@ -9,7 +9,7 @@ from dataclasses import FrozenInstanceError
 import pytest
 from pydantic import TypeAdapter, ValidationError
 
-from tether_service.providers.types import (
+from tether.providers.types import (
     ModelInfo,
     ProviderCapabilities,
     ProviderEvent,

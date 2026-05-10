@@ -25,7 +25,7 @@ from typing import Optional
 
 import pytest
 
-from tether_service.providers.mlc.provider import MLCProvider
+from tether.providers.mlc.provider import MLCProvider
 
 
 # ---------------------------------------------------------------------------

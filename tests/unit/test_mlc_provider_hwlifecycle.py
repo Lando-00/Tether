@@ -12,10 +12,10 @@ from unittest.mock import AsyncMock, MagicMock
 
 import pytest
 
-from tether_service.core.errors import FatalProviderError, TransientProviderError
-from tether_service.providers.dummy.provider import DummyProvider
-from tether_service.providers.hw import HardwareLifecycle, HwErrorClass, HwHealth
-from tether_service.providers.mlc.provider import MLCProvider
+from tether.core.errors import FatalProviderError, TransientProviderError
+from tether.providers.dummy.provider import DummyProvider
+from tether.providers.hw import HardwareLifecycle, HwErrorClass, HwHealth
+from tether.providers.mlc.provider import MLCProvider
 
 
 # ---------------------------------------------------------------------------

@@ -1,7 +1,7 @@
 """Connector spec §8.3 acceptance tests — full Phase 4.5 lifecycle.
 
 Exercises the EchoConnector fixture end-to-end against the real Phase 4.5
-stack: :class:`tether_service.core.connector_registry.ConnectorRegistry`,
+stack: :class:`tether.core.connector_registry.ConnectorRegistry`,
 the connector HTTP routes, the Connector ABC tool dispatch path, and
 :meth:`Engine.aclose` shutdown bounding.
 
@@ -38,9 +38,9 @@ import pytest
 from fastapi import APIRouter, FastAPI
 from fastapi.testclient import TestClient
 
-from tether_service.app.http.routers.connectors import router as connectors_router
-from tether_service.connectors.base import Connector
-from tether_service.connectors.types import (
+from tether.app.http.routers.connectors import router as connectors_router
+from tether.connectors.base import Connector
+from tether.connectors.types import (
     AuthStatus,
     ConnectorState,
     HealthStatus,
@@ -48,14 +48,14 @@ from tether_service.connectors.types import (
     LoginContinueResult,
     LoginPrompt,
 )
-from tether_service.core.connector_registry import ConnectorRegistry
-from tether_service.core.errors import ConnectorNotConfiguredError
-from tether_service.core.interfaces import Tool
-from tether_service.core.types import ToolExecutionContext
-from tether_service.engine import Engine
-from tether_service.protocol.parsers.sliding import SlidingParser
-from tether_service.providers.dummy.provider import DummyProvider
-from tether_service.tools.base import BaseTool
+from tether.core.connector_registry import ConnectorRegistry
+from tether.core.errors import ConnectorNotConfiguredError
+from tether.core.interfaces import Tool
+from tether.core.types import ToolExecutionContext
+from tether.engine import Engine
+from tether.protocol.parsers.sliding import SlidingParser
+from tether.providers.dummy.provider import DummyProvider
+from tether.tools.base import BaseTool
 from tests.fixtures.echo_connector import EchoConnector
 
 

@@ -12,9 +12,9 @@ import pytest
 from fastapi import APIRouter, FastAPI
 from fastapi.testclient import TestClient
 
-from tether_service.app.http.routers.connectors import router as connectors_router
-from tether_service.connectors.base import Connector
-from tether_service.connectors.types import (
+from tether.app.http.routers.connectors import router as connectors_router
+from tether.connectors.base import Connector
+from tether.connectors.types import (
     AuthStatus,
     ConnectorState,
     HealthStatus,
@@ -22,9 +22,9 @@ from tether_service.connectors.types import (
     LoginContinueResult,
     LoginPrompt,
 )
-from tether_service.core.connector_registry import ConnectorRegistry
-from tether_service.core.interfaces import Tool
-from tether_service.engine import Engine
+from tether.core.connector_registry import ConnectorRegistry
+from tether.core.interfaces import Tool
+from tether.engine import Engine
 
 
 # ---------------------------------------------------------------------------
@@ -121,7 +121,7 @@ def _make_app(connector: Optional[_RouteFakeConnector]) -> tuple[FastAPI, Connec
     aren't needed for these tests). Returns ``(app, registry)`` so tests
     can manipulate ``registry.oauth_state`` directly.
     """
-    from tether_service.protocol.parsers.sliding import SlidingParser
+    from tether.protocol.parsers.sliding import SlidingParser
 
     registry = ConnectorRegistry(
         [connector] if connector is not None else [], data_dir=None
@@ -534,7 +534,7 @@ def test_post_logout_unknown_connector_returns_404():
 def test_routes_without_connector_registry_return_503():
     """An Engine constructed without ``connector_registry=...`` (legacy
     direct-constructor path) lacks the attribute; routes return 503."""
-    from tether_service.protocol.parsers.sliding import SlidingParser
+    from tether.protocol.parsers.sliding import SlidingParser
 
     engine = Engine(
         provider=AsyncMock(),

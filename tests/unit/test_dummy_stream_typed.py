@@ -10,8 +10,8 @@ from __future__ import annotations
 
 import pytest
 
-from tether_service.providers.dummy.provider import DummyProvider
-from tether_service.providers.types import ProviderCapabilities, ProviderText
+from tether.providers.dummy.provider import DummyProvider
+from tether.providers.types import ProviderCapabilities, ProviderText
 
 
 # ---------------------------------------------------------------------------

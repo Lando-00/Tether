@@ -16,8 +16,8 @@ import logging
 
 import pytest
 
-from tether_service.config.settings import load_settings
-from tether_service.core.logging import (
+from tether.config.settings import load_settings
+from tether.core.logging import (
     _RedactingFormatter,
     configure_logging,
     reset_logging_for_tests,

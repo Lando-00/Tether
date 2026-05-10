@@ -1,4 +1,4 @@
-"""Tests for tether_service.config.settings — typed Settings + load_settings."""
+"""Tests for tether.config.settings — typed Settings + load_settings."""
 from __future__ import annotations
 
 import textwrap
@@ -7,7 +7,7 @@ from pathlib import Path
 import pytest
 from pydantic import ValidationError
 
-from tether_service.config.settings import (
+from tether.config.settings import (
     ConnectorSpec,
     ConnectorsSettings,
     HttpSettings,
@@ -55,7 +55,7 @@ def test_settings_yaml_round_trip():
     # Default YAML: host/port nested under http; MLCProvider as model impl.
     assert s.http.host == "127.0.0.1"
     assert s.http.port == 8080
-    assert s.providers.model.impl == "tether_service.providers.mlc.provider.MLCProvider"
+    assert s.providers.model.impl == "tether.providers.mlc.provider.MLCProvider"
     # Tools registry from default.yml.
     names = [t.name for t in s.tools.registry]
     assert "time" in names
@@ -120,7 +120,7 @@ def test_settings_replaces_default(tmp_path: Path):
 
 def test_load_settings_legacy_still_dict():
     """The legacy loader is preserved (one-cycle coexistence)."""
-    from tether_service.core.config import load_settings_legacy
+    from tether.core.config import load_settings_legacy
 
     cfg = load_settings_legacy()
     assert isinstance(cfg, dict)
@@ -191,7 +191,7 @@ def test_connectors_registry_validates_specs():
     c = ConnectorsSettings.model_validate(
         {
             "registry": {
-                "echo": {"impl": "tether_service.connectors.echo.EchoConnector"},
+                "echo": {"impl": "tether.connectors.echo.EchoConnector"},
             }
         }
     )
@@ -245,7 +245,7 @@ def test_settings_overlay_adds_connector_entry(tmp_path: Path):
             connectors:
               registry:
                 echo:
-                  impl: "tether_service.connectors.echo.EchoConnector"
+                  impl: "tether.connectors.echo.EchoConnector"
                   args:
                     greeting: "hi"
             """
@@ -255,7 +255,7 @@ def test_settings_overlay_adds_connector_entry(tmp_path: Path):
     s = load_settings(overlay_yaml=overlay, env={})
     assert "echo" in s.connectors.registry
     assert s.connectors.registry["echo"].impl == (
-        "tether_service.connectors.echo.EchoConnector"
+        "tether.connectors.echo.EchoConnector"
     )
     assert s.connectors.registry["echo"].args == {"greeting": "hi"}
     # Inbox still picks up the default.yml values:

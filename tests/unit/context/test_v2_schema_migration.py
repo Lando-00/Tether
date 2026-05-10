@@ -8,7 +8,7 @@ from pathlib import Path
 
 import pytest
 
-from tether_service.context.migration_runner import apply_pending_migrations
+from tether.context.migration_runner import apply_pending_migrations
 
 # yoyo 8.x uses datetime.utcnow() internally — suppress its DeprecationWarning
 # so that `-W error::DeprecationWarning` sweeps stay clean.

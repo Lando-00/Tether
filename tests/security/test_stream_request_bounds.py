@@ -13,7 +13,7 @@ Bounds (per acceptance criteria A2):
 import pytest
 from pydantic import ValidationError
 
-from tether_service.app.http.routers.chat import StreamRequest
+from tether.app.http.routers.chat import StreamRequest
 
 
 # ---------------------------------------------------------------------------
@@ -133,7 +133,7 @@ def test_model_name_valid_accepted(good_model_name):
 def _make_test_app():
     """Build a minimal FastAPI app that mounts only the chat router."""
     from fastapi import FastAPI
-    from tether_service.app.http.routers.chat import router as chat_router
+    from tether.app.http.routers.chat import router as chat_router
 
     app = FastAPI()
 

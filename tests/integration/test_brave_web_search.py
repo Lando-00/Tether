@@ -98,7 +98,7 @@ class TestWebSearchWithMockedServer:
     
     async def test_web_search_via_orchestrator(self):
         """Test web search tool via orchestrator (simulated)."""
-        from tether_service.tools.web_search_tool import WebSearchTool
+        from tether.tools.web_search_tool import WebSearchTool
         from unittest.mock import AsyncMock
         
         # Create tool
@@ -179,7 +179,7 @@ class TestWebSearchErrorHandling:
     
     async def test_rate_limit_error_in_orchestration(self):
         """Test that rate limit errors are handled gracefully in orchestration."""
-        from tether_service.tools.web_search_tool import WebSearchTool
+        from tether.tools.web_search_tool import WebSearchTool
         from unittest.mock import AsyncMock
         import httpx
         
@@ -209,7 +209,7 @@ class TestWebSearchErrorHandling:
     
     async def test_timeout_error_in_orchestration(self):
         """Test that timeout errors are handled gracefully."""
-        from tether_service.tools.web_search_tool import WebSearchTool
+        from tether.tools.web_search_tool import WebSearchTool
         from unittest.mock import AsyncMock
         import asyncio
         
@@ -238,7 +238,7 @@ class TestWebSearchBackwardCompatibility:
     
     async def test_both_formats_present_in_response(self):
         """Verify both new (results/meta) and old (articles) formats are present."""
-        from tether_service.tools.web_search_tool import WebSearchTool
+        from tether.tools.web_search_tool import WebSearchTool
         from unittest.mock import AsyncMock
         
         tool = WebSearchTool()

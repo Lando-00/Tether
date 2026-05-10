@@ -26,16 +26,16 @@ from unittest.mock import AsyncMock
 
 import pytest
 
-from tether_service.config.settings import Settings
-from tether_service.core.tool_registry import ToolRegistry
-from tether_service.tools.base import BaseTool
-from tether_service.tools.brave_client import BraveSearchClient
-from tether_service.tools.registration import (
+from tether.config.settings import Settings
+from tether.core.tool_registry import ToolRegistry
+from tether.tools.base import BaseTool
+from tether.tools.brave_client import BraveSearchClient
+from tether.tools.registration import (
     _DECORATED_TOOLS,
     _clear_registry,
     tool,
 )
-from tether_service.tools.web_search_tool import WebSearchInputs, WebSearchTool
+from tether.tools.web_search_tool import WebSearchInputs, WebSearchTool
 
 
 # ---------------------------------------------------------------------------
@@ -52,9 +52,9 @@ def _make_settings(
     return Settings.model_validate(
         {
             "providers": {
-                "model": {"impl": "tether_service.providers.dummy.provider.DummyProvider"},
-                "parser": {"impl": "tether_service.protocol.parsers.sliding.SlidingWindowParser"},
-                "session_store": {"impl": "tether_service.context.sqlite_store.SqliteSessionStore"},
+                "model": {"impl": "tether.providers.dummy.provider.DummyProvider"},
+                "parser": {"impl": "tether.protocol.parsers.sliding.SlidingWindowParser"},
+                "session_store": {"impl": "tether.context.sqlite_store.SqliteSessionStore"},
             },
             "security": {
                 "outbound_allowlist": {
@@ -67,7 +67,7 @@ def _make_settings(
                 "registry": [
                     {
                         "name": "web_search",
-                        "impl": "tether_service.tools.web_search_tool.WebSearchTool",
+                        "impl": "tether.tools.web_search_tool.WebSearchTool",
                     }
                 ],
                 "enabled": ["web_search"],

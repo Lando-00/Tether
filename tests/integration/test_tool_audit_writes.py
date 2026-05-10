@@ -15,16 +15,16 @@ from typing import Any, AsyncGenerator, Dict, List, Optional
 
 import pytest
 
-from tether_service.context.sqlite_store import SqliteSessionStore
-from tether_service.core.interfaces import ModelProvider, Tool
-from tether_service.core.types import OrchestratorConfig, ToolExecutionContext
-from tether_service.protocol.orchestration.chatty import ChattyAgentOrchestrator
-from tether_service.protocol.orchestration.policies import (
+from tether.context.sqlite_store import SqliteSessionStore
+from tether.core.interfaces import ModelProvider, Tool
+from tether.core.types import OrchestratorConfig, ToolExecutionContext
+from tether.protocol.orchestration.chatty import ChattyAgentOrchestrator
+from tether.protocol.orchestration.policies import (
     LoopLimitPolicy,
     ToolErrorPolicy,
 )
-from tether_service.protocol.orchestration.tool_runner import ToolRunner
-from tether_service.protocol.parsers.sliding import SlidingParser
+from tether.protocol.orchestration.tool_runner import ToolRunner
+from tether.protocol.parsers.sliding import SlidingParser
 
 # yoyo uses datetime.utcnow() — suppress its DeprecationWarning so
 # -W error sweeps stay clean.
@@ -139,7 +139,7 @@ class _RaisingTool(Tool):
 
 
 def _settings(db_path: str, *, store_args: bool = False):
-    from tether_service.config.settings import (
+    from tether.config.settings import (
         AuditLogSettings,
         SecuritySettings,
         Settings,
@@ -149,15 +149,15 @@ def _settings(db_path: str, *, store_args: bool = False):
             "system": {"prompt": "audit-test-prompt"},
             "providers": {
                 "model": {
-                    "impl": "tether_service.providers.dummy.provider.DummyProvider",
+                    "impl": "tether.providers.dummy.provider.DummyProvider",
                     "args": {},
                 },
                 "parser": {
-                    "impl": "tether_service.protocol.parsers.sliding.SlidingParser",
+                    "impl": "tether.protocol.parsers.sliding.SlidingParser",
                     "args": {},
                 },
                 "session_store": {
-                    "impl": "tether_service.context.sqlite_store.SqliteSessionStore",
+                    "impl": "tether.context.sqlite_store.SqliteSessionStore",
                     "args": {"dsn": f"sqlite:///{db_path}"},
                 },
             },
@@ -223,7 +223,7 @@ async def test_successful_tool_writes_audit_row(tmp_path):
     """A successful tool dispatch writes ONE row with status='ok'."""
     db_path = (tmp_path / "audit.db").as_posix()
     settings = _settings(db_path)
-    from tether_service.engine import Engine
+    from tether.engine import Engine
     import time as _time
     Engine.from_settings(settings)  # apply migrations
 
@@ -255,7 +255,7 @@ async def test_error_tool_writes_audit_row_with_error_kind(tmp_path):
     import time as _time
     db_path = (tmp_path / "audit-err.db").as_posix()
     settings = _settings(db_path)
-    from tether_service.engine import Engine
+    from tether.engine import Engine
     Engine.from_settings(settings)
 
     store = SqliteSessionStore(dsn=f"sqlite:///{db_path}")
@@ -285,7 +285,7 @@ async def test_args_json_null_by_default(tmp_path):
     import time as _time
     db_path = (tmp_path / "audit-no-args.db").as_posix()
     settings = _settings(db_path, store_args=False)
-    from tether_service.engine import Engine
+    from tether.engine import Engine
     Engine.from_settings(settings)
 
     store = SqliteSessionStore(dsn=f"sqlite:///{db_path}")
@@ -309,7 +309,7 @@ async def test_args_json_populated_when_store_args_true(tmp_path):
     import time as _time
     db_path = (tmp_path / "audit-args.db").as_posix()
     settings = _settings(db_path, store_args=True)
-    from tether_service.engine import Engine
+    from tether.engine import Engine
     Engine.from_settings(settings)
 
     store = SqliteSessionStore(dsn=f"sqlite:///{db_path}")
@@ -344,7 +344,7 @@ async def test_args_sha256_deterministic(tmp_path):
     import time as _time
     db_path = (tmp_path / "audit-sha.db").as_posix()
     settings = _settings(db_path)
-    from tether_service.engine import Engine
+    from tether.engine import Engine
     Engine.from_settings(settings)
 
     tool_args = {"b": 2, "a": 1}
@@ -371,7 +371,7 @@ async def test_args_sha256_deterministic(tmp_path):
 
 async def test_tool_audit_no_op_on_memory_store():
     """MemoryStore inherits the no-op audit_tool_call — must not raise."""
-    from tether_service.context.memory_store import MemoryStore
+    from tether.context.memory_store import MemoryStore
 
     store = MemoryStore()
     await store.audit_tool_call(
@@ -391,8 +391,8 @@ async def test_tool_audit_no_op_on_memory_store():
 
 async def test_audit_write_failure_doesnt_break_orchestrator(tmp_path):
     """If audit_tool_call raises, the orchestrator logs and continues."""
-    from tether_service.context.memory_store import MemoryStore
-    from tether_service.protocol.wire.events import MessageStop
+    from tether.context.memory_store import MemoryStore
+    from tether.protocol.wire.events import MessageStop
 
     class _FailingStore(MemoryStore):
         async def audit_tool_call(self, **kwargs) -> None:
@@ -421,7 +421,7 @@ async def test_correlation_id_falls_back_to_turn_id_in_library_mode(tmp_path):
     import time as _time
     db_path = (tmp_path / "audit-libmode.db").as_posix()
     settings = _settings(db_path)
-    from tether_service.engine import Engine
+    from tether.engine import Engine
     Engine.from_settings(settings)
 
     store = SqliteSessionStore(dsn=f"sqlite:///{db_path}")

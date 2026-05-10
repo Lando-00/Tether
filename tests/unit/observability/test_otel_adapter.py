@@ -1,4 +1,4 @@
-"""Tests for tether_service.observability.otel_adapter.
+"""Tests for tether.observability.otel_adapter.
 
 Phase 7 step 76 — Optional OpenTelemetry adapter.
 
@@ -15,7 +15,7 @@ from unittest.mock import patch
 
 import pytest
 
-from tether_service.observability.otel_adapter import (
+from tether.observability.otel_adapter import (
     install_otel_adapter,
     reset_otel_adapter_for_tests,
 )
@@ -28,7 +28,7 @@ from tether_service.observability.otel_adapter import (
 
 def _make_settings(otel_overrides: dict[str, Any] | None = None):
     """Return a Settings instance with optional OTel overrides (via env vars)."""
-    from tether_service.config.settings import load_settings
+    from tether.config.settings import load_settings
 
     if not otel_overrides:
         return load_settings(env={})
@@ -65,7 +65,7 @@ def test_default_disabled_is_noop():
     new_modules = otel_after - otel_before
     assert not new_modules, f"OTel was imported despite being disabled: {new_modules}"
 
-    from tether_service.observability import otel_adapter
+    from tether.observability import otel_adapter
     assert not otel_adapter._initialized
 
 
@@ -176,7 +176,7 @@ def test_yaml_override_settings_parsing(tmp_path: Path):
     """YAML overlay with otel block parses to correct typed values."""
     from importlib import resources
 
-    from tether_service.config.settings import load_settings
+    from tether.config.settings import load_settings
 
     overlay = tmp_path / "override.yml"
     overlay.write_text(
@@ -187,7 +187,7 @@ def test_yaml_override_settings_parsing(tmp_path: Path):
         "    service_name: my-svc\n",
         encoding="utf-8",
     )
-    default_yaml = Path(str(resources.files("tether_service.config") / "default.yml"))
+    default_yaml = Path(str(resources.files("tether.config") / "default.yml"))
     cfg = load_settings(default_yaml=default_yaml, overlay_yaml=overlay, env={})
 
     assert cfg.observability.otel.enabled is True
@@ -202,7 +202,7 @@ def test_yaml_override_settings_parsing(tmp_path: Path):
 
 def test_configure_logging_default_does_not_import_otel():
     """configure_logging(default_settings) must not import any OTel modules."""
-    from tether_service.core.logging import configure_logging, reset_logging_for_tests
+    from tether.core.logging import configure_logging, reset_logging_for_tests
 
     reset_logging_for_tests()
 

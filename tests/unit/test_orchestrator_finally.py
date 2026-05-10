@@ -15,11 +15,11 @@ from typing import Any, AsyncGenerator, Dict, List, Optional
 
 import pytest
 
-from tether_service.core.interfaces import ModelProvider
-from tether_service.core.types import OrchestratorConfig
-from tether_service.protocol.orchestration.orchestrator import orchestrate
-from tether_service.protocol.orchestration.tool_runner import ToolRunner
-from tether_service.protocol.parsers.sliding import SlidingParser
+from tether.core.interfaces import ModelProvider
+from tether.core.types import OrchestratorConfig
+from tether.protocol.orchestration.orchestrator import orchestrate
+from tether.protocol.orchestration.tool_runner import ToolRunner
+from tether.protocol.parsers.sliding import SlidingParser
 
 from tests.golden.conftest import MinimalMemoryStore
 

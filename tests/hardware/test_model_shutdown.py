@@ -29,7 +29,7 @@ async def test_model_shutdown_completes(model_name: str):
     raises. Skips when the model directory is absent (dev machines without
     the Snapdragon Adreno device or downloaded weights).
     """
-    from tether_service.providers.mlc.provider import MLCProvider
+    from tether.providers.mlc.provider import MLCProvider
 
     dist_root = Path(__file__).parent.parent.parent / "dist"
     model_dir = dist_root / model_name

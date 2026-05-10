@@ -13,7 +13,7 @@ Marked as @pytest.mark.integration and require BRAVE_API_KEY.
 import pytest
 import os
 import asyncio
-from tether_service.tools.web_search_tool import WebSearchTool
+from tether.tools.web_search_tool import WebSearchTool
 
 
 pytestmark = [

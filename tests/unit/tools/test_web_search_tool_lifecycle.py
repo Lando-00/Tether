@@ -31,9 +31,9 @@ from unittest.mock import AsyncMock
 
 import pytest
 
-from tether_service.core.secrets import SecretsProvider
-from tether_service.tools.brave_client import BraveSearchClient
-from tether_service.tools.web_search_tool import WebSearchInputs, WebSearchTool
+from tether.core.secrets import SecretsProvider
+from tether.tools.brave_client import BraveSearchClient
+from tether.tools.web_search_tool import WebSearchInputs, WebSearchTool
 
 
 # ---------------------------------------------------------------------------
@@ -98,7 +98,7 @@ async def test_startup_missing_key_logs_warning(caplog):
     secrets = _FakeSecretsProvider({})  # empty
     tool = WebSearchTool(secrets=secrets)
 
-    with caplog.at_level(logging.WARNING, logger="tether_service.tools.web_search_tool"):
+    with caplog.at_level(logging.WARNING, logger="tether.tools.web_search_tool"):
         await tool.startup()
 
     assert tool._client is None
@@ -246,7 +246,7 @@ async def test_shutdown_after_real_startup_idempotent():
 def test_secrets_injection_default_is_envfile():
     """No-arg construction wires the default
     :class:`EnvFileSecretsProvider` per connector spec §3.5."""
-    from tether_service.core.secrets import EnvFileSecretsProvider
+    from tether.core.secrets import EnvFileSecretsProvider
 
     tool = WebSearchTool()
     assert isinstance(tool._secrets, EnvFileSecretsProvider)

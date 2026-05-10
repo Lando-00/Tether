@@ -19,9 +19,9 @@ from __future__ import annotations
 import pytest
 import structlog.contextvars
 
-from tether_service.config.settings import Settings
-from tether_service.engine import Engine
-from tether_service.protocol.wire.events import MessageStart
+from tether.config.settings import Settings
+from tether.engine import Engine
+from tether.protocol.wire.events import MessageStart
 
 pytestmark = pytest.mark.anyio
 
@@ -37,15 +37,15 @@ def _settings(tmp_path) -> Settings:
             "system": {"prompt": "sys"},
             "providers": {
                 "model": {
-                    "impl": "tether_service.providers.dummy.provider.DummyProvider",
+                    "impl": "tether.providers.dummy.provider.DummyProvider",
                     "args": {},
                 },
                 "parser": {
-                    "impl": "tether_service.protocol.parsers.sliding.SlidingParser",
+                    "impl": "tether.protocol.parsers.sliding.SlidingParser",
                     "args": {},
                 },
                 "session_store": {
-                    "impl": "tether_service.context.sqlite_store.SqliteSessionStore",
+                    "impl": "tether.context.sqlite_store.SqliteSessionStore",
                     "args": {"dsn": f"sqlite:///{tmp_path}/ctxvars.db"},
                 },
             },
@@ -161,18 +161,18 @@ async def test_turn_id_unbound_when_start_turn_raises(tmp_path):
     """
     from tests.golden.conftest import MinimalMemoryStore  # noqa: WPS433
 
-    from tether_service.core.types import OrchestratorConfig
-    from tether_service.protocol.orchestration.chatty import (
+    from tether.core.types import OrchestratorConfig
+    from tether.protocol.orchestration.chatty import (
         ChattyAgentOrchestrator,
     )
-    from tether_service.protocol.orchestration.policies import (
+    from tether.protocol.orchestration.policies import (
         LoopLimitPolicy,
         ToolErrorPolicy,
     )
-    from tether_service.protocol.orchestration.tool_runner import ToolRunner
-    from tether_service.protocol.parsers.sliding import SlidingParser
-    from tether_service.core.interfaces import ModelProvider
-    from tether_service.protocol.wire.events import Error, MessageStop
+    from tether.protocol.orchestration.tool_runner import ToolRunner
+    from tether.protocol.parsers.sliding import SlidingParser
+    from tether.core.interfaces import ModelProvider
+    from tether.protocol.wire.events import Error, MessageStop
 
     class _NeverProvider(ModelProvider):
         async def stream(self, model_name, messages, tools=None, **kwargs):

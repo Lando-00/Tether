@@ -19,8 +19,8 @@ import pytest
 from fastapi import APIRouter, FastAPI
 from fastapi.testclient import TestClient
 
-from tether_service.app.http.api import lifespan
-from tether_service.app.http.routers.chat import router as chat_router
+from tether.app.http.api import lifespan
+from tether.app.http.routers.chat import router as chat_router
 
 
 # ---------------------------------------------------------------------------
@@ -40,11 +40,11 @@ class _FailingEngine:
     def __init__(self):
         self._orchestrator_registry: Dict[str, str] = {
             "chat": (
-                "tether_service.protocol.orchestration.chatty"
+                "tether.protocol.orchestration.chatty"
                 ".ChattyAgentOrchestrator"
             ),
             "research": (
-                "tether_service.protocol.orchestration.notebook"
+                "tether.protocol.orchestration.notebook"
                 ".NotebookOrchestrator"
             ),
         }

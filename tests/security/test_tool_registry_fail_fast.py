@@ -11,7 +11,7 @@ from unittest.mock import patch
 
 
 def _make_registry(registry_cfg, enabled):
-    from tether_service.core.tool_registry import ToolRegistry
+    from tether.core.tool_registry import ToolRegistry
     return ToolRegistry(registry_cfg, enabled)
 
 
@@ -28,7 +28,7 @@ def test_enabled_tool_construction_error_raises():
     cfg = [_cfg("bad_tool", "some.module.BadTool")]
     original_error = ValueError("boom — bad config")
 
-    with patch("tether_service.core.tool_registry.load", side_effect=original_error):
+    with patch("tether.core.tool_registry.load", side_effect=original_error):
         with pytest.raises(RuntimeError) as exc_info:
             _make_registry(cfg, enabled=["bad_tool"])
 
@@ -44,7 +44,7 @@ def test_enabled_tool_error_is_chained():
     cfg = [_cfg("exploding", "a.b.C")]
     original = ImportError("no module named 'a'")
 
-    with patch("tether_service.core.tool_registry.load", side_effect=original):
+    with patch("tether.core.tool_registry.load", side_effect=original):
         with pytest.raises(RuntimeError) as exc_info:
             _make_registry(cfg, enabled=["exploding"])
 
@@ -55,7 +55,7 @@ def test_error_message_includes_impl():
     """Error message must include both tool name and impl path."""
     cfg = [_cfg("my_tool", "path.to.MyTool")]
 
-    with patch("tether_service.core.tool_registry.load", side_effect=RuntimeError("bad")):
+    with patch("tether.core.tool_registry.load", side_effect=RuntimeError("bad")):
         with pytest.raises(RuntimeError) as exc_info:
             _make_registry(cfg, enabled=["my_tool"])
 
@@ -83,7 +83,7 @@ def test_non_enabled_tool_error_is_ignored():
             return good_instance
         raise RuntimeError("should never be called for non-enabled tool")
 
-    with patch("tether_service.core.tool_registry.load", side_effect=_fake_load):
+    with patch("tether.core.tool_registry.load", side_effect=_fake_load):
         registry = _make_registry(cfg, enabled=["good_tool"])
 
     assert registry.get("good_tool") is good_instance
@@ -109,7 +109,7 @@ def test_all_enabled_tools_loaded():
                 return inst
         raise AssertionError(f"unexpected load call for {dotted!r}")
 
-    with patch("tether_service.core.tool_registry.load", side_effect=_fake_load):
+    with patch("tether.core.tool_registry.load", side_effect=_fake_load):
         registry = _make_registry(cfg, enabled=["tool_a", "tool_b"])
 
     assert registry.get("tool_a") is instances["tool_a"]
@@ -127,7 +127,7 @@ def test_empty_registry_config():
 def test_enabled_but_not_in_registry():
     """Enabling a tool not in registry cfg is a no-op (nothing to load)."""
     # load is never called since no cfg entries match the enabled name
-    with patch("tether_service.core.tool_registry.load", side_effect=AssertionError("should not be called")):
+    with patch("tether.core.tool_registry.load", side_effect=AssertionError("should not be called")):
         registry = _make_registry([], enabled=["ghost_tool"])
 
     assert registry.get("ghost_tool") is None

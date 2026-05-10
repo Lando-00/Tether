@@ -15,22 +15,22 @@ import pytest
 
 def _settings(dsn: str):
     """Return minimal Settings using DummyProvider + SqliteSessionStore."""
-    from tether_service.config.settings import Settings
+    from tether.config.settings import Settings
 
     return Settings.model_validate(
         {
             "system": {"prompt": "greenfield-test"},
             "providers": {
                 "model": {
-                    "impl": "tether_service.providers.dummy.provider.DummyProvider",
+                    "impl": "tether.providers.dummy.provider.DummyProvider",
                     "args": {},
                 },
                 "parser": {
-                    "impl": "tether_service.protocol.parsers.sliding.SlidingParser",
+                    "impl": "tether.protocol.parsers.sliding.SlidingParser",
                     "args": {},
                 },
                 "session_store": {
-                    "impl": "tether_service.context.sqlite_store.SqliteSessionStore",
+                    "impl": "tether.context.sqlite_store.SqliteSessionStore",
                     "args": {"dsn": dsn},
                 },
             },
@@ -47,7 +47,7 @@ def _settings(dsn: str):
 @pytest.mark.anyio
 async def test_greenfield_engine_from_settings_works(tmp_path):
     """Empty data dir -> Engine.from_settings constructs cleanly."""
-    from tether_service.engine import Engine
+    from tether.engine import Engine
 
     db_path = tmp_path / "data" / "fresh.db"
     db_path.parent.mkdir(parents=True, exist_ok=True)
@@ -80,7 +80,7 @@ async def test_greenfield_engine_from_settings_works(tmp_path):
 async def test_greenfield_full_round_trip(tmp_path):
     """Empty DB -> create session -> add user -> add assistant w/ thinking ->
     get_history returns canonical shape."""
-    from tether_service.engine import Engine
+    from tether.engine import Engine
 
     db_path = tmp_path / "data" / "fresh.db"
     db_path.parent.mkdir(parents=True, exist_ok=True)
@@ -108,7 +108,7 @@ async def test_greenfield_full_round_trip(tmp_path):
 @pytest.mark.anyio
 async def test_greenfield_v2_tables_populated(tmp_path):
     """Empty DB -> tool round-trip populates v2 tables (turns, tool_calls)."""
-    from tether_service.engine import Engine
+    from tether.engine import Engine
 
     db_path = tmp_path / "data" / "fresh.db"
     db_path.parent.mkdir(parents=True, exist_ok=True)
@@ -158,7 +158,7 @@ async def test_greenfield_v2_tables_populated(tmp_path):
 @pytest.mark.anyio
 async def test_greenfield_thinking_as_row(tmp_path):
     """Empty DB -> assistant w/ thinking -> role='thinking' row exists in messages."""
-    from tether_service.engine import Engine
+    from tether.engine import Engine
 
     db_path = tmp_path / "data" / "fresh.db"
     db_path.parent.mkdir(parents=True, exist_ok=True)

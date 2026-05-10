@@ -2,11 +2,11 @@
 
 Covers:
 
-* :class:`tether_service.tools.base.BaseTool` ``REQUIRED`` ClassVar +
+* :class:`tether.tools.base.BaseTool` ``REQUIRED`` ClassVar +
   default no-op ``startup`` / ``shutdown`` coroutines.
-* :func:`tether_service.tools.lifecycle.startup_all` — concurrent
+* :func:`tether.tools.lifecycle.startup_all` — concurrent
   startup with required-vs-optional policy.
-* :func:`tether_service.tools.lifecycle.shutdown_all` — best-effort
+* :func:`tether.tools.lifecycle.shutdown_all` — best-effort
   concurrent shutdown.
 
 F2 (Engine wiring) tests are appended to this file in the engine-
@@ -24,8 +24,8 @@ from typing import Any, Dict
 
 import pytest
 
-from tether_service.tools.base import BaseTool
-from tether_service.tools.lifecycle import shutdown_all, startup_all
+from tether.tools.base import BaseTool
+from tether.tools.lifecycle import shutdown_all, startup_all
 
 
 # ---------------------------------------------------------------------------
@@ -234,7 +234,7 @@ async def test_shutdown_all_empty_tools():
 from typing import AsyncGenerator, List, Optional  # noqa: E402
 from unittest.mock import MagicMock  # noqa: E402
 
-from tether_service.core.interfaces import ModelProvider  # noqa: E402
+from tether.core.interfaces import ModelProvider  # noqa: E402
 
 
 class _NoOpProvider(ModelProvider):
@@ -262,7 +262,7 @@ class _NoOpProvider(ModelProvider):
 
 def _make_engine(tools: Dict[str, BaseTool]):
     """Build a minimal Engine (direct constructor) for lifecycle tests."""
-    from tether_service.engine import Engine
+    from tether.engine import Engine
 
     return Engine(
         provider=_NoOpProvider(),
@@ -332,7 +332,7 @@ async def test_engine_aenter_required_failure_raises():
 @pytest.mark.anyio
 async def test_engine_aclose_runs_tool_shutdown_before_watchdog():
     """Order check: tool shutdown completes before watchdog teardown."""
-    from tether_service.runtime.hw_watchdog import HardwareWatchdog
+    from tether.runtime.hw_watchdog import HardwareWatchdog
 
     order: List[str] = []
 
@@ -352,7 +352,7 @@ async def test_engine_aclose_runs_tool_shutdown_before_watchdog():
         side_effect=lambda: order.append("watchdog_shutdown")
     )
 
-    from tether_service.engine import Engine
+    from tether.engine import Engine
     eng = Engine(
         provider=_NoOpProvider(),
         parser=MagicMock(),
