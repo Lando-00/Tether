@@ -272,9 +272,17 @@ def test_signal_supervisor_force_exit_timer_starts_daemon_thread(
 
     s._handle_signal(signal.SIGINT, None)
 
-    assert s._timer_thread is not None
-    assert s._timer_thread.daemon is True
-    assert s._timer_thread.name == "SignalSupervisor-timer"
+    try:
+        assert s._timer_thread is not None
+        assert s._timer_thread.daemon is True
+        assert s._timer_thread.name == "SignalSupervisor-timer"
+    finally:
+        # CRITICAL: clear _shutdown_started so the daemon thread, when it
+        # wakes from time.sleep(10) AFTER monkeypatch has reverted os._exit
+        # to the real one, takes the safe branch and skips os._exit(1)
+        # instead of killing the test runner. Pre-existing Phase 3 bug
+        # surfaced in Phase 7 as suite runtime crept past 10s.
+        s._shutdown_started = False
 
 
 def test_signal_supervisor_force_exit_timer_skipped_if_no_shutdown(
