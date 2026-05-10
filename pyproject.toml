@@ -46,7 +46,7 @@ otel = [
 dev = ["pytest>=7", "pytest-asyncio", "ruff", "mypy", "build"]
 
 [tool.hatch.build.targets.wheel]
-packages = ["tether_service"]
+packages = ["src/tether"]
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]
