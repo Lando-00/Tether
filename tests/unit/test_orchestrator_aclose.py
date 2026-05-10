@@ -65,12 +65,15 @@ class _NullStore(SessionStore):
     async def list_sessions(self): return []
     async def delete_session(self, session_id: str) -> bool: return False
     async def delete_all_sessions(self) -> int: return 0
-    async def add_user(self, session_id: str, text: str) -> None: pass
-    async def add_assistant_text(self, session_id, text, thinking_text=None, save_thinking=True): pass
-    async def add_assistant_toolcall(self, session_id, tool_name, args): pass
-    async def add_tool_result(self, session_id, tool_name, result): pass
+    async def add_user(self, session_id: str, text: str, *, turn_id=None, seq_start=None) -> None: pass
+    async def add_assistant_text(self, session_id, text, thinking_text=None, save_thinking=True, *, turn_id=None, seq_start=None): pass
+    async def add_assistant_toolcall(self, session_id, tool_name, args, *, turn_id=None, tool_call_id=None, seq_start=None): pass
+    async def add_tool_result(self, session_id, tool_name, result, *, turn_id=None, tool_call_id=None, seq_start=None, status="ok", error=None, duration_ms=None): pass
     async def get_history(self, session_id, include_thinking=False): return []
     async def ensure_system_prompt(self, session_id, prompt): pass
+    async def start_turn(self, session_id, turn_id, *, model_name=None): pass
+    async def complete_turn(self, turn_id, *, status="completed", stop_reason=None, error_json=None): pass
+    async def record_raw_event(self, session_id, turn_id, seq, event_type, payload, *, tool_call_id=None): pass
 
 
 class _PassthroughParser(StreamParser):
