@@ -29,10 +29,20 @@ Known event names translated to spans:
   - ``tool.error``            → span "tool.run" (status=ERROR)
   - ``generation.cancelled``  → span event on "provider.stream" span
   - All other events          → ignored (pass-through)
+
+Phase 7 RD followup (FIX 2): all string attributes are passed through
+:func:`tether_service.core.redact.redact_text` before reaching the OTel
+exporter. The structlog OTel processor runs INSIDE structlog before the
+stdlib bridge, so :class:`tether_service.core.logging.RedactingFilter` does
+not protect span attributes — secrets in exception messages, URLs, etc.
+would leak to the collector. Native types (int / float / bool / bytes) are
+preserved instead of stringified.
 """
 from __future__ import annotations
 
 from typing import TYPE_CHECKING, Any
+
+from tether_service.core.redact import redact_text
 
 if TYPE_CHECKING:
     from tether_service.config.settings import Settings
@@ -55,18 +65,47 @@ _SPAN_EVENT_NAMES = frozenset({"generation.cancelled", "tool.start"})
 # Keys excluded from OTel span attributes (internal / non-serialisable).
 _SKIP_ATTRS = frozenset({"event", "timestamp", "level", "logger", "_record"})
 
+# Cap repr-fallback strings so a deeply-nested structure doesn't bloat a span.
+_MAX_REPR_LEN = 256
 
-def _make_attrs(event_dict: dict[str, Any]) -> dict[str, str]:
-    """Extract span attributes from a structlog event dict.
 
-    OTel attribute values must be primitives; we coerce everything to ``str``
-    so callers don't have to worry about complex values.
+def _make_attrs(event_dict: dict[str, Any]) -> dict[str, Any]:
+    """Extract OTel-native span attributes from a structlog event dict.
+
+    Phase 7 RD followup (FIX 2):
+      * String values are passed through :func:`redact_text` so secrets in
+        URLs / error messages don't leak to the OTel exporter.
+      * Native OTel types (``str``, ``bool``, ``int``, ``float``) are kept
+        as-is so dashboards can use them numerically.
+      * ``bytes`` are decoded then redacted (fallback: capped repr).
+      * Other complex objects are coerced to a redacted, capped ``repr`` so a
+        non-serialisable value can't crash the exporter.
+      * ``None`` values are dropped — OTel rejects None and would otherwise
+        raise ``TypeError`` inside ``set_attribute``.
     """
-    return {
-        k: str(v)
-        for k, v in event_dict.items()
-        if k not in _SKIP_ATTRS and not k.startswith("_")
-    }
+    out: dict[str, Any] = {}
+    for k, v in event_dict.items():
+        if k in _SKIP_ATTRS or k.startswith("_"):
+            continue
+        if v is None:
+            # OTel rejects None; drop the key entirely.
+            continue
+        if isinstance(v, str):
+            out[k] = redact_text(v)
+        elif isinstance(v, bool):
+            # ``bool`` is a subclass of ``int``; check first to keep True/False.
+            out[k] = v
+        elif isinstance(v, (int, float)):
+            out[k] = v
+        elif isinstance(v, bytes):
+            try:
+                decoded = v.decode("utf-8", errors="replace")
+                out[k] = redact_text(decoded)
+            except Exception:
+                out[k] = redact_text(repr(v))[:_MAX_REPR_LEN]
+        else:
+            out[k] = redact_text(repr(v))[:_MAX_REPR_LEN]
+    return out
 
 
 def install_otel_adapter(settings: "Settings") -> None:
