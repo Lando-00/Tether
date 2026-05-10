@@ -8,7 +8,7 @@ view of the MLC-LLM model ecosystem after ~18 months and produce an
 > Hardware target: **Microsoft Surface Pro 11, Snapdragon X Elite,
 > 16 GB unified memory.**
 > Backend (today): **Adreno X1 GPU via OpenCL** (`*-adreno.dll` libs in
-> `dist/libs/`). NPU/Hexagon is *not* used today despite older docs
+> `models/libs/`). NPU/Hexagon is *not* used today despite older docs
 > using the word "NPU" loosely.
 
 ## TL;DR (one paragraph)
@@ -40,7 +40,7 @@ head-to-head on GPU vs NPU."
 
 | File | What it is |
 |------|------------|
-| [`01_current_inventory.md`](./01_current_inventory.md) | Auto-generated snapshot of `dist/` — current models, their configs, on-disk size, and which ones have a matching compiled `.dll`. Regenerate via `python scripts/research/inventory_models.py --out docs/research/01_current_inventory.md`. |
+| [`01_current_inventory.md`](./01_current_inventory.md) | Auto-generated snapshot of `models/` — current models, their configs, on-disk size, and which ones have a matching compiled `.dll`. Regenerate via `python scripts/research/inventory_models.py --out docs/research/01_current_inventory.md`. |
 | [`01_current_inventory_notes.md`](./01_current_inventory_notes.md) | Companion narrative: per-model operational lessons (the Qwen2.5-7B shutdown-hang story, the broken Gemma 3 setup, the Adreno-vs-NPU naming clarification). |
 | [`02_adreno_mlc_landscape.md`](./02_adreno_mlc_landscape.md) | What changed in MLC-LLM since Tether was last updated — new model architectures supported, Adreno / Snapdragon X Elite specific notes, known issues. The "what's mlc-llm doing today" doc. |
 | [`02_mlc_ai_hf_catalog.md`](./02_mlc_ai_hf_catalog.md) / [`.json`](./02_mlc_ai_hf_catalog.json) | Auto-generated catalog of **every pre-compiled MLC model under the [mlc-ai](https://huggingface.co/mlc-ai) HF org** that fits in 9 GB on disk. 298 repos, grouped by family, sorted by popularity. Regenerate via `python scripts/research/hf_mlc_catalog.py --max-gb 9 --out-md docs/research/02_mlc_ai_hf_catalog.md --out-json docs/research/02_mlc_ai_hf_catalog.json --verbose`. |
@@ -55,7 +55,7 @@ head-to-head on GPU vs NPU."
 
 ## What's in `scripts/`
 
-Standalone tools that DO touch `dist/` and the running `mlc_llm`
+Standalone tools that DO touch `models/` and the running `mlc_llm`
 runtime (different from `scripts/research/` below — those are
 read-only research helpers):
 
@@ -71,7 +71,7 @@ mid-refactor):
 
 | Script | Purpose |
 |--------|---------|
-| [`inventory_models.py`](../../scripts/research/inventory_models.py) | Walk `dist/`, parse each `mlc-chat-config.json`, cross-reference `dist/libs/*.dll`, emit a Markdown report. |
+| [`inventory_models.py`](../../scripts/research/inventory_models.py) | Walk `models/`, parse each `mlc-chat-config.json`, cross-reference `models/libs/*.dll`, emit a Markdown report. |
 | [`hf_mlc_catalog.py`](../../scripts/research/hf_mlc_catalog.py) | Public HF Hub API → enumerate `mlc-ai/*` repos, parse names, total `.bin` shard sizes, filter by GB cap, emit JSON + Markdown. No auth needed. |
 | [`estimate_ram.py`](../../scripts/research/estimate_ram.py) | Estimate runtime footprint = weights + KV cache + scratch. Accepts `--model-config` (reads an `mlc-chat-config.json`) or fully manual params. Has a `--sweep-ctx` mode for "what's the practical context window in N GB". |
 | [`jfrog_clo_catalog.py`](../../scripts/research/jfrog_clo_catalog.py) | Walk any Qualcomm CodeLinaro Artifactory repo via the JFrog REST API. Emits per-file size, checksums, timestamps. Used to track new MLC-LLM releases on `clo-472-adreno-opensource-ai`. |
@@ -112,7 +112,7 @@ python scripts\research\hf_mlc_catalog.py `
 
 # 3. Sanity-check a candidate's RAM footprint by sweeping context sizes
 python scripts\research\estimate_ram.py `
-  --model-config dist\Qwen3-4B-q4f16_0-MLC\mlc-chat-config.json `
+  --model-config models\Qwen3-4B-q4f16_0-MLC\mlc-chat-config.json `
   --sweep-ctx 4096,8192,16384,32768,40960
 
 # 4. Recheck whether a newer MLC-LLM build dropped on CodeLinaro
@@ -124,8 +124,8 @@ python scripts\research\jfrog_clo_catalog.py `
 
 # 5. Bench an existing compiled model (warm-only, fast iteration)
 python scripts\bench_model.py `
-  --model-dir dist\Qwen3-4B-q4f16_1-MLC `
-  --model-lib dist\libs\Qwen3-4B-q4f16_1-adreno.dll `
+  --model-dir models\Qwen3-4B-q4f16_1-MLC `
+  --model-lib models\libs\Qwen3-4B-q4f16_1-adreno.dll `
   --label "Qwen3-4B-q4f16_1 (recheck)" `
   --no-think --skip-cold `
   --out-md docs\research\artifacts\bench_q4f16_1_recheck.md `
@@ -134,8 +134,8 @@ python scripts\bench_model.py `
 # 6. Add a brand-new candidate model from the shortlist
 python scripts\setup_model.py `
   --hf-repo mlc-ai/Hermes-3-Llama-3.2-3B-q4f16_1-MLC `
-  --dist dist `
-  --conv-template-from dist\Qwen3-4B-q4f16_0-MLC `
+  --dist models `
+  --conv-template-from models\Qwen3-4B-q4f16_0-MLC `
   --verify
 ```
 

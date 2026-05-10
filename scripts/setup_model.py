@@ -31,18 +31,19 @@ Usage::
 
     python scripts\\setup_model.py ^
         --hf-repo mlc-ai/Qwen3-4B-q4f16_1-MLC ^
-        --dist D:\\Dev\\TetherWorkspace\\dist ^
-        --conv-template-from D:\\Dev\\Tether\\dist\\Qwen3-4B-q4f16_0-MLC ^
+        --models-root D:\\Dev\\Tether\\models ^
+        --conv-template-from D:\\Dev\\Tether\\models\\Qwen3-4B-q4f16_0-MLC ^
         --verify
 
     # subsequent runs can reuse the staged weights
     python scripts\\setup_model.py ^
         --hf-repo mlc-ai/Qwen3-4B-q4f16_1-MLC ^
-        --dist D:\\Dev\\TetherWorkspace\\dist ^
+        --models-root D:\\Dev\\Tether\\models ^
         --skip-download
 
 The script writes nothing into Tether's source tree -- only into the
-``--dist`` root you point it at.
+``--models-root`` directory you point it at (defaults to ``./models/``).
+The ``--dist`` flag is kept as a deprecated alias for one cycle.
 """
 
 from __future__ import annotations
@@ -58,7 +59,7 @@ from pathlib import Path
 from typing import Optional
 
 REPO_ROOT = Path(__file__).resolve().parent.parent
-DEFAULT_DIST = REPO_ROOT / "dist"
+DEFAULT_MODELS_ROOT = REPO_ROOT / "models"
 ADRENO_DEVICE = "windows:adreno_x86"  # per Qualcomm Feb 2025 blog
 LIB_EXT = {"Windows": ".dll", "Darwin": ".dylib"}.get(platform.system(), ".so")
 
@@ -185,15 +186,19 @@ def parse_args(argv: Optional[list[str]] = None) -> argparse.Namespace:
     p.add_argument("--hf-repo", required=True,
                    help="HuggingFace repo id, e.g. mlc-ai/Qwen3-4B-q4f16_1-MLC")
     p.add_argument("--output-name", default=None,
-                   help="Directory name under <dist> (default: last segment of hf-repo)")
-    p.add_argument("--dist", type=Path, default=DEFAULT_DIST,
-                   help=f"Path to dist/ root (default: {DEFAULT_DIST})")
+                   help="Directory name under <models-root> (default: last segment of hf-repo)")
+    p.add_argument("--models-root", type=Path, default=DEFAULT_MODELS_ROOT,
+                   help=f"Path to the models/ root (default: {DEFAULT_MODELS_ROOT}). "
+                        "This was named --dist before the Phase 8 rename; --dist is "
+                        "kept as a deprecated alias.")
+    p.add_argument("--dist", type=Path, default=None,
+                   help=argparse.SUPPRESS)  # deprecated alias for --models-root
     p.add_argument("--device", default=ADRENO_DEVICE,
                    help=f"mlc_llm compile --device value (default: {ADRENO_DEVICE})")
     p.add_argument("--conv-template-from", type=Path, default=None,
                    help="Optional model dir or mlc-chat-config.json whose conv_template block should overwrite the freshly-downloaded one")
     p.add_argument("--skip-download", action="store_true",
-                   help="Reuse already-downloaded weights in <dist>/<output_name>/")
+                   help="Reuse already-downloaded weights in <models-root>/<output_name>/")
     p.add_argument("--skip-compile", action="store_true")
     p.add_argument("--skip-patch", action="store_true",
                    help="Don't patch conv_template even if --conv-template-from is set")
@@ -201,7 +206,16 @@ def parse_args(argv: Optional[list[str]] = None) -> argparse.Namespace:
                    help="After compile, load the model and run a short smoke test")
     p.add_argument("--force", action="store_true",
                    help="Allow overwriting an existing output_name directory")
-    return p.parse_args(argv)
+    args = p.parse_args(argv)
+    # Phase-8 rename compat: --dist remains a deprecated alias for --models-root.
+    if args.dist is not None:
+        print(
+            "WARN: --dist is deprecated since the dist/->models/ rename; "
+            "use --models-root instead.",
+            file=sys.stderr,
+        )
+        args.models_root = args.dist
+    return args
 
 
 def main(argv: Optional[list[str]] = None) -> int:
@@ -212,8 +226,8 @@ def main(argv: Optional[list[str]] = None) -> int:
         pass
 
     output_name = args.output_name or args.hf_repo.split("/", 1)[-1]
-    target_dir = (args.dist / output_name).resolve()
-    libs_dir = (args.dist / "libs").resolve()
+    target_dir = (args.models_root / output_name).resolve()
+    libs_dir = (args.models_root / "libs").resolve()
 
     base_lib_name = output_name.removesuffix("-MLC")
     lib_out = libs_dir / f"{base_lib_name}-adreno{LIB_EXT}"

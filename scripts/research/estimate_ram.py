@@ -11,7 +11,7 @@ Approximates three contributors:
 
 Examples::
 
-    python estimate_ram.py --model-config dist\\Qwen3-4B-q4f16_0-MLC\\mlc-chat-config.json
+    python estimate_ram.py --model-config models\\Qwen3-4B-q4f16_0-MLC\\mlc-chat-config.json
     python estimate_ram.py --params-b 4 --quant q4f16_1 --num-layers 36 --num-kv-heads 8 --head-dim 128 --sweep-ctx 4096,16384,32768,40960
 """
 

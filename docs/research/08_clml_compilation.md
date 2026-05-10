@@ -234,7 +234,7 @@ A few possible explanations, in order of likelihood:
    python -m mlc_llm compile <cfg.json> --device windows:adreno_x86 -o <name>-adreno.dll
    ```
 
-2. **Use the baseline `Qwen3-4B-q4f16_1-adreno.dll`** in `dist/libs/`
+2. **Use the baseline `Qwen3-4B-q4f16_1-adreno.dll`** in `models/libs/`
    as the canonical lib. The 5 experiment DLLs we tested
    (`Qwen3-4B-q4f16_1-adreno-{clml,accl,shrunk,all}.dll`) were
    functionally equivalent — same outputs, marginal compiled-byte

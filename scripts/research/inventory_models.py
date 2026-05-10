@@ -1,16 +1,16 @@
 """
 Inventory script for Tether's locally-installed MLC models.
 
-Walks ``dist/`` (relative to the repo root by default), parses each
+Walks ``models/`` (relative to the repo root by default), parses each
 ``mlc-chat-config.json``, cross-references compiled libraries in
-``dist/libs/``, and emits a Markdown report summarising:
+``models/libs/``, and emits a Markdown report summarising:
 
 * model directory name
 * model_type / quantization / context window / prefill chunk size
 * whether the conv_template advertises native function calling
 * total on-disk size of the weight shards (``params_shard_*.bin``)
 * whether a matching compiled library (``*-adreno.dll`` etc.) exists in
-  ``dist/libs/``
+  ``models/libs/``
 
 Usage::
 
@@ -33,7 +33,7 @@ from pathlib import Path
 from typing import Iterable, Optional
 
 REPO_ROOT = Path(__file__).resolve().parents[2]
-DEFAULT_DIST = REPO_ROOT / "dist"
+DEFAULT_DIST = REPO_ROOT / "models"
 
 
 def _relpath(p: Path) -> str:
