@@ -31,6 +31,41 @@ def _reset_supervisor_class_state():
     SignalSupervisor._installed = False
 
 
+@pytest.fixture(autouse=True)
+def _track_and_disarm_supervisors():
+    """Track every SignalSupervisor instance created during a test and
+    disarm its force-exit timer in teardown.
+
+    Many tests in this file pass ``max_shutdown_sec=10.0`` (deliberately
+    long so the timer doesn't fire during the test). But ``_handle_signal``
+    starts a daemon thread that sleeps for ``max_shutdown_sec`` then calls
+    ``os._exit(1)`` if ``_shutdown_started`` is still True. The
+    ``stub_os_exit`` fixture monkeypatches ``os._exit`` ONLY for the
+    duration of one test; once it reverts, any still-sleeping daemon
+    thread will hit the real ``os._exit`` 10s later and kill the pytest
+    runner mid-suite without a summary line.
+
+    By setting ``_shutdown_started = False`` on every instance after each
+    test, the daemon thread takes the safe defensive branch in
+    ``_force_exit_timer`` and skips ``os._exit``. Pre-existing Phase 3
+    test bug surfaced in Phase 7 as suite runtime crept past 10s.
+    """
+    created: List[SignalSupervisor] = []
+    orig_init = SignalSupervisor.__init__
+
+    def tracking_init(self: SignalSupervisor, *a: Any, **kw: Any) -> None:
+        orig_init(self, *a, **kw)
+        created.append(self)
+
+    SignalSupervisor.__init__ = tracking_init  # type: ignore[method-assign]
+    try:
+        yield
+    finally:
+        SignalSupervisor.__init__ = orig_init  # type: ignore[method-assign]
+        for s in created:
+            s._shutdown_started = False
+
+
 @pytest.fixture
 def stub_signals(monkeypatch: pytest.MonkeyPatch) -> Dict[str, Any]:
     """Replace ``signal.signal`` and ``signal.getsignal`` so the test
@@ -272,17 +307,12 @@ def test_signal_supervisor_force_exit_timer_starts_daemon_thread(
 
     s._handle_signal(signal.SIGINT, None)
 
-    try:
-        assert s._timer_thread is not None
-        assert s._timer_thread.daemon is True
-        assert s._timer_thread.name == "SignalSupervisor-timer"
-    finally:
-        # CRITICAL: clear _shutdown_started so the daemon thread, when it
-        # wakes from time.sleep(10) AFTER monkeypatch has reverted os._exit
-        # to the real one, takes the safe branch and skips os._exit(1)
-        # instead of killing the test runner. Pre-existing Phase 3 bug
-        # surfaced in Phase 7 as suite runtime crept past 10s.
-        s._shutdown_started = False
+    assert s._timer_thread is not None
+    assert s._timer_thread.daemon is True
+    assert s._timer_thread.name == "SignalSupervisor-timer"
+    # NOTE: the autouse `_track_and_disarm_supervisors` fixture clears
+    # _shutdown_started in teardown so the 10s daemon timer takes the safe
+    # branch and doesn't os._exit(1) the test runner.
 
 
 def test_signal_supervisor_force_exit_timer_skipped_if_no_shutdown(
