@@ -60,9 +60,10 @@ markers = [
     "network: tests that hit a real external network (Brave/etc.); default-off",
     "hardware: tests that require the Snapdragon Adreno GPU; default-off",
     "e2e: end-to-end tests requiring a running server; default-off",
+    "docs: spec generation drift checks; default-off",
     "asyncio: pytest-asyncio marker (kept for compatibility)",
 ]
-addopts = "--strict-markers --strict-config -m \"not network and not hardware and not e2e\""
+addopts = "--strict-markers --strict-config -m \"not network and not hardware and not e2e and not docs\""
 asyncio_mode = "auto"
 asyncio_default_fixture_loop_scope = "function"
 filterwarnings = [

@@ -1,0 +1,839 @@
+{
+  "components": {
+    "schemas": {
+      "HTTPValidationError": {
+        "properties": {
+          "detail": {
+            "items": {
+              "$ref": "#/components/schemas/ValidationError"
+            },
+            "title": "Detail",
+            "type": "array"
+          }
+        },
+        "title": "HTTPValidationError",
+        "type": "object"
+      },
+      "LoginCompleteBody": {
+        "description": "Request body for ``POST /{id}/login/complete``.\n\n``payload`` is connector-specific (QR-scan confirmation, OAuth\nauthorization code, password, MFA code) per connector spec §3.5;\nwe intentionally accept an opaque dict here so the schema stays\nadditive when new connectors land.",
+        "properties": {
+          "payload": {
+            "additionalProperties": true,
+            "title": "Payload",
+            "type": "object"
+          }
+        },
+        "title": "LoginCompleteBody",
+        "type": "object"
+      },
+      "Message": {
+        "properties": {
+          "content": {
+            "title": "Content",
+            "type": "string"
+          },
+          "role": {
+            "title": "Role",
+            "type": "string"
+          }
+        },
+        "required": [
+          "role",
+          "content"
+        ],
+        "title": "Message",
+        "type": "object"
+      },
+      "Session": {
+        "properties": {
+          "created_at": {
+            "description": "The timestamp when the session was created.",
+            "title": "Created At",
+            "type": "string"
+          },
+          "session_id": {
+            "description": "The unique identifier for the session.",
+            "title": "Session Id",
+            "type": "string"
+          }
+        },
+        "required": [
+          "session_id",
+          "created_at"
+        ],
+        "title": "Session",
+        "type": "object"
+      },
+      "StreamRequest": {
+        "properties": {
+          "mode": {
+            "default": "chat",
+            "description": "Orchestrator mode. 'chat' uses ChattyAgentOrchestrator; 'research' uses NotebookOrchestrator (currently 501 Not Implemented). Honored on both Accept: text/event-stream (SSE) and application/x-ndjson (NDJSON back-compat) responses.",
+            "enum": [
+              "chat",
+              "research"
+            ],
+            "title": "Mode",
+            "type": "string"
+          },
+          "model_name": {
+            "description": "The name of the model to use for this generation.",
+            "pattern": "^[A-Za-z0-9._-]{1,128}$",
+            "title": "Model Name",
+            "type": "string"
+          },
+          "prompt": {
+            "description": "The user's prompt.",
+            "maxLength": 32768,
+            "minLength": 1,
+            "title": "Prompt",
+            "type": "string"
+          },
+          "session_id": {
+            "description": "The unique identifier for the session.",
+            "pattern": "^[A-Za-z0-9_-]{1,128}$",
+            "title": "Session Id",
+            "type": "string"
+          }
+        },
+        "required": [
+          "session_id",
+          "prompt",
+          "model_name"
+        ],
+        "title": "StreamRequest",
+        "type": "object"
+      },
+      "UnloadRequest": {
+        "properties": {
+          "model_name": {
+            "description": "The name of the model to unload.",
+            "title": "Model Name",
+            "type": "string"
+          }
+        },
+        "required": [
+          "model_name"
+        ],
+        "title": "UnloadRequest",
+        "type": "object"
+      },
+      "ValidationError": {
+        "properties": {
+          "loc": {
+            "items": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "integer"
+                }
+              ]
+            },
+            "title": "Location",
+            "type": "array"
+          },
+          "msg": {
+            "title": "Message",
+            "type": "string"
+          },
+          "type": {
+            "title": "Error Type",
+            "type": "string"
+          }
+        },
+        "required": [
+          "loc",
+          "msg",
+          "type"
+        ],
+        "title": "ValidationError",
+        "type": "object"
+      }
+    }
+  },
+  "info": {
+    "title": "FastAPI",
+    "version": "0.1.0"
+  },
+  "openapi": "3.1.0",
+  "paths": {
+    "/api/v1/chat/stream": {
+      "post": {
+        "description": "Stream chat events. Content negotiation via Accept header:\n\n    text/event-stream                       -> SSE-framed v2 events (typed WireEvent)\n    application/x-ndjson; version=0         -> NDJSON v0 dict events (LEGACY OPT-IN; deprecated)\n    application/x-ndjson; version=1.0       -> NDJSON v2 events (explicit; same as default)\n    application/x-ndjson                    -> NDJSON v2 events (NEW DEFAULT)\n    (absent)                                -> NDJSON v2 events (NEW DEFAULT)\n\nResponse carries X-Tether-Protocol-Version: 1.0 on every path.\nv0 legacy responses additionally carry Warning: 299 per RFC 9110 §5.6.7.\n\nMode dispatch: body.mode selects the Orchestrator via the registry\n(settings.orchestrator.registry). Unimplemented modes (is_implemented=False)\nreturn 501 before any streaming begins. Unknown modes rejected by\nPydantic Literal with 422. Briefing §2 Seam B item 4; synthesis §3.5.\n\nDefault flipped to v2 NDJSON in p5-cutover-c-flip-default.\nSynthesis §11.3 R18; §4 Phase 5 step 56.",
+        "operationId": "stream_api_v1_chat_stream_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/StreamRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Stream",
+        "tags": [
+          "chat"
+        ]
+      }
+    },
+    "/api/v1/connectors": {
+      "get": {
+        "description": "List every registered connector and its current health/auth.\n\nPer connector spec §3.8 row 1. ``health()`` and ``auth_status()``\nare contractually cheap (no network); we still defensively catch\nso one bad connector doesn't 500 the whole listing.",
+        "operationId": "list_connectors_api_v1_connectors_get",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "items": {
+                    "additionalProperties": true,
+                    "type": "object"
+                  },
+                  "title": "Response List Connectors Api V1 Connectors Get",
+                  "type": "array"
+                }
+              }
+            },
+            "description": "Successful Response"
+          }
+        },
+        "summary": "List Connectors",
+        "tags": [
+          "connectors"
+        ]
+      }
+    },
+    "/api/v1/connectors/{connector_id}/inbox": {
+      "get": {
+        "description": "Return inbox events for ``connector_id``.\n\nPhase 6.5 lands :class:`tether.context.inbox_store.SqliteInbox`\nalong with the connector inbound-stream drain task (connector spec\n§3.4); for now this route returns 501 NOT IMPLEMENTED with a 404\npre-check so unknown ids still surface clearly.",
+        "operationId": "get_inbox_api_v1_connectors__connector_id__inbox_get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "connector_id",
+            "required": true,
+            "schema": {
+              "title": "Connector Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "additionalProperties": true,
+                  "title": "Response Get Inbox Api V1 Connectors  Connector Id  Inbox Get",
+                  "type": "object"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Get Inbox",
+        "tags": [
+          "connectors"
+        ]
+      }
+    },
+    "/api/v1/connectors/{connector_id}/login/begin": {
+      "post": {
+        "description": "Initiate the login flow for ``connector_id``.\n\nReturns a serialized :class:`LoginPrompt` (QR-code data URL, OAuth\nURL, password instructions, etc.) per connector spec §3.5.\n\nPhase 4.5 follow-up (rubber-duck consensus, 1m CONCERN): if the\nconnector emits an ``oauth_state`` token in ``LoginPrompt.extra``,\npersist it in the registry's TTL cache so a subsequent\n``/oauth/callback?state=...`` can validate the round-trip\n(CSRF guard). Without this hop, Phase 2b Gmail's OAuth flow could\nnever succeed end-to-end — ``oauth_callback`` would always 400 on\nmissing state. Connectors that don't use OAuth (e.g. EchoConnector,\nWhatsApp's QR flow) simply omit ``oauth_state`` and this branch\nis a no-op.",
+        "operationId": "login_begin_api_v1_connectors__connector_id__login_begin_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "connector_id",
+            "required": true,
+            "schema": {
+              "title": "Connector Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "additionalProperties": true,
+                  "title": "Response Login Begin Api V1 Connectors  Connector Id  Login Begin Post",
+                  "type": "object"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Login Begin",
+        "tags": [
+          "connectors"
+        ]
+      }
+    },
+    "/api/v1/connectors/{connector_id}/login/complete": {
+      "post": {
+        "description": "Submit user-provided login data; on READY, start the connector.\n\nPer connector spec §3.5 + §3.3 step 7 (registry.start_connector(id)\nruns after a successful complete_login so the user gets a working\nconnector without restarting the process).",
+        "operationId": "login_complete_api_v1_connectors__connector_id__login_complete_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "connector_id",
+            "required": true,
+            "schema": {
+              "title": "Connector Id",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/LoginCompleteBody"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "additionalProperties": true,
+                  "title": "Response Login Complete Api V1 Connectors  Connector Id  Login Complete Post",
+                  "type": "object"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Login Complete",
+        "tags": [
+          "connectors"
+        ]
+      }
+    },
+    "/api/v1/connectors/{connector_id}/logout": {
+      "post": {
+        "description": "Delete persisted creds + stop the connector + transition to LOGGED_OUT.\n\nPer connector spec §3.8: ``logout()`` is responsible for credential\ndeletion; the registry is responsible for stopping background tasks\n/ connections owned by the connector. Both must run.\n\nPhase 4.5 follow-up (rubber-duck consensus, gpt-5.5 BLOCKING #2):\npreviously this route only called ``conn.logout()`` and explicitly\nskipped ``registry.stop_connector()``. That left\n``inbound_stream`` consumers, scheduled tasks, and any open\nconnections alive after credentials were deleted — a use-after-\nlogout hazard that future Gmail/WhatsApp connectors would hit.\n\nOrder: credentials first (so a slow stop can't keep using them),\nthen ``stop_connector`` with the registry's 2 s cooperative budget\n(spec §3.3 step 6). ``stop_connector`` is idempotent and swallows\nits own exceptions so a flaky stop never bubbles up here.",
+        "operationId": "logout_api_v1_connectors__connector_id__logout_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "connector_id",
+            "required": true,
+            "schema": {
+              "title": "Connector Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "additionalProperties": true,
+                  "title": "Response Logout Api V1 Connectors  Connector Id  Logout Post",
+                  "type": "object"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Logout",
+        "tags": [
+          "connectors"
+        ]
+      }
+    },
+    "/api/v1/connectors/{connector_id}/oauth/callback": {
+      "get": {
+        "description": "OAuth redirect target (Gmail-style flows).\n\nPer connector spec §3.8 row 3: verifies ``state`` against the\nregistry's TTL cache (populated by ``begin_login`` on the connector\nside), then forwards ``{state, code, state_payload}`` to\n:meth:`Connector.complete_login`. Mirrors ``login/complete`` for\nthe start-on-READY behavior.\n\nReturns JSON for now; Phase 2a/2b sessions may swap this for a\nredirect to a friendly success page once the desktop UI exists.\nMissing/expired state → 400 (CSRF protection).",
+        "operationId": "oauth_callback_api_v1_connectors__connector_id__oauth_callback_get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "connector_id",
+            "required": true,
+            "schema": {
+              "title": "Connector Id",
+              "type": "string"
+            }
+          },
+          {
+            "description": "OAuth state token (CSRF guard).",
+            "in": "query",
+            "name": "state",
+            "required": true,
+            "schema": {
+              "description": "OAuth state token (CSRF guard).",
+              "title": "State",
+              "type": "string"
+            }
+          },
+          {
+            "description": "OAuth authorization code.",
+            "in": "query",
+            "name": "code",
+            "required": true,
+            "schema": {
+              "description": "OAuth authorization code.",
+              "title": "Code",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "additionalProperties": true,
+                  "title": "Response Oauth Callback Api V1 Connectors  Connector Id  Oauth Callback Get",
+                  "type": "object"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Oauth Callback",
+        "tags": [
+          "connectors"
+        ]
+      }
+    },
+    "/api/v1/debug/turns/{session_id}/{turn_id}": {
+      "get": {
+        "description": "Return chronological events for a turn (raw_events JOINed with tool_calls).\n\n404 if no events exist for the given (session_id, turn_id) pair.",
+        "operationId": "get_turn_timeline_api_v1_debug_turns__session_id___turn_id__get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "session_id",
+            "required": true,
+            "schema": {
+              "title": "Session Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "path",
+            "name": "turn_id",
+            "required": true,
+            "schema": {
+              "title": "Turn Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "additionalProperties": true,
+                  "title": "Response Get Turn Timeline Api V1 Debug Turns  Session Id   Turn Id  Get",
+                  "type": "object"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Get Turn Timeline",
+        "tags": [
+          "debug"
+        ]
+      }
+    },
+    "/api/v1/healthz": {
+      "get": {
+        "operationId": "healthz_api_v1_healthz_get",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            },
+            "description": "Successful Response"
+          }
+        },
+        "summary": "Healthz",
+        "tags": [
+          "health"
+        ]
+      }
+    },
+    "/api/v1/models": {
+      "get": {
+        "description": "List available models.",
+        "operationId": "list_models_api_v1_models_get",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "items": {
+                    "type": "string"
+                  },
+                  "title": "Response List Models Api V1 Models Get",
+                  "type": "array"
+                }
+              }
+            },
+            "description": "Successful Response"
+          }
+        },
+        "summary": "List Models",
+        "tags": [
+          "models"
+        ]
+      }
+    },
+    "/api/v1/models/unload": {
+      "post": {
+        "description": "Unload a model from memory.",
+        "operationId": "unload_model_api_v1_models_unload_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/UnloadRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Unload Model",
+        "tags": [
+          "models"
+        ]
+      }
+    },
+    "/api/v1/protocol/example": {
+      "get": {
+        "description": "Return a canonical NDJSON recording of one full turn.\n\nStatic for now (Phase 8 will move this into a checked-in fixture).\nDemonstrates: ``message_start`` -> ``text_delta`` -> ``tool_call`` ->\n``tool_result`` -> ``text_delta`` -> ``message_stop``.",
+        "operationId": "get_example_api_v1_protocol_example_get",
+        "responses": {
+          "200": {
+            "content": {
+              "text/plain": {
+                "schema": {
+                  "type": "string"
+                }
+              }
+            },
+            "description": "Successful Response"
+          }
+        },
+        "summary": "Get Example",
+        "tags": [
+          "protocol"
+        ]
+      }
+    },
+    "/api/v1/protocol/schema": {
+      "get": {
+        "description": "Return the JSON Schema for :data:`WireEvent`.\n\nGenerated dynamically from the Pydantic types via\n:class:`TypeAdapter`. ``p5-cutover-*`` will use this for content\nnegotiation; Phase 8 step 91 will land a checked-in artifact at\n``docs/protocol/events.schema.json`` with a CI freshness check.",
+        "operationId": "get_schema_api_v1_protocol_schema_get",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "additionalProperties": true,
+                  "title": "Response Get Schema Api V1 Protocol Schema Get",
+                  "type": "object"
+                }
+              }
+            },
+            "description": "Successful Response"
+          }
+        },
+        "summary": "Get Schema",
+        "tags": [
+          "protocol"
+        ]
+      }
+    },
+    "/api/v1/readyz": {
+      "get": {
+        "description": "Readiness probe: verifies store and provider are functional.\n\nPhase 3 step 37 (synthesis §6 row 2 / B6 §1.2 #4 / §4 Phase 3): the\nprovider check is now driven by ``HardwareWatchdog.health_summary()``,\nwhich aggregates ``HardwareLifecycle.hw_health()`` across providers.\n\nBehavior:\n  - Store: read history for a sentinel session (exercises DB connectivity).\n  - Provider (HW path): when ``engine.hw_watchdog`` is present (always\n    true for engines built via ``Engine.from_settings``), aggregate health\n    across HW providers. ``error`` → ready=false. ``healthy`` /\n    ``degraded`` → ready=true (cold-cache MLC providers report\n    ``degraded`` until a model is loaded; that's normal).\n  - Provider (fallback): no watchdog (engine constructed directly without\n    ``from_settings``) → fall back to ``list_models()``.\n  - Connectors (Phase 4.5 step 47e): when ``engine.connector_registry``\n    is present, append a ``connectors`` array with each connector's\n    ``{id, state, detail}`` snapshot. Connector failures do NOT flip\n    ``ready`` — connectors in UNCONFIGURED / LOGGED_OUT / ERROR are an\n    expected steady state until the user runs the login flow (connector\n    spec §3.3).\n\nA streaming probe is still avoided: MLC engines may take 5–60s on cold\ncache. Health is reported by counting cached entries, not loading.",
+        "operationId": "readyz_api_v1_readyz_get",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            },
+            "description": "Successful Response"
+          }
+        },
+        "summary": "Readyz",
+        "tags": [
+          "health"
+        ]
+      }
+    },
+    "/api/v1/sessions": {
+      "delete": {
+        "description": "Delete all sessions.",
+        "operationId": "delete_all_sessions_api_v1_sessions_delete",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            },
+            "description": "Successful Response"
+          }
+        },
+        "summary": "Delete All Sessions",
+        "tags": [
+          "sessions"
+        ]
+      },
+      "get": {
+        "description": "List all sessions.",
+        "operationId": "list_sessions_api_v1_sessions_get",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "items": {
+                    "$ref": "#/components/schemas/Session"
+                  },
+                  "title": "Response List Sessions Api V1 Sessions Get",
+                  "type": "array"
+                }
+              }
+            },
+            "description": "Successful Response"
+          }
+        },
+        "summary": "List Sessions",
+        "tags": [
+          "sessions"
+        ]
+      },
+      "post": {
+        "description": "Create a new session.",
+        "operationId": "create_session_api_v1_sessions_post",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Session"
+                }
+              }
+            },
+            "description": "Successful Response"
+          }
+        },
+        "summary": "Create Session",
+        "tags": [
+          "sessions"
+        ]
+      }
+    },
+    "/api/v1/sessions/{session_id}": {
+      "delete": {
+        "description": "Delete a session by ID.",
+        "operationId": "delete_session_api_v1_sessions__session_id__delete",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "session_id",
+            "required": true,
+            "schema": {
+              "title": "Session Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "204": {
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Delete Session",
+        "tags": [
+          "sessions"
+        ]
+      }
+    },
+    "/api/v1/sessions/{session_id}/messages": {
+      "get": {
+        "description": "Get messages for a session.",
+        "operationId": "get_session_messages_api_v1_sessions__session_id__messages_get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "session_id",
+            "required": true,
+            "schema": {
+              "title": "Session Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "items": {
+                    "$ref": "#/components/schemas/Message"
+                  },
+                  "title": "Response Get Session Messages Api V1 Sessions  Session Id  Messages Get",
+                  "type": "array"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Get Session Messages",
+        "tags": [
+          "sessions"
+        ]
+      }
+    }
+  }
+}
