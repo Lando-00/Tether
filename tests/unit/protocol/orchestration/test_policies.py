@@ -27,9 +27,10 @@ def _settings_dict(**limits_overrides) -> dict:
             },
             "session_store": {
                 "impl": "tether.context.sqlite_store.SqliteSessionStore",
-                "args": {"dsn": "sqlite:///:memory:"},
+                "args": {},
             },
         },
+        "storage": {"sqlite": {"dsn": "sqlite:///:memory:"}},
         "tools": {"registry": [], "enabled": [], "disabled": ["time", "weather", "forecast", "web_search"]},
     }
     if limits_overrides:

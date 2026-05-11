@@ -102,3 +102,31 @@ Phase 6.5 landed via `refactor/p65-implement` (synthesis §4 steps 66a–66h):
 - `src/tether/context/inbox_store.py` (`InboundInbox` ABC + `SqliteInbox`)
 - `src/tether/context/migrations/004_inbox.sql`
 - ADR-0005 (`ConnectorRegistry`), ADR-0008 (persistence stack)
+
+
+## Implementation status (2026-05) — Phase 9 P0-A
+
+Tribunal §3 P0-01 (findings A3-F1 + A12-F1) caught a regression: the packaged
+``src/tether/config/default.yml`` still hard-coded
+``providers.session_store.args.dsn: "sqlite:///./data/tether.db"`` while
+``Engine.from_settings`` resolved the inbox DSN through
+``settings.storage.resolved_dsn()`` (platformdirs default when unset). Under
+the default config those two DSNs disagreed, so sessions and inbox events
+landed in *two different* SQLite files — silently breaking the very
+"one DB file, one connection lifecycle, one migration track" decision this
+ADR ratifies.
+
+Fixed in branch ``refactor/p9-storage-single-dsn``:
+
+- ``src/tether/config/default.yml``: hard-coded session-store DSN removed
+  (``args: {}``).
+- ``src/tether/engine.py`` (``Engine.from_settings``): now injects
+  ``storage.resolved_dsn()`` into the session store's kwargs, and raises
+  ``tether.core.errors.ConfigError`` if a legacy
+  ``providers.session_store.args.dsn`` is also set and disagrees with the
+  resolved storage DSN.
+- ``tests/unit/config/test_storage_single_dsn.py``: regression coverage
+  pinning both invariants (no hard-coded DSN in default YAML; mismatched
+  DSNs at boot raise ``ConfigError``).
+
+Cross-reference: Tribunal §3 P0-01 / A3-F1 / A12-F1.

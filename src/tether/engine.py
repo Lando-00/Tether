@@ -230,6 +230,24 @@ class Engine:
         # (platformdirs default when unset) instead of the legacy CWD-relative
         # literal. Synthesis §3.6, §4 Phase 6 step 60.
         _store_dsn: str = settings.storage.resolved_dsn()
+        # Phase 9 P0-A (Tribunal §3 P0-01 / A3-F1, A12-F1):
+        # ``storage.sqlite.dsn`` is the single source of truth for the SQLite
+        # database file used by both the session store and the inbox
+        # (ADR-0009). The legacy ``providers.session_store.args.dsn`` is now
+        # forbidden as a divergent override — if present it must match the
+        # resolved storage DSN exactly. This prevents the silent split that
+        # routed sessions and inbox events into two different files.
+        _legacy_store_dsn = store_spec.args.get("dsn")
+        if _legacy_store_dsn is not None and _legacy_store_dsn != _store_dsn:
+            from tether.core.errors import ConfigError
+
+            raise ConfigError(
+                f"providers.session_store.args.dsn={_legacy_store_dsn!r} "
+                f"disagrees with storage.resolved_dsn()={_store_dsn!r}. "
+                "Remove the legacy session-store DSN; storage.sqlite.dsn is "
+                "the single source of truth (ADR-0009)."
+            )
+        _store_args = {**store_spec.args, "dsn": _store_dsn}
         from tether.context.migration_runner import apply_pending_migrations
         try:
             apply_pending_migrations(_store_dsn)
@@ -238,7 +256,7 @@ class Engine:
                 "Schema migration failed at Engine startup: %s", _mig_exc
             )
             raise
-        store = load(store_spec.impl, **store_spec.args)
+        store = load(store_spec.impl, **_store_args)
 
         # Phase 6.5 step 66e (synthesis §4 + ADR-0009): SqliteInbox
         # shares the session-store DSN — one DB file, one connection

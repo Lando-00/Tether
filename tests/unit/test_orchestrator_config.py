@@ -27,7 +27,7 @@ def _settings_dict() -> dict:
             },
             "session_store": {
                 "impl": "tether.context.sqlite_store.SqliteSessionStore",
-                "args": {"dsn": "sqlite:///:memory:"},
+                "args": {},
             },
         },
         "limits": {

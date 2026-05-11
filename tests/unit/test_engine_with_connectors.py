@@ -172,9 +172,10 @@ def _settings_dict(
             },
             "session_store": {
                 "impl": "tether.context.sqlite_store.SqliteSessionStore",
-                "args": {"dsn": f"sqlite:///{tmp_db}"},
+                "args": {},
             },
         },
+        "storage": {"sqlite": {"dsn": f"sqlite:///{tmp_db}"}},
         "tools": {
             "registry": [],
             "enabled": [],
