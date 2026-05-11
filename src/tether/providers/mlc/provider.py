@@ -3,7 +3,6 @@ import json
 import os
 import platform
 import re
-import threading
 import uuid
 
 import structlog
@@ -16,6 +15,7 @@ from typing import Any, AsyncGenerator, Dict, List, Optional
 from mlc_llm import AsyncMLCEngine
 from tether.core.interfaces import ModelProvider
 from tether.providers.hw import HwErrorClass, HwHealth
+from tether.runtime.daemon_call import daemon_thread_call
 
 # §security R-pathtraversal: model_name must be a plain directory component.
 # This pattern deliberately excludes path separators, colons, and any other
@@ -44,30 +44,27 @@ def _abort_all_requests(engine) -> int:
     return len(inflight)
 
 
-def _terminate_bounded(engine, timeout: float = 0.75):
-    """
-    Run engine.terminate() on a daemon thread with timeout.
-    Raises TimeoutError if termination doesn't complete in time.
-    """
-    done = threading.Event()
-    err: list[BaseException] = []
+def _terminate_engine(engine, *, timeout: float, label: str) -> None:
+    """Run ``engine.terminate()`` via the M1 ``daemon_thread_call`` primitive
+    with ``gc_disable=True``.
 
-    def runner():
-        try:
-            engine.terminate()
-        except BaseException as e:
-            err.append(e)
-        finally:
-            done.set()
-
-    t = threading.Thread(target=runner, daemon=True)
-    t.start()
-    
-    if not done.wait(timeout):
-        raise TimeoutError("engine.terminate() timed out")
-    
-    if err:
-        raise err[0]
+    P0-D (Tribunal §3 P0-08; A6-F1 + A2-F4 + B6-F11): every MLC
+    ``engine.terminate()`` invocation — shutdown, unload, hw_reset — MUST
+    route through the SAME daemon-thread + GC-disable wrapper. ADR-0003
+    establishes that GC-disable is load-bearing for the OpenCL/TVM
+    destructor hang on ``prefill_chunk_size <= 256`` models
+    (Qwen2.5-7B). The previous inline helper used a daemon thread but
+    did NOT disable GC, so the recovery path (``hw_reset`` →
+    ``unload_model``) could deadlock on exactly the models the
+    invariant exists for. A6-F14 (duplicate helper drift) is also
+    resolved by routing through the single primitive.
+    """
+    daemon_thread_call(
+        engine.terminate,
+        timeout=timeout,
+        gc_disable=True,
+        label=label,
+    )
 
 
 def base_key_from_model_name(model_name: str) -> str:
@@ -249,7 +246,7 @@ class MLCProvider(ModelProvider):
         # Terminate outside the lock with bounded timeout.
         try:
             _abort_all_requests(to_terminate)
-            _terminate_bounded(to_terminate, timeout=0.75)
+            _terminate_engine(to_terminate, timeout=0.75, label=f"unload-{model_name}")
         except TimeoutError:
             _log.warning("provider.engine.terminate_timeout", model_name=model_name)
         except Exception as e:
@@ -265,7 +262,7 @@ class MLCProvider(ModelProvider):
         Phase A: Detach cache under lock (fast; serial)
         Phase B: PARALLEL — abort requests and terminate engines via
                  ``ThreadPoolExecutor(max_workers=min(N, 4))``. Each worker
-                 calls ``_abort_all_requests`` then ``_terminate_bounded`` and
+                 calls ``_abort_all_requests`` then ``_terminate_engine`` and
                  drops its local engine reference before returning.
         Phase C: Per-worker references are released by Phase B; the items
                  list is drained into futures and explicitly cleared before
@@ -313,7 +310,7 @@ class MLCProvider(ModelProvider):
 
             try:
                 _log.debug("provider.engine.terminating", cache_key=key)
-                _terminate_bounded(engine, timeout=per_engine_timeout)
+                _terminate_engine(engine, timeout=per_engine_timeout, label=f"shutdown-{key}")
                 _log.debug("provider.engine.terminated", cache_key=key)
                 return (key, "ok")
             except TimeoutError:
@@ -390,7 +387,7 @@ class MLCProvider(ModelProvider):
         # Terminate outside lock with timeout
         try:
             _abort_all_requests(to_terminate)
-            _terminate_bounded(to_terminate, timeout=0.75)
+            _terminate_engine(to_terminate, timeout=0.75, label=f"unload-{cache_key}")
         except TimeoutError:
             _log.warning("provider.engine.terminate_timeout", cache_key=cache_key)
         except Exception as e:
@@ -446,11 +443,20 @@ class MLCProvider(ModelProvider):
         next request may immediately re-trigger the corrupted state if we
         don't proactively prove the engine works. Synthesis A3 step 6.
 
-        NOTE: this method does NOT manipulate Python GC. The GC-disable
-        invariant (R5) only applies to ``HardwareWatchdog.shutdown_all``'s
-        daemon thread, not to runtime recovery.
+        NOTE: this method does NOT manipulate Python GC directly. The
+        underlying ``unload_model`` → ``_terminate_engine`` path routes
+        through ``daemon_thread_call(gc_disable=True)`` (M1 primitive),
+        so GC IS disabled during the native ``terminate()`` call — this
+        is load-bearing for ``prefill_chunk_size <= 256`` models per
+        ADR-0003 (P0-D, Tribunal §3 P0-08). The eager reload that
+        follows runs on the asyncio thread with GC in its prior state.
         """
         self._validate_model_name(model_name)
+        _log.info(
+            "provider.hw_reset.start",
+            model_name=model_name,
+            gc_invariant="daemon_thread_call",
+        )
         self.unload_model(model_name)
         # Eager reload: load the engine again so the next request doesn't
         # pay the cold-start cost AND we surface any reload failure now
@@ -504,7 +510,7 @@ class MLCProvider(ModelProvider):
 
         Default: ``hw_shutdown_budget_sec / 4``. Matches the existing
         ``shutdown_all(per_engine_timeout=0.75)`` and
-        ``_terminate_bounded(timeout=0.75)`` constants in this file.
+        ``_terminate_engine(timeout=0.75)`` constants in this file.
         Synthesis §4 Phase 3 step 38.
         """
         return self.hw_shutdown_budget_sec / 4
