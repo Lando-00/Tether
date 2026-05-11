@@ -17,7 +17,11 @@ from rich.spinner import Spinner
 from rich.live import Live
 
 # --- Configuration ---
-API_BASE_URL = "http://127.0.0.1:8080/api/v1"
+# Default API base URL. Reassigned by main() if --api-url is passed.
+# Reads from TETHER_API_URL env var if set (allows shell-level override
+# without a flag, useful for development).
+import os as _os
+API_BASE_URL = _os.environ.get("TETHER_API_URL", "http://127.0.0.1:8080/api/v1")
 
 
 # --- Rich Console Initialization ---
@@ -27,6 +31,28 @@ app = typer.Typer(
     help="A modern CLI for interacting with the Tether service.",
     add_completion=False,
 )
+
+
+def _render_connect_error(exc: Exception, action: str) -> None:
+    """Pretty-print a connection error with remediation guidance.
+
+    Used by the entry-point fetches (models, sessions, tools) so users
+    get a clear pointer when the server isn't running rather than a
+    bare requests.RequestException repr.
+    """
+    exc_name = type(exc).__name__
+    msg = str(exc).strip() or "(no detail)"
+    panel_body = (
+        f"[bold red]Could not {action}.[/bold red]\n\n"
+        f"[bold]URL:[/bold] {API_BASE_URL}\n"
+        f"[bold]Error:[/bold] {exc_name}: {msg}\n\n"
+        f"[dim]The Tether server may not be running. Start it with:[/dim]\n"
+        f"  [bold cyan]python -m tether.app[/bold cyan]   (or [bold cyan]tether-server[/bold cyan])\n\n"
+        f"[dim]Or pass a different URL with --api-url:[/dim]\n"
+        f"  [bold cyan]tether-cli --api-url http://host:port/api/v1[/bold cyan]\n\n"
+        f"[dim]Troubleshooting: docs/runbooks/fresh-env-setup.md[/dim]"
+    )
+    console.print(Panel(panel_body, title="Connection error", border_style="red"))
 
 
 # --- API Interaction Functions ---
@@ -39,10 +65,25 @@ def get_available_models() -> list:
         # The new API returns a list of strings directly
         return response.json()
     except requests.RequestException as e:
-        console.print(f"[bold red]Error:[/bold red] Could not connect to the service at {API_BASE_URL}.")
-        console.print(f"Please ensure the Tether service is running: [bold]python -m tether.app[/bold]")
-        console.print(f"Details: {e}")
+        _render_connect_error(e, "fetch model list")
         raise typer.Exit(1)
+
+
+def get_available_tools() -> list:
+    """Fetches the list of registered tools (name/description/parameters).
+
+    Returns [] on connection error so the ``\\tools`` slash command can
+    fall back to "no tools" rendering rather than tearing down the chat.
+    Synthesis §4 Phase 4 step 42 (auto_schema) — exposed via
+    /api/v1/tools (added in cli-polish branch).
+    """
+    try:
+        response = requests.get(f"{API_BASE_URL}/tools", timeout=5)
+        response.raise_for_status()
+        return response.json()
+    except requests.RequestException as e:
+        console.print(f"[red]Could not fetch tools:[/red] {e}")
+        return []
 
 def get_sessions() -> list:
     """Fetches the list of active sessions."""
@@ -266,6 +307,11 @@ def main(
         "-m",
         help="The name of the model to use. If not provided, a list will be shown.",
     ),
+    api_url: str = typer.Option(
+        API_BASE_URL,
+        "--api-url",
+        help="Base URL of the Tether HTTP API (default: http://127.0.0.1:8080/api/v1, or TETHER_API_URL env var).",
+    ),
     debug: bool = typer.Option(
         False,
         "--debug",
@@ -280,9 +326,15 @@ def main(
     """
     Main entry point for the Tether CLI.
     """
+    # Rebind the module-level API_BASE_URL so helper functions pick up the
+    # flag value. Idempotent — reassigning the global is safe across calls
+    # (e.g., when `\menu` recurses into main()).
+    global API_BASE_URL
+    API_BASE_URL = api_url
+
     console.print(Panel.fit(
         "[bold blue]Welcome to the Tether CLI![/bold blue]\n"
-        "Your modern interface for interacting with language models.",
+        f"[dim]API: {API_BASE_URL}[/dim]",
         style="bold blue"
     ))
     
@@ -328,6 +380,14 @@ def main(
     )
     info_table.add_row(
         "",
+        "Type [bold cyan]\\tools[/bold cyan] to list available tools"
+    )
+    info_table.add_row(
+        "",
+        "Type [bold cyan]\\models[/bold cyan] to switch models mid-chat"
+    )
+    info_table.add_row(
+        "",
         "Type [bold cyan]\\exit[/bold cyan] or [bold cyan]\\quit[/bold cyan] to end"
     )
     console.print(Panel(info_table, title="Chat Info", border_style="dim"))
@@ -348,7 +408,7 @@ def main(
                 break
             if stripped_prompt == "\\menu":
                 # We need to pass the original arguments to main to restart it correctly
-                main(model_name=model_name, debug=debug, show_thinking=show_thinking)
+                main(model_name=model_name, api_url=API_BASE_URL, debug=debug, show_thinking=show_thinking)
                 break # Exit current chat loop to prevent it from continuing after menu
             if stripped_prompt == "\\thinking":
                 show_thinking = not show_thinking
@@ -356,6 +416,34 @@ def main(
                 console.print(f"Show thinking is now {thinking_status}.")
                 console.rule()
                 continue # Go to next prompt
+            if stripped_prompt == "\\tools":
+                tools_info = get_available_tools()
+                if not tools_info:
+                    console.print("[yellow]No tools available (registry empty or server unreachable).[/yellow]")
+                else:
+                    tools_table = Table(title=f"Available tools ({len(tools_info)})", border_style="cyan")
+                    tools_table.add_column("Name", style="bold cyan")
+                    tools_table.add_column("Description")
+                    tools_table.add_column("Params", style="dim", justify="right")
+                    for tool in tools_info:
+                        name = tool.get("name", "?")
+                        desc = (tool.get("description") or "(no description)").strip().splitlines()[0]
+                        params = tool.get("parameters", {})
+                        prop_names = list((params.get("properties") or {}).keys())
+                        param_summary = ", ".join(prop_names) if prop_names else "—"
+                        tools_table.add_row(name, desc, param_summary)
+                    console.print(tools_table)
+                console.rule()
+                continue
+            if stripped_prompt == "\\models":
+                new_model = select_model(None)
+                if new_model and new_model != model_name:
+                    console.print(f"🔄 Switching from [yellow]{model_name}[/yellow] to [bold green]{new_model}[/bold green]")
+                    model_name = new_model
+                else:
+                    console.print(f"[dim]Keeping current model: {model_name}[/dim]")
+                console.rule()
+                continue
 
             # --- Call the streaming generate endpoint and process events ---
             # Accept header opts into v2 NDJSON vocabulary (p5-cutover-b).

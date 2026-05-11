@@ -78,9 +78,26 @@ for the full event vocabulary.
 
 ### CLI
 
+The `tether-cli` console script is the interactive front-end:
+
 ```powershell
-tether-cli   # interactive session (installed by pip install -e ".[cli]")
+tether-cli                               # default: connects to http://127.0.0.1:8080/api/v1
+tether-cli --api-url http://host:port/api/v1   # custom server URL
+tether-cli -m Qwen3-4B-q4f16_1-MLC       # skip the model picker
+tether-cli --debug                       # show NDJSON event stream
 ```
+
+Inside the chat loop, slash commands:
+
+| Command     | Effect |
+|-------------|--------|
+| `\tools`    | List registered tools (from `GET /api/v1/tools`) |
+| `\models`   | Switch model mid-chat (no restart needed) |
+| `\menu`     | Back to session management (new / resume / delete) |
+| `\thinking` | Toggle the `thinking_delta` (model's `<think>` block) rendering |
+| `\exit` · `\quit` | End the chat |
+
+A minimalist backup (plain-`requests`, dependency-light) lives at `scripts/dev/cli_chat.py` — reference impl of the v2 NDJSON wire protocol.
 
 ## API Reference (quick)
 
@@ -95,7 +112,8 @@ All routes are under `/api/v1`.
 | `DELETE` | `/sessions`                       | Delete all sessions              |
 | `POST`   | `/chat/stream`                    | Stream a chat completion         |
 | `GET`    | `/models`                         | List loaded models               |
-| `GET`    | `/health`                         | Liveness / readiness probe       |
+| `GET`    | `/tools`                          | List registered tools + schemas  |
+| `GET`    | `/healthz` · `/readyz`            | Liveness / readiness probes      |
 
 Request body for `/chat/stream`: `{"session_id": "...", "prompt": "..."}`.
 `model_name` is optional; defaults to the first model in `default.yml`.

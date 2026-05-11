@@ -1,13 +1,29 @@
+"""Backup CLI for Tether.
+
+The CANONICAL CLI is `tether-cli` (src/tether/cli/main.py). This file is a
+slimmer, dependency-light alternative kept for quick experimentation and
+as a reference implementation of the v2 NDJSON wire protocol from a
+plain-`requests`-only client. Most users want `tether-cli` instead.
+
+Run with:
+  python scripts/dev/cli_chat.py
+
+Or override the API URL:
+  python scripts/dev/cli_chat.py --api-url http://host:port/api/v1
+"""
 from rich.prompt import Prompt, IntPrompt
 from rich.console import Console
+import os
 import requests
 import json
 import typer
 
 # --- Configuration ---
-API_BASE_URL = "http://127.0.0.1:8090"
-# The endpoint for streaming chat interaction (NDJSON events)
-GENERATE_ENDPOINT = "/generations"
+# Default API base URL; can be overridden via --api-url or TETHER_API_URL env.
+# Aligned with the canonical CLI (src/tether/cli/main.py) and the current
+# FastAPI app (post-Phase-5: /chat/stream replaced /generations).
+API_BASE_URL = os.environ.get("TETHER_API_URL", "http://127.0.0.1:8080/api/v1")
+GENERATE_ENDPOINT = "/chat/stream"
 
 from typing import Optional
 from prompt_toolkit import prompt as ptk_prompt
@@ -18,15 +34,22 @@ from prompt_toolkit.formatted_text import FormattedText
 console = Console()
 
 def get_available_models(api_base_url: str) -> list:
-    """Fetches the list of available models from the service."""
+    """Fetches the list of available models from the service.
+
+    Post-Phase-5: /models returns a flat list of strings (not a dict with
+    a 'models' key).
+    """
     try:
         response = requests.get(f"{api_base_url}/models")
         response.raise_for_status()
-        # The response has a 'models' key containing the list
-        return response.json().get("models", [])
+        data = response.json()
+        # Backward-compat: handle both list and dict shapes.
+        if isinstance(data, dict):
+            return data.get("models", [])
+        return data
     except requests.RequestException as e:
         console.print(f"[bold red]Error:[/bold red] Could not connect to the service at {api_base_url}.")
-        console.print(f"Please ensure the MLC service is running: [bold]python -m tether.app[/bold]")
+        console.print(f"Please ensure the Tether service is running: [bold]python -m tether.app[/bold]")
         console.print(f"Details: {e}")
         raise typer.Exit(1)
 
@@ -52,19 +75,19 @@ def delete_all_sessions(api_base_url: str):
 def unload_all_models(api_base_url: str):
     """Calls the endpoint to unload all models from the cache."""
     console.print("Attempting to unload all models from memory...")
-    # The endpoint requires a model name, even if it clears all.
-    # We'll use the first available model to make the request.
     available_models = get_available_models(api_base_url)
     if not available_models:
-        console.print("[yellow]Warning:[/yellow] No available models found to specify for unload request. The cache might be empty already.")
+        console.print("[yellow]Warning:[/yellow] No available models found. The cache might be empty already.")
         return
 
-    model_to_specify = available_models[0]["model_name"]
+    # Post-Phase-5: /models returns list of strings; older shape was {model_name, ...} dicts.
+    first = available_models[0]
+    model_to_specify = first["model_name"] if isinstance(first, dict) else first
 
     try:
         response = requests.post(
             f"{api_base_url}/models/unload",
-            json={"model_name": model_to_specify, "device": "auto"} # device is optional
+            json={"model_name": model_to_specify, "device": "auto"}  # device is optional
         )
         response.raise_for_status()
         console.print(f"✅ {response.json().get('detail', 'Unload command sent successfully.')}")
@@ -101,13 +124,19 @@ def display_history(messages: list):
     console.rule()
 
 def select_model(model_name: Optional[str]) -> str:
-    """Guides the user to select a model if one isn't provided."""
+    """Guides the user to select a model if one isn't provided.
+
+    Post-Phase-5: /models returns a flat list of strings. The legacy
+    list-of-dicts shape is still handled for back-compat (`m["model_name"]`).
+    """
+    def _name(m):
+        return m["model_name"] if isinstance(m, dict) else m
+
     if model_name:
-        # Find the full model object if only a name is passed
         models = get_available_models(API_BASE_URL)
         for m in models:
-            if model_name in m.get("model_name", ""):
-                return m.get("model_name") # Return the full name
+            if model_name in _name(m):
+                return _name(m)
         console.print(f"[bold red]Error:[/bold red] Model '{model_name}' not found.")
         raise typer.Exit(1)
 
@@ -118,7 +147,7 @@ def select_model(model_name: Optional[str]) -> str:
         console.print("Please make sure your compiled models are correctly placed and the service is running.")
         raise typer.Exit(1)
 
-    model_name_choices = [m["model_name"] for m in available_models]
+    model_name_choices = [_name(m) for m in available_models]
 
     console.print("\nAvailable Models:")
     for i, name in enumerate(model_name_choices):
@@ -298,17 +327,17 @@ def main(
                     "session_id": session_id,
                     "prompt": user_prompt,
                     "model_name": model_name,
-                    "device": device,
-                    "stream": True,
-                    "max_tokens": 1024,
-                    "temperature": 0.7,
-                    "top_p": 0.95
+                },
+                headers={
+                    # Opt into v2 NDJSON event vocabulary (post-Phase-5).
+                    "Accept": "application/x-ndjson; version=1.0",
                 },
                 stream=True,
             )
             response.raise_for_status()
             console.print()  # space before streaming output
-            thinking_started = False  # reset flag for single ‘Thought:’ prefix
+            thinking_started = False  # reset flag for single 'Thought:' prefix
+            text_started = False
             # Process NDJSON event stream
             for line in response.iter_lines():
                 if not line:
@@ -318,49 +347,73 @@ def main(
                 except json.JSONDecodeError:
                     console.print(f"[red]Error parsing JSON: {line.decode('utf-8', errors='replace')}[/red]")
                     continue
-                
-                evt_type = event.get("type")
-                if evt_type == "tool_start":
-                    console.print(f"[bold yellow]Running tool {event.get('name')[7:]}...[/bold yellow]")
-                    # Debug output if debug mode is enabled
-                    if debug:
-                        console.print(f"[dim]Tool start event: {event}[/dim]")
-                elif evt_type == "tool_end":
 
+                evt_type = event.get("type")
+
+                # --- v2 NDJSON vocabulary (canonical post-Phase-5) ---
+                if evt_type == "message_start":
+                    if debug:
+                        console.print(f"[dim][turn_id={event.get('turn_id')}][/dim]")
+                elif evt_type == "text_delta":
+                    delta = event.get("text", "")
+                    if not text_started:
+                        console.print()
+                        text_started = True
+                    console.print(delta, end="", style="green")
+                elif evt_type == "thinking_delta":
+                    if debug or show_thinking:
+                        content = event.get("text", "")
+                        if not thinking_started:
+                            console.print(f"[dim]Thought: {content}[/dim]", end="")
+                            thinking_started = True
+                        else:
+                            console.print(f"[dim]{content}[/dim]", end="")
+                elif evt_type == "tool_call":
+                    console.print(f"\n[bold yellow]Calling tool {event.get('name')}...[/bold yellow]")
+                    if debug:
+                        console.print(f"[dim]args: {event.get('arguments')}[/dim]")
+                elif evt_type == "tool_result":
+                    status = event.get("status", "ok")
+                    name = event.get("name")
+                    if status != "ok":
+                        console.print(f"[bold red]Tool {name} error:[/bold red] {event.get('error')}")
+                    else:
+                        result = event.get("result")
+                        output_str = result if isinstance(result, str) else json.dumps(result)
+                        console.print(f"[dim yellow]Tool {name} output:[/dim yellow] {output_str[:120]}")
+                elif evt_type == "message_stop":
+                    if debug:
+                        console.print(f"\n[dim][stop_reason={event.get('stop_reason', 'complete')}][/dim]")
+
+                # --- v0 / legacy event vocabulary (back-compat) ---
+                elif evt_type == "tool_start":
+                    console.print(f"[bold yellow]Running tool {event.get('name', '')}...[/bold yellow]")
+                elif evt_type == "tool_end":
                     result = event.get('result')
-                    name = event.get('name')
-                    # Check if the result is an error message
+                    name = event.get('name', '')
                     if isinstance(result, dict) and 'error' in result:
                         console.print(f"[bold red]Tool {name} error:[/bold red] {result['error']}")
                     else:
-                        # Ensure we have a string to slice
                         output_str = result if isinstance(result, str) else json.dumps(result)
-                        console.print(f"[dim yellow]Tool {name[7:]} output:[/dim yellow] {output_str[:50]}")
-                    
-                    # Debug output if debug mode is enabled
-                    if debug:
-                        console.print(f"[dim]Tool end event: {event}[/dim]")
+                        console.print(f"[dim yellow]Tool {name} output:[/dim yellow] {output_str[:50]}")
                 elif evt_type == "token" or evt_type == "text":
-                    console.print(event.get("content"), end="")
+                    console.print(event.get("content", ""), end="")
                 elif evt_type == "hidden_thought" or evt_type == "think_stream":
-                    # Only show hidden thoughts if enabled
                     if debug or show_thinking:
-                        content = event.get("content")
-                        # print prefix only once, then inline tokens
+                        content = event.get("content", "")
                         if not thinking_started:
                             console.print(f"[dim]Thought: {content}[/dim]", end="")
                             thinking_started = True
                         else:
                             console.print(f"[dim]{content}[/dim]", end="")
                 elif evt_type == "error":
-                    console.print(f"[bold red]Error:[/bold red] {event.get('error')}")
+                    console.print(f"[bold red]Error:[/bold red] {event.get('message') or event.get('error')}")
                 elif evt_type == "done":
                     if debug:
                         console.print("[dim][Generation complete][/dim]", end="")
                 elif evt_type == "cancelled":
                     console.print("[bold red]Generation cancelled.[/bold red]")
                 else:
-                    # Handle unknown event types - useful for debugging
                     if debug:
                         console.print(f"[dim][Unknown event: {evt_type}] {event}[/dim]")
             console.print()  # newline after complete stream

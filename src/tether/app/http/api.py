@@ -34,6 +34,7 @@ from tether.app.http.routers.health import router as health_router
 from tether.app.http.routers.models import router as models_router
 from tether.app.http.routers.protocol import router as protocol_router
 from tether.app.http.routers.sessions import router as sessions_router
+from tether.app.http.routers.tools import router as tools_router
 from tether.config.settings import Settings, load_settings
 from tether.engine import Engine
 from tether.runtime.signal_supervisor import SignalSupervisor
@@ -140,6 +141,7 @@ def create_app(settings: Optional[Settings] = None) -> FastAPI:
     v1_router.include_router(models_router)
     v1_router.include_router(protocol_router)
     v1_router.include_router(sessions_router)
+    v1_router.include_router(tools_router)
 
     app.include_router(v1_router)
     return app
