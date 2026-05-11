@@ -108,9 +108,9 @@ The fresh `tether` env hits this; `mlc-venv2` does not. Both envs have identical
 
 ### Symptom: docs drift gate (`pytest -m docs`) fails on `test_openapi_no_drift`
 
-Cause: FastAPI/Pydantic versions differ between envs. Pydantic V2 added `ctx` and `input` fields to `ValidationError` in a recent minor release; older envs (like `mlc-venv2`) don't emit them.
+Cause: FastAPI/Pydantic versions differ between envs. Pydantic V2 adds `ValidationError` schema fields in minor releases.
 
-**Fix**: pin `fastapi` and `pydantic` versions in `pyproject.toml` so all envs install identical versions. Tracked as `fu-pin-fastapi-pydantic-versions`.
+**Status (Phase 8 close, ResolvedBy `fu-pin-fastapi-pydantic-versions`)**: `pyproject.toml` now pins `pydantic>=2.11.0,<2.12.0`, `pydantic-settings>=2.14.0,<2.15.0`, `fastapi>=0.117.0,<0.118.0`, `uvicorn[standard]>=0.37.0,<0.38.0` to the `mlc-venv2` baseline. The drift gate now passes 4/4 in both envs. When intentionally bumping these versions, regenerate `docs/specs/openapi.json` via `python -m scripts.docs.generate` and commit alongside the pin change.
 
 ### Symptom: `import mlc_llm` succeeds but `Engine` fails with "no such model"
 
