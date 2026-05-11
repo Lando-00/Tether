@@ -28,7 +28,7 @@ dependencies = [
     "httpx",
     "requests",
     "aiosqlite>=0.19,<1",
-    "yoyo-migrations>=8.2,<9",
+    "yoyo-migrations>=8.2,<10",
     "platformdirs>=4.0,<5",
     "structlog>=24.1,<26",
 ]

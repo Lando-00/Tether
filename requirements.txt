@@ -200,7 +200,7 @@ wcwidth==0.7.0
     # via prompt-toolkit
 websockets==16.0
     # via uvicorn
-yoyo-migrations==8.2.0
+yoyo-migrations==9.0.0
     # via tether (pyproject.toml)
 zipp==3.23.1
     # via importlib-metadata
