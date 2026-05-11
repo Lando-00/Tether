@@ -2,7 +2,7 @@
 
 - **Status**: Accepted (Phase 7 of refactor)
 - **Date**: 2026-05 (Phase 7)
-- **Synthesis citation**: §3.8, §4 Phase 7 (step 79), §11 R12 (rename `local_token` →
+- **Synthesis digest**: [`../refactor/synthesis-2026-05.md`](../refactor/synthesis-2026-05.md)
   `csrf_token`)
 
 ## Context
@@ -85,7 +85,7 @@ rename `local_token` → `csrf_token` per §11 R12:
 
 ## References
 
-- `files/investigations/_synthesis.md` §3.8, §4 Phase 7 step 79, §11 R12
+- Synthesis digest: [`../refactor/synthesis-2026-05.md`](../refactor/synthesis-2026-05.md)
 - `src/tether/adapters/http/api.py` (`create_asgi_app` middleware mount block)
 - ADR-0011 (outbound URL allowlist — complementary outbound-side defense)
 - Starlette docs: `https://www.starlette.io/middleware/` (last-added = outermost)

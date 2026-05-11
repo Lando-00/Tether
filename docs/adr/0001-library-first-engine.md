@@ -2,7 +2,7 @@
 
 - **Status**: Accepted (Phase 2 of refactor)
 - **Date**: 2026-05 (Phase 2)
-- **Synthesis citation**: §2.1, §2.3, §3.1, §4 Phase 2 (steps 21–25)
+- **Synthesis digest**: [`../refactor/synthesis-2026-05.md`](../refactor/synthesis-2026-05.md)
 
 ## Context
 
@@ -64,6 +64,6 @@ Adopt a **library-first** architecture with a single composition root, the `Engi
 
 ## References
 
-- `files/investigations/_synthesis.md` §2.1, §2.3, §3.1, §4 Phase 2, §11 R8, §11 R9, §11 R15
+- Synthesis digest: [`../refactor/synthesis-2026-05.md`](../refactor/synthesis-2026-05.md)
 - `src/tether/engine.py`, `src/tether/bootstrap.py`, `src/tether/__init__.py`
 - `src/tether/adapters/http/api.py` (post-refactor: ~50 LOC create_app)

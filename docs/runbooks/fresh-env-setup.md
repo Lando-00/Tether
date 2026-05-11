@@ -1,6 +1,6 @@
 # Fresh `tether` conda env — setup runbook
 
-Per the locked decision in `_synthesis.md` §3: `mlc-venv2` is the env used during the refactor; `tether` is a fresh validation env created at the end. This runbook walks through creating and validating that fresh env.
+Per the locked decision recorded in [`../refactor/synthesis-2026-05.md`](../refactor/synthesis-2026-05.md) §1 and ADR-0014: `mlc-venv2` is the env used during the refactor; `tether` is a fresh validation env created at the end. This runbook walks through creating and validating that fresh env.
 
 Both envs coexist — `mlc-venv2` keeps working through the validation period. Drop it later.
 

@@ -28,7 +28,9 @@ supersedes the old one.
 
 ## Format
 
-ADRs follow a minimal Nygard-style template — see any existing ADR for reference. The binding
-contract for the refactor lives in `files/investigations/_synthesis.md` (session-state).
-Anything quoted in the **Decision** section of an ADR is paraphrased from that synthesis;
-ADRs do not invent new architecture, they ratify it.
+ADRs follow a minimal Nygard-style template — see any existing ADR for reference. The
+locked-decisions digest for the refactor lives at
+[`../refactor/synthesis-2026-05.md`](../refactor/synthesis-2026-05.md).
+Anything quoted in the **Decision** section of an ADR is paraphrased from that
+digest (and the private predecessor it succeeds); ADRs do not invent
+new architecture, they ratify it.

@@ -2,7 +2,7 @@
 
 - **Status**: Accepted (Phase 3 of refactor)
 - **Date**: 2026-05 (Phase 3)
-- **Synthesis citation**: §3.3, §4 Phase 3 (steps 28–38), §11 R11
+- **Synthesis digest**: [`../refactor/synthesis-2026-05.md`](../refactor/synthesis-2026-05.md)
 
 ## Context
 
@@ -67,7 +67,7 @@ Extract all hardware-shutdown gymnastics into a **`HardwareWatchdog` runtime mod
 
 ## References
 
-- `files/investigations/_synthesis.md` §3.3, §4 Phase 3, §6 bugs #14, #16, §11 R11, §12.1
+- Synthesis digest: [`../refactor/synthesis-2026-05.md`](../refactor/synthesis-2026-05.md)
 - `docs/runbooks/shutdown-hang-fix-summary.md`, `docs/runbooks/model-dependent-shutdown-fix.md`
 - `src/tether/runtime/hw_watchdog.py`, `src/tether/runtime/signal_supervisor.py`
 - `src/tether/providers/hw.py` (`HardwareLifecycle` Protocol)

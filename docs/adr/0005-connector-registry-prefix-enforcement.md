@@ -2,11 +2,11 @@
 
 - **Status**: Accepted (Phase 4.5 of refactor)
 - **Date**: 2026-05 (Phase 4.5)
-- **Synthesis citation**: §3, §10 (especially §10.4–§10.5), §4 Phase 4.5 (steps 48a–48e)
+- **Synthesis digest**: [`../refactor/synthesis-2026-05.md`](../refactor/synthesis-2026-05.md)
 
 ## Context
 
-A parallel planning session produced the **Connectors Spec** (`session-state/.../plan.md`)
+A parallel planning session produced the **Connectors Spec** (a private session-side document — its decisions are ratified in this ADR and ADR-0009)
 defining a `Connector` ABC for future WhatsApp/Gmail/etc. integrations. Each connector
 exposes a set of tools (e.g. `whatsapp_send`, `whatsapp_mark_seen`) and may also drain
 inbound events (Phase 6.5 / ADR-0009). The orchestrator already aggregates tools into one
@@ -74,7 +74,7 @@ properties:
 
 ## References
 
-- `files/investigations/_synthesis.md` §3, §4 Phase 4.5, §10.4, §10.5, §10.7, §10.8
-- Connectors Spec: `session-state/5c8a15fc-.../plan.md` §3.1, §3.3, §3.5, §3.7, §3.8
+- Synthesis digest: [`../refactor/synthesis-2026-05.md`](../refactor/synthesis-2026-05.md)
+- Connectors Spec: see ADR-0005 and ADR-0009 (the source spec was a private planning document; its decisions are ratified in those ADRs).
 - `src/tether/core/connector_registry.py`, `src/tether/core/secrets.py`
 - `src/tether/adapters/http/routers/connectors.py`

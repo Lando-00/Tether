@@ -2,7 +2,7 @@
 
 - **Status**: Accepted (Phase 7 of refactor)
 - **Date**: 2026-05 (Phase 7)
-- **Synthesis citation**: §3.8, §4 Phase 7 (step 78)
+- **Synthesis digest**: [`../refactor/synthesis-2026-05.md`](../refactor/synthesis-2026-05.md)
 
 ## Context
 
@@ -75,7 +75,7 @@ configurable through Settings:
 
 ## References
 
-- `files/investigations/_synthesis.md` §3.8, §4 Phase 7 step 78
+- Synthesis digest: [`../refactor/synthesis-2026-05.md`](../refactor/synthesis-2026-05.md)
 - `src/tether/core/url_safety.py` (`assert_safe_url`)
 - `src/tether/tools/web_search_tool.py`, `src/tether/tools/brave_client.py`
 - ADR-0012 (CSRF/CORS — complementary inbound-side defense)

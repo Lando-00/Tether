@@ -1,11 +1,12 @@
 # Tether — Documentation
 
-> Living architectural map. Binding contract: `files/investigations/_synthesis.md`
-> (in session-state). Live execution status: `RESUME.md`.
+> Living architectural map. Locked decisions / phase digest:
+> [`refactor/synthesis-2026-05.md`](./refactor/synthesis-2026-05.md).
 
 ## Map
 
 - [`architecture.md`](./architecture.md) — overall system architecture (mermaid diagrams)
+- [`refactor/synthesis-2026-05.md`](./refactor/synthesis-2026-05.md) — locked-decisions digest, open deferrals, Phase-9 work
 - [`REFACTOR_BRIEFING.md`](./REFACTOR_BRIEFING.md) — research-briefing on hardware constraints + 4 pluggability seams
 - [`adr/`](./adr/README.md) — Architecture Decision Records
 - [`design/`](./design/README.md) — design notes (in-flight or completed)
