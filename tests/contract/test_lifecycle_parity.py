@@ -25,9 +25,13 @@ async def test_start_turn_required_before_record_raw_event(store):
 async def test_record_raw_event_duplicate_seq_handled_gracefully(store):
     """Duplicate (turn_id, seq) on raw_events is handled gracefully on both stores.
 
-    Sqlite: UNIQUE constraint raises IntegrityError; the impl catches + ignores.
-    Memory: appends without dedup — the UNIQUE constraint is not enforced,
-    but neither store should crash on the call.
+    Sqlite: UNIQUE constraint raises IntegrityError; the impl catches + ignores
+    so the FIRST write wins.
+    Memory: appends without dedup — both writes are visible.
+
+    Either way, the store must remain queryable and the seq=0 slot must hold
+    at least one of the two payloads. P0-G / Tribunal P0-15 (A8-F1): the
+    original test had zero assertions on observable state.
     """
     await store.create_session("s-1", 1700000000)
     await store.start_turn("s-1", "t-1")
@@ -35,7 +39,25 @@ async def test_record_raw_event_duplicate_seq_handled_gracefully(store):
     await store.record_raw_event("s-1", "t-1", 0, "text_delta", {"text": "first"})
     # Second call with same (turn_id, seq) — must not crash either store.
     await store.record_raw_event("s-1", "t-1", 0, "text_delta", {"text": "duplicate"})
-    # No assertion on observable state — just verifying no crash.
+
+    if hasattr(store, "raw_events"):  # MemoryStore — appends without dedup
+        events = [
+            e for e in store.raw_events
+            if e["turn_id"] == "t-1" and e["seq"] == 0
+        ]
+        assert len(events) >= 1, "memory store dropped the seq=0 raw event"
+        payloads = [e["payload"] for e in events]
+        assert {"text": "first"} in payloads or {"text": "duplicate"} in payloads
+    else:  # SqliteSessionStore — UNIQUE enforced; first write wins.
+        async with store._conn.execute(
+            "SELECT payload_json FROM raw_events WHERE turn_id = ? AND seq = ?",
+            ("t-1", 0),
+        ) as cur:
+            row = await cur.fetchone()
+        assert row is not None, "sqlite store lost the seq=0 raw event"
+        assert json.loads(row[0]) == {"text": "first"}, (
+            "sqlite UNIQUE-on-conflict should preserve the first write"
+        )
 
 
 async def test_complete_turn_status_transitions(store):

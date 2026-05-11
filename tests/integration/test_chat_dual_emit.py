@@ -57,7 +57,12 @@ def client():
         yield c
 
 
-def _post(client: TestClient, *, accept: str | None = None, session_id: str = "test-s"):
+def _post(
+    client: TestClient,
+    *,
+    accept: str | None = None,
+    session_id: str = "test-s",
+):
     headers = {"Accept": accept} if accept else {}
     return client.post(
         "/api/v1/chat/stream",
@@ -177,16 +182,59 @@ def test_v2_seq_monotonic(client):
     assert seqs[0] == 0, f"seq does not start at 0: {seqs}"
 
 
-def test_v2_tool_call_carries_id(client):
-    """v2 tool_call events have a tool_call_id; matching tool_result follows."""
-    resp = _post(
-        client, accept="application/x-ndjson; version=1.0", session_id="test-tool"
+def test_v2_tool_call_carries_id():
+    """v2 tool_call events have a tool_call_id; matching tool_result follows.
+
+    The shared ``client`` fixture wires the Engine to an AsyncMock store, so
+    DummyProvider receives MagicMock messages instead of the real prompt and
+    can never produce a ``<<function_call>>`` marker. This test instead builds
+    its own app with a real in-memory store (MinimalMemoryStore from the
+    golden conftest) and sends a prompt that already contains a function-call
+    marker — DummyProvider echoes it back, the SlidingParser detects it, and
+    the orchestrator emits the v2 tool_call wire envelope. P0-G / Tribunal
+    P0-16 (A8-F2): the previous version masked a missing tool_call with
+    ``pytest.skip``, so the assertion never ran.
+    """
+    from tests.golden.conftest import MinimalMemoryStore
+
+    class _StoreWithAudit(MinimalMemoryStore):
+        async def audit_tool_call(self, **kwargs):
+            return None
+
+    fc_marker = '<<function_call>> {"name":"weather","arguments":{}}'
+
+    engine = Engine(
+        provider=DummyProvider(),
+        parser=SlidingParser(),
+        session_store=_StoreWithAudit(),
+        tools={},
+        system_prompt="You are a helpful assistant.",
     )
+    app = FastAPI(lifespan=lifespan)
+    app.state.gen_svc = engine
+    v1 = APIRouter(prefix="/api/v1")
+    v1.include_router(chat_router)
+    v1.include_router(health_router)
+    app.include_router(v1)
+
+    with TestClient(app) as c:
+        resp = c.post(
+            "/api/v1/chat/stream",
+            json={
+                "session_id": "test-tool",
+                "prompt": fc_marker,
+                "model_name": "dummy",
+            },
+            headers={"Accept": "application/x-ndjson; version=1.0"},
+        )
     events = _decode(resp.text)
     tool_calls = [e for e in events if e.get("type") == "tool_call"]
-    if not tool_calls:
-        # DummyProvider doesn't always trigger tools for a plain "hi" prompt.
-        pytest.skip("DummyProvider did not emit tool_call events for this prompt")
+    assert tool_calls, (
+        "expected at least one tool_call event but stream produced none — "
+        "either the scripted DummyProvider stopped echoing the prompt or "
+        "the orchestrator stopped emitting tool_call wire events "
+        "(Tribunal P0-16 / A8-F2)"
+    )
     assert tool_calls[0]["tool_call_id"].startswith("call-")
     tool_results = [e for e in events if e.get("type") == "tool_result"]
     if tool_results:

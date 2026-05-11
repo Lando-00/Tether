@@ -1,18 +1,16 @@
 """
 End-to-end integration test for Brave web search tool.
 
-This test validates the complete flow:
-1. Start server with test config
-2. Create session
-3. Send chat prompt that triggers web search
-4. Verify NDJSON streaming events (tool_started, tool_completed, text with results)
-5. Confirm no errors in orchestration loop
-6. Verify both old (articles) and new (results) formats in tool result
+Removed in P0-G (Tribunal P0-17 / A8-F3): two test functions whose entire
+bodies were `pytest.skip("implement when needed")` with commented-out
+example code below — `TestBraveWebSearchE2E.test_web_search_full_flow`
+and `TestWebSearchWithMockedServer.test_web_search_in_multi_turn_conversation`.
+A skip-only body is indistinguishable from no test at all and silently
+inflates the "passing" count. Real Brave-API coverage lives in
+tests/tools/test_brave_client_real.py (network marker, default-off).
 
-This is an OPTIONAL test that requires:
-- httpx to be installed
-- BRAVE_API_KEY in environment
-- Server to start successfully
+The remaining tests in this module exercise the WebSearchTool against a
+mocked BraveSearchClient and run by default.
 """
 import pytest
 import httpx
@@ -29,66 +27,6 @@ pytestmark = [
         reason="BRAVE_API_KEY not set - E2E test requires real API key"
     ),
 ]
-
-
-@pytest.mark.asyncio
-@pytest.mark.e2e
-class TestBraveWebSearchE2E:
-    """End-to-end test for web search through the full streaming API."""
-    
-    async def test_web_search_full_flow(self):
-        """Test complete flow from chat endpoint to web search tool execution."""
-        
-        # This test would require:
-        # 1. Starting the FastAPI server (or using TestClient)
-        # 2. Creating a session via POST /api/v1/sessions
-        # 3. Streaming a chat that triggers web search
-        # 4. Parsing NDJSON events
-        # 5. Verifying tool execution
-        
-        # For now, this is a placeholder showing the structure
-        # Actual implementation would use httpx.AsyncClient or FastAPI TestClient
-        
-        pytest.skip("E2E test requires running server - implement when needed")
-        
-        # Example structure:
-        # async with httpx.AsyncClient(base_url="http://localhost:8000") as client:
-        #     # Create session
-        #     response = await client.post("/api/v1/sessions")
-        #     session_data = response.json()
-        #     session_id = session_data["id"]
-        #     
-        #     # Stream chat with web search prompt
-        #     async with client.stream(
-        #         "POST",
-        #         "/api/v1/chat/stream",
-        #         json={
-        #             "session_id": session_id,
-        #             "prompt": "What's the latest news about AI?",
-        #             "model": "test_model"
-        #         }
-        #     ) as stream:
-        #         events = []
-        #         async for line in stream.aiter_lines():
-        #             if line.strip():
-        #                 event = json.loads(line)
-        #                 events.append(event)
-        #         
-        #         # Verify events
-        #         event_types = [e["type"] for e in events]
-        #         assert "tool_started" in event_types
-        #         assert "tool_completed" in event_types
-        #         
-        #         # Find tool_completed event
-        #         tool_events = [e for e in events if e["type"] == "tool_completed"]
-        #         assert len(tool_events) > 0
-        #         
-        #         tool_result = tool_events[0]["data"]["result"]
-        #         
-        #         # Verify response format
-        #         assert "results" in tool_result  # New format
-        #         assert "meta" in tool_result
-        #         assert "articles" in tool_result  # Deprecated format
 
 
 @pytest.mark.asyncio
@@ -156,20 +94,8 @@ class TestWebSearchWithMockedServer:
             freshness=None
         )
     
-    async def test_web_search_in_multi_turn_conversation(self):
-        """Test that web search results are included in conversation history."""
-        # This would test the SessionStore integration
-        # Verifying that tool calls and results are persisted
-        
-        pytest.skip("Requires SessionStore integration - implement when needed")
-        
-        # Example structure:
-        # 1. Create session
-        # 2. Add user message with web search request
-        # 3. Execute tool via orchestrator
-        # 4. Verify tool_call and tool_result are in session history
-        # 5. Send follow-up message
-        # 6. Verify model receives previous tool context
+    # Removed in P0-G (Tribunal P0-17): test_web_search_in_multi_turn_conversation
+    # was a pure pytest.skip placeholder. See module docstring.
 
 
 @pytest.mark.asyncio

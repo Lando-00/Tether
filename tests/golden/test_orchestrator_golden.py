@@ -105,8 +105,10 @@ async def test_one_tool_success_golden():
         GOLDEN_FILE.write_text(
             json.dumps(actual, indent=2) + "\n", encoding="utf-8"
         )
-        # Still pass after writing so the regen run shows green
-        return
+        # Fall through to the assertion below — the regen run must still
+        # round-trip through read_golden + assert. Otherwise a bug in the
+        # writer can silently corrupt the fixture and the test "passes"
+        # only because it returned early. P0-G / Tribunal P0-15 (A8-F1).
 
     assert GOLDEN_FILE.exists(), (
         f"Golden fixture not found: {GOLDEN_FILE}\n"
