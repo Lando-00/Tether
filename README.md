@@ -160,6 +160,51 @@ See [`docs/architecture.md`](./docs/architecture.md) for the tool-calling flow.
 For AI coding agent conventions see [`AGENTS.md`](./AGENTS.md) and
 `.github/copilot-instructions.md`.
 
+### Connectors
+
+Connectors extend Tether with personal-data integrations (inbound read + outbound send).
+They register their own tools in the `ToolRegistry` under a mandatory `{connector_id}_` prefix
+so they appear as regular tools in the chat loop.
+
+#### WhatsApp connector
+
+The WhatsApp connector links a **personal WhatsApp account** (WhatsApp Web protocol, powered
+by [neonize](https://github.com/krypton-byte/neonize)) to Tether's connector framework. Once
+linked, nine `whatsapp_*` tools become available in every chat session. Enable it with:
+
+```powershell
+pip install -e ".[whatsapp]"
+# Then uncomment the `connectors:` block in src/tether/config/default.yml
+```
+
+**Pairing flow**: run `tether-cli connect whatsapp` — a QR code is printed to the terminal;
+scan it in WhatsApp → Settings → Linked Devices. The connector moves to `running` state and
+tools activate immediately. To unlink: `tether-cli logout whatsapp` (deletes local credentials,
+does not affect your WhatsApp account).
+
+#### WhatsApp tools
+
+| Tool | Description |
+|---|---|
+| `whatsapp_prepare_send` | Build a text draft (no send) |
+| `whatsapp_confirm_send` | Dispatch a draft after explicit user confirmation |
+| `whatsapp_list_unread` | List unread inbound events from Tether's local inbox |
+| `whatsapp_get_thread` | Retrieve recent messages with a peer (reads local inbox since first connect) |
+| `whatsapp_inbox_mark_seen` | Mark Tether-local inbox events as seen (does not affect WhatsApp UI) |
+| `whatsapp_mark_platform_read` | Send WhatsApp read receipts (blue checkmarks visible to other party) |
+| `whatsapp_send_media` | Build a media draft from a local file path (image/video/audio/document) |
+| `whatsapp_get_contacts` | Search contact list by display name or E.164 phone number |
+| `whatsapp_resolve_contact` | Resolve a name / E.164 / JID to canonical WhatsApp JID |
+
+Send tools follow a **draft + confirm** two-phase pattern: `*_prepare_send` / `*_send_media`
+return a draft id without touching the network; `whatsapp_confirm_send` only dispatches after
+the user has explicitly affirmed in their last message (gated by `ConfirmIntentClassifier`).
+Accidental sends are structurally impossible.
+
+Design details: [ADR-0018](./docs/adr/0018-whatsapp-connector-library-and-adapter.md)
+(neonize backend, `WhatsAppClientAdapter` seam) and
+[ADR-0019](./docs/adr/0019-confirm-intent-classifier-seam.md) (`ConfirmIntentClassifier` ABC).
+
 ## License
 
 MIT — see `LICENSE`.

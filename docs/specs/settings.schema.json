@@ -222,6 +222,20 @@
       "title": "InboxSettings",
       "type": "object"
     },
+    "IntentSettings": {
+      "additionalProperties": false,
+      "description": "``intent:`` section — confirm-intent classifier configuration.\n\nPer ADR-0019 D3 (after R7 reconcile: Wave 2 lands this section\npointing at the regex classifier; Wave 1 stub had no settings).",
+      "properties": {
+        "classifier_impl": {
+          "default": "tether.protocol.intent.regex_classifier.RegexConfirmIntentClassifier",
+          "description": "Dotted path to a ConfirmIntentClassifier subclass.",
+          "title": "Classifier Impl",
+          "type": "string"
+        }
+      },
+      "title": "IntentSettings",
+      "type": "object"
+    },
     "LimitsSettings": {
       "additionalProperties": false,
       "description": "``limits:`` section.",
@@ -823,6 +837,9 @@
     },
     "inbox": {
       "$ref": "#/$defs/InboxSettings"
+    },
+    "intent": {
+      "$ref": "#/$defs/IntentSettings"
     },
     "limits": {
       "$ref": "#/$defs/LimitsSettings"

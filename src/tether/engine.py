@@ -18,7 +18,7 @@ from __future__ import annotations
 
 import asyncio
 import logging
-from typing import Any, AsyncGenerator, Callable, Dict, List, Optional, TYPE_CHECKING
+from typing import TYPE_CHECKING, Any, AsyncGenerator, Callable, Dict, List, Optional
 
 from tether.config.settings import Settings
 from tether.core.interfaces import (
@@ -34,6 +34,7 @@ from tether.runtime.watchdog_mode import WatchdogMode
 if TYPE_CHECKING:
     from tether.context.inbox_store import InboundInbox
     from tether.core.connector_registry import ConnectorRegistry
+    from tether.protocol.intent.classifier import ConfirmIntentClassifier
     from tether.protocol.orchestration.cancel import CancelToken
     from tether.protocol.wire.events import WireEvent
     from tether.runtime.hw_watchdog import HardwareWatchdog
@@ -155,6 +156,7 @@ class Engine:
         # Default False (privacy-preserving). Set by Engine.from_settings
         # from settings.security.audit_log.store_args. Synthesis B5 step 7.
         self._audit_store_args: bool = False
+        self._confirm_intent_classifier: Optional["ConfirmIntentClassifier"] = None
         # Phase 4.5 step 47d: __aenter__ schedules start_connector(id) for
         # each READY connector; __aexit__/aclose cancels any still-pending
         # tasks before invoking stop_all so we never tear down a connector
@@ -202,13 +204,13 @@ class Engine:
         """
         from tether.core.connector_registry import ConnectorRegistry
         from tether.core.factory import load
-        from tether.core.tool_registry import ToolRegistry
-        from tether.runtime.hw_watchdog import HardwareWatchdog
 
         # Configure logging FIRST so any subsequent setup logs flow through
         # the structured pipeline. Idempotent — safe to call multiple times.
         # Citations: _synthesis.md §3 (observability), §4 Phase 7 step 67.
         from tether.core.logging import configure_logging
+        from tether.core.tool_registry import ToolRegistry
+        from tether.runtime.hw_watchdog import HardwareWatchdog
         configure_logging(settings)
 
         model_spec = settings.providers.model
@@ -327,6 +329,11 @@ class Engine:
                     f"{mode!r} -> {registry_dict[mode]!r} is invalid: {e}"
                 ) from e
 
+        # Phase 2b (ADR-0019): construct the confirm-intent classifier from
+        # settings. ChattyAgentOrchestrator uses it to flip
+        # ToolExecutionContext.user_confirmed_send.
+        confirm_intent_classifier = load(settings.intent.classifier_impl)
+
         engine = cls(
             provider=provider,
             parser_factory=_new_parser,
@@ -346,6 +353,7 @@ class Engine:
         # knows whether to populate args_json in tool_audit rows.
         # Synthesis B5 step 7.
         engine._audit_store_args = settings.security.audit_log.store_args
+        engine._confirm_intent_classifier = confirm_intent_classifier
         return engine
 
     # --- Streaming chat (the core API) ---
@@ -441,6 +449,8 @@ class Engine:
         )
         if "audit_store_args" in _orch_sig.parameters:
             _orch_kwargs["audit_store_args"] = self._audit_store_args
+        if "confirm_intent_classifier" in _orch_sig.parameters:
+            _orch_kwargs["confirm_intent_classifier"] = self._confirm_intent_classifier
 
         orch = orchestrator_cls(**_orch_kwargs)
         async for wire_event in orch.run(

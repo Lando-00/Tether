@@ -23,7 +23,6 @@ from pydantic_settings import BaseSettings, SettingsConfigDict
 
 from tether.config._strict import StrictModel
 
-
 # ---------------------------------------------------------------------------
 # Sub-models
 # ---------------------------------------------------------------------------
@@ -579,6 +578,19 @@ class InboxSettings(StrictModel):
     max_summary_chars: int = Field(default=512, ge=64)
 
 
+class IntentSettings(StrictModel):
+    """``intent:`` section — confirm-intent classifier configuration.
+
+    Per ADR-0019 D3 (after R7 reconcile: Wave 2 lands this section
+    pointing at the regex classifier; Wave 1 stub had no settings).
+    """
+
+    classifier_impl: str = Field(
+        default="tether.protocol.intent.regex_classifier.RegexConfirmIntentClassifier",
+        description="Dotted path to a ConfirmIntentClassifier subclass.",
+    )
+
+
 # ---------------------------------------------------------------------------
 # Top-level Settings
 # ---------------------------------------------------------------------------
@@ -621,6 +633,7 @@ class Settings(BaseSettings):
     connectors: ConnectorsSettings = Field(default_factory=ConnectorsSettings)
     inbox: InboxSettings = Field(default_factory=InboxSettings)
     orchestrator: OrchestratorSettings = Field(default_factory=OrchestratorSettings)
+    intent: IntentSettings = Field(default_factory=IntentSettings)
 
 
 # ---------------------------------------------------------------------------

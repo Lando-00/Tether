@@ -2,26 +2,28 @@
 A modern CLI for interacting with the Tether service.
 """
 import json
-from pathlib import Path
-from typing import Optional
-
-import requests
-import typer
-from rich.console import Console
-from rich.prompt import Prompt, IntPrompt
-from prompt_toolkit import prompt as ptk_prompt
-from prompt_toolkit.formatted_text import FormattedText
-from rich.panel import Panel
-from rich.text import Text
-from rich.table import Table
-from rich.spinner import Spinner
-from rich.live import Live
 
 # --- Configuration ---
 # Default API base URL. Reassigned by main() if --api-url is passed.
 # Reads from TETHER_API_URL env var if set (allows shell-level override
 # without a flag, useful for development).
 import os as _os
+import time
+from pathlib import Path
+from typing import Optional
+
+import requests
+import typer
+from prompt_toolkit import prompt as ptk_prompt
+from prompt_toolkit.formatted_text import FormattedText
+from rich.console import Console
+from rich.live import Live
+from rich.panel import Panel
+from rich.prompt import IntPrompt, Prompt
+from rich.spinner import Spinner
+from rich.table import Table
+from rich.text import Text
+
 API_BASE_URL = _os.environ.get("TETHER_API_URL", "http://127.0.0.1:8080/api/v1")
 
 # CSRF header name must match Settings.security.csrf_token.header_name.
@@ -65,6 +67,7 @@ app = typer.Typer(
     name="tether-cli",
     help="A modern CLI for interacting with the Tether service.",
     add_completion=False,
+    invoke_without_command=True,
 )
 
 
@@ -88,6 +91,166 @@ def _render_connect_error(exc: Exception, action: str) -> None:
         f"[dim]Troubleshooting: docs/runbooks/fresh-env-setup.md[/dim]"
     )
     console.print(Panel(panel_body, title="Connection error", border_style="red"))
+
+
+def _normalise_api_url(api_url: str) -> str:
+    """Accept either the API root or the server root and return /api/v1."""
+    base = api_url.rstrip("/")
+    if base.endswith("/api/v1"):
+        return base
+    if base.endswith("/api"):
+        return f"{base}/v1"
+    return f"{base}/api/v1"
+
+
+def _set_api_base_url(api_url: Optional[str]) -> str:
+    """Update API_BASE_URL for command-scoped --api-url overrides."""
+    global API_BASE_URL
+    if api_url:
+        API_BASE_URL = _normalise_api_url(api_url)
+    return API_BASE_URL
+
+
+def _connector_label(connector: str) -> str:
+    if connector.lower() == "whatsapp":
+        return "WhatsApp"
+    return connector.replace("_", " ").replace("-", " ").title()
+
+
+def _response_error_detail(response) -> str:
+    try:
+        body = response.json()
+    except ValueError:
+        body = None
+
+    if isinstance(body, dict):
+        detail = body.get("detail") or body.get("error") or body.get("message")
+        if detail is not None:
+            return str(detail)
+    text = getattr(response, "text", "")
+    return text.strip() or "No error detail returned."
+
+
+def _render_http_error(exc: requests.HTTPError, action: str) -> None:
+    response = getattr(exc, "response", None)
+    if response is None:
+        _render_connect_error(exc, action)
+        return
+
+    status = getattr(response, "status_code", "unknown")
+    detail = _response_error_detail(response)
+    panel_body = (
+        f"[bold red]Could not {action}.[/bold red]\n\n"
+        f"[bold]URL:[/bold] {API_BASE_URL}\n"
+        f"[bold]Status:[/bold] {status}\n"
+        f"[bold]Detail:[/bold] {detail}"
+    )
+    console.print(Panel(panel_body, title="HTTP error", border_style="red"))
+
+
+def _response_json(response, action: str):
+    try:
+        return response.json()
+    except ValueError as exc:
+        console.print(f"[bold red]Error:[/bold red] Invalid JSON while trying to {action}: {exc}")
+        raise typer.Exit(1) from exc
+
+
+def _render_raw_qr(payload: str, *, fallback: bool = False) -> None:
+    console.print(Panel(payload, title="Raw QR payload", border_style="yellow"))
+    if fallback:
+        console.print(
+            "[yellow]Terminal QR rendering needs the optional 'qrcode' package. "
+            "Install it with 'pip install qrcode', or copy this string into a QR "
+            "generator and scan that code with WhatsApp.[/yellow]"
+        )
+
+
+def _render_qr_ascii(payload: str) -> bool:
+    try:
+        import qrcode
+    except ImportError:
+        return False
+
+    qr = qrcode.QRCode(border=1)
+    qr.add_data(payload)
+    qr.make(fit=True)
+    matrix = qr.get_matrix()
+
+    for row_idx in range(0, len(matrix), 2):
+        chars = []
+        top = matrix[row_idx]
+        bottom = matrix[row_idx + 1] if row_idx + 1 < len(matrix) else [False] * len(top)
+        for top_dot, bottom_dot in zip(top, bottom):
+            if top_dot and bottom_dot:
+                chars.append("█")
+            elif top_dot:
+                chars.append("▀")
+            elif bottom_dot:
+                chars.append("▄")
+            else:
+                chars.append(" ")
+        console.print("".join(chars))
+    return True
+
+
+def _render_login_prompt(connector: str, prompt: dict, qr_format: str) -> None:
+    label = _connector_label(connector)
+    kind = prompt.get("kind")
+    payload = str(prompt.get("payload") or "")
+
+    if kind == "qr_code":
+        console.print(f"\n[bold]QR code for {label}:[/bold]")
+        if qr_format == "raw":
+            _render_raw_qr(payload)
+        elif qr_format == "png":
+            console.print("[yellow]PNG output is not implemented yet; showing raw QR payload.[/yellow]")
+            _render_raw_qr(payload)
+        elif not _render_qr_ascii(payload):
+            _render_raw_qr(payload, fallback=True)
+        return
+
+    if kind == "url":
+        console.print(Panel(payload, title=f"{label} login URL", border_style="cyan"))
+        return
+
+    console.print(Panel(payload, title=f"{label} login prompt", border_style="cyan"))
+
+
+def _print_scan_instructions() -> None:
+    console.print(
+        "Scan the QR with your phone:\n"
+        "  1. Open WhatsApp\n"
+        "  2. Settings → Linked Devices → Link a Device\n"
+        "  3. Scan this QR code\n"
+        "Waiting for pair (will refresh QR if it rotates)..."
+    )
+
+
+def _print_connector_health(connector: str) -> None:
+    try:
+        response = requests.get(f"{API_BASE_URL}/connectors", timeout=5)
+        response.raise_for_status()
+        connectors = response.json()
+    except requests.RequestException as exc:
+        console.print(f"[dim]Logged in, but connector health could not be fetched: {exc}[/dim]")
+        return
+    except ValueError:
+        console.print("[dim]Logged in, but connector health response was not JSON.[/dim]")
+        return
+
+    if not isinstance(connectors, list):
+        return
+
+    for item in connectors:
+        if not isinstance(item, dict) or item.get("id") != connector:
+            continue
+        health = item.get("health") if isinstance(item.get("health"), dict) else {}
+        state = health.get("state") or "unknown"
+        detail = health.get("detail")
+        suffix = f" ({detail})" if detail else ""
+        console.print(f"[dim]Health: {state}{suffix}[/dim]")
+        return
 
 
 # --- API Interaction Functions ---
@@ -174,7 +337,10 @@ def unload_all_models():
     console.print("Attempting to unload all models from memory...")
     available_models = get_available_models()
     if not available_models:
-        console.print("[yellow]Warning:[/yellow] No available models found to specify for unload request. The cache might be empty already.")
+        console.print(
+            "[yellow]Warning:[/yellow] No available models found to specify "
+            "for unload request. The cache might be empty already."
+        )
         return
 
     # The new API unloads all models, but still requires a model name in the path
@@ -192,13 +358,13 @@ def display_history(messages: list):
     """Renders the chat history using a more structured format."""
     if not messages:
         return
-    
+
     console.print(Panel("Chat History", style="bold blue", expand=False))
-    
+
     for msg in messages:
         role = msg.get("role", "unknown")
         content = msg.get("content", "")
-        
+
         if role == "user":
             panel_content = Text(content, style="cyan")
             console.print(Panel(panel_content, title="You", title_align="left", border_style="cyan"))
@@ -210,7 +376,14 @@ def display_history(messages: list):
                         tool_name = part.get("tool_name")
                         tool_args = part.get("tool_args")
                         panel_content = Text(f"Tool: {tool_name}\nArgs: {tool_args}", style="green")
-                        console.print(Panel(panel_content, title="Assistant (Tool Call)", title_align="left", border_style="green"))
+                        console.print(
+                            Panel(
+                                panel_content,
+                                title="Assistant (Tool Call)",
+                                title_align="left",
+                                border_style="green",
+                            )
+                        )
             else:
                 panel_content = Text(content, style="green")
                 console.print(Panel(panel_content, title="Assistant", title_align="left", border_style="green"))
@@ -218,14 +391,21 @@ def display_history(messages: list):
             tool_name = msg.get("tool_name", "unknown_tool")
             tool_content = msg.get("content", "")
             panel_content = Text(str(tool_content), style="yellow")
-            console.print(Panel(panel_content, title=f"Tool Output ({tool_name})", title_align="left", border_style="yellow"))
+            console.print(
+                Panel(
+                    panel_content,
+                    title=f"Tool Output ({tool_name})",
+                    title_align="left",
+                    border_style="yellow",
+                )
+            )
     console.print()
 
 
 def manage_sessions() -> tuple[Optional[str], str]:
     """Display and manage chat sessions. Returns (session_id, action)."""
     sessions = get_sessions()
-    
+
     table = Table(title="Chat Session Management", border_style="blue", show_header=False)
     table.add_column("Key", style="bold cyan")
     table.add_column("Action")
@@ -245,7 +425,7 @@ def manage_sessions() -> tuple[Optional[str], str]:
         table.add_row("da", "Delete ALL sessions")
         choices["d"] = "Delete a session"
         choices["da"] = "Delete ALL sessions"
-    
+
     table.add_section()
     table.add_row("u", "Unload all models from memory")
     table.add_row("q", "Quit")
@@ -329,12 +509,197 @@ def select_model(model_name: Optional[str]) -> str:
             if 1 <= choice <= len(available_models):
                 return available_models[choice - 1]
             else:
-                console.print(f"[red]Invalid choice. Please enter a number between 1 and {len(available_models)}.[/red]")
+                console.print(
+                    "[red]Invalid choice. Please enter a number between "
+                    f"1 and {len(available_models)}.[/red]"
+                )
         except ValueError:
             console.print("[red]Invalid input. Please enter a number.[/red]")
 
 
+@app.callback(invoke_without_command=True)
+def cli(
+    ctx: typer.Context,
+    model_name: Optional[str] = typer.Option(
+        None,
+        "--model",
+        "-m",
+        help="The name of the model to use. If not provided, a list will be shown.",
+    ),
+    api_url: str = typer.Option(
+        API_BASE_URL,
+        "--api-url",
+        help="Base URL of the Tether HTTP API (default: http://127.0.0.1:8080/api/v1, or TETHER_API_URL env var).",
+    ),
+    debug: bool = typer.Option(
+        False,
+        "--debug",
+        help="Enable debug mode to show detailed event information.",
+    ),
+    show_thinking: bool = typer.Option(
+        True,
+        "--show-thinking",
+        help="Enable to show the model's thinking process.",
+    ),
+):
+    """Run chat by default, or choose a subcommand."""
+    global API_BASE_URL
+    API_BASE_URL = _normalise_api_url(api_url)
+    if ctx.invoked_subcommand is None:
+        main(
+            model_name=model_name,
+            api_url=API_BASE_URL,
+            debug=debug,
+            show_thinking=show_thinking,
+        )
+
+
 @app.command()
+def connect(
+    connector: str = typer.Argument(..., help="Connector id to authenticate, e.g. whatsapp."),
+    api_url: Optional[str] = typer.Option(
+        None,
+        "--api-url",
+        help="Base URL of the Tether HTTP API or server root.",
+    ),
+    timeout: float = typer.Option(
+        180.0,
+        "--timeout",
+        min=1.0,
+        help="Maximum seconds to wait for pairing.",
+    ),
+    qr_format: str = typer.Option(
+        "ascii",
+        "--qr-format",
+        help="QR rendering format: ascii, raw, or png.",
+    ),
+) -> None:
+    """Authenticate a connector; WhatsApp uses the QR pairing flow."""
+    _set_api_base_url(api_url)
+    qr_format = qr_format.lower()
+    if qr_format not in {"ascii", "raw", "png"}:
+        console.print("[bold red]Error:[/bold red] --qr-format must be ascii, raw, or png.")
+        raise typer.Exit(1)
+
+    label = _connector_label(connector)
+    begin_url = f"{API_BASE_URL}/connectors/{connector}/login/begin"
+    complete_url = f"{API_BASE_URL}/connectors/{connector}/login/complete"
+
+    try:
+        response = requests.post(begin_url, headers=_mutating_headers(), timeout=10)
+        response.raise_for_status()
+    except requests.HTTPError as exc:
+        _render_http_error(exc, f"begin {label} login")
+        raise typer.Exit(1) from exc
+    except requests.RequestException as exc:
+        _render_connect_error(exc, f"begin {label} login")
+        raise typer.Exit(1) from exc
+
+    prompt = _response_json(response, f"begin {label} login")
+    if not isinstance(prompt, dict):
+        console.print(f"[bold red]Error:[/bold red] Unexpected {label} login prompt.")
+        raise typer.Exit(1)
+
+    _render_login_prompt(connector, prompt, qr_format)
+    if prompt.get("kind") == "qr_code":
+        _print_scan_instructions()
+
+    deadline = time.monotonic() + timeout
+    while True:
+        remaining = deadline - time.monotonic()
+        if remaining <= 0:
+            console.print("[bold red]Timeout — try again.[/bold red]")
+            raise typer.Exit(4)
+
+        poll_timeout = min(30.0, remaining)
+        try:
+            response = requests.post(
+                complete_url,
+                json={"payload": {"timeout_sec": poll_timeout}},
+                headers=_mutating_headers(),
+                timeout=poll_timeout + 5,
+            )
+            response.raise_for_status()
+        except requests.HTTPError as exc:
+            _render_http_error(exc, f"complete {label} login")
+            raise typer.Exit(1) from exc
+        except requests.RequestException as exc:
+            _render_connect_error(exc, f"complete {label} login")
+            raise typer.Exit(1) from exc
+
+        result = _response_json(response, f"complete {label} login")
+        if not isinstance(result, dict):
+            console.print(f"[bold red]Error:[/bold red] Unexpected {label} login result.")
+            raise typer.Exit(1)
+
+        state = result.get("state")
+        detail = result.get("detail") or ""
+
+        if state == "ready":
+            console.print(f"[bold green]Logged in to {label}.[/bold green]")
+            _print_connector_health(connector)
+            return
+
+        if state == "logged_out":
+            console.print("[bold red]Unpaired during scan.[/bold red]")
+            raise typer.Exit(2)
+
+        if state == "error":
+            console.print(f"[bold red]{detail or f'{label} login failed.'}[/bold red]")
+            raise typer.Exit(3)
+
+        if state == "authenticating":
+            if detail == "qr_scan_timeout":
+                console.print("[bold yellow]QR expired without scan; retry?[/bold yellow]")
+                raise typer.Exit(4)
+            next_prompt = result.get("next_prompt")
+            if isinstance(next_prompt, dict):
+                console.print("[yellow]QR refreshed; scan the new code.[/yellow]")
+                _render_login_prompt(connector, next_prompt, qr_format)
+                continue
+            console.print(f"[dim]Still waiting for {label} pairing...[/dim]")
+            continue
+
+        console.print(f"[bold red]Unexpected {label} login state:[/bold red] {state!r}")
+        raise typer.Exit(3)
+
+
+@app.command()
+def logout(
+    connector: str = typer.Argument(..., help="Connector id to log out, e.g. whatsapp."),
+    api_url: Optional[str] = typer.Option(
+        None,
+        "--api-url",
+        help="Base URL of the Tether HTTP API or server root.",
+    ),
+) -> None:
+    """Log out a connector and delete its persisted credentials."""
+    _set_api_base_url(api_url)
+    label = _connector_label(connector)
+    logout_url = f"{API_BASE_URL}/connectors/{connector}/logout"
+
+    try:
+        response = requests.post(logout_url, headers=_mutating_headers(), timeout=10)
+        response.raise_for_status()
+    except requests.HTTPError as exc:
+        _render_http_error(exc, f"log out from {label}")
+        raise typer.Exit(1) from exc
+    except requests.RequestException as exc:
+        _render_connect_error(exc, f"log out from {label}")
+        raise typer.Exit(1) from exc
+
+    data = _response_json(response, f"log out from {label}")
+    if not isinstance(data, dict) or data.get("ok") is not True:
+        console.print(f"[bold red]Could not log out from {label}:[/bold red] {data}")
+        raise typer.Exit(1)
+
+    console.print(
+        "Unlinked Tether's WhatsApp device session and deleted local credentials. "
+        f"Your WhatsApp account on your phone is unaffected. (Logged out from {label}.)"
+    )
+
+
+@app.command("chat")
 def main(
     model_name: Optional[str] = typer.Option(
         None,
@@ -372,7 +737,7 @@ def main(
         f"[dim]API: {API_BASE_URL}[/dim]",
         style="bold blue"
     ))
-    
+
     model_name_arg = model_name
     model_name = select_model(model_name_arg)
 
@@ -401,7 +766,7 @@ def main(
             raise typer.Exit()
 
     console.print(f"🤖 Starting chat with [bold green]{model_name}[/bold green]...")
-    
+
     info_table = Table.grid(padding=1, expand=True)
     info_table.add_column()
     info_table.add_column(justify="right")
@@ -473,7 +838,10 @@ def main(
             if stripped_prompt == "\\models":
                 new_model = select_model(None)
                 if new_model and new_model != model_name:
-                    console.print(f"🔄 Switching from [yellow]{model_name}[/yellow] to [bold green]{new_model}[/bold green]")
+                    console.print(
+                        f"🔄 Switching from [yellow]{model_name}[/yellow] "
+                        f"to [bold green]{new_model}[/bold green]"
+                    )
                     model_name = new_model
                 else:
                     console.print(f"[dim]Keeping current model: {model_name}[/dim]")
@@ -497,30 +865,35 @@ def main(
                 stream=True,
             ) as response:
                 response.raise_for_status()
-                
+
                 assistant_response = ""
                 thinking_response = ""
                 text_started = False
                 thinking_panel_active = False
                 spinner_active = True
-                
+
                 # Start spinner while waiting for first response
-                with Live(Spinner("dots", text="[dim]Waiting for response...[/dim]"), console=console, refresh_per_second=10) as live:
+                with Live(
+                    Spinner("dots", text="[dim]Waiting for response...[/dim]"),
+                    console=console,
+                    refresh_per_second=10,
+                ) as live:
                     for line in response.iter_lines():
                         # Stop spinner on first event
                         if spinner_active:
                             live.stop()
                             spinner_active = False
-                        
+
                         if not line:
                             continue
                         try:
                             event = json.loads(line)
                         except json.JSONDecodeError:
                             if debug:
-                                console.print(f"[red]Error parsing JSON: {line.decode('utf-8', errors='replace')}[/red]")
+                                decoded_line = line.decode("utf-8", errors="replace")
+                                console.print(f"[red]Error parsing JSON: {decoded_line}[/red]")
                             continue
-                        
+
                         # v2 vocabulary — top-level fields only (no data wrapper).
                         # Synthesis §4 Phase 5 step 54; §11.3 R18 (opt-in via Accept).
                         evt_type = event.get("type")
@@ -558,7 +931,13 @@ def main(
                             if text_started or thinking_panel_active:
                                 console.print()
                             tool_name = event.get("name")
-                            console.print(Panel(f"Calling tool: [bold yellow]{tool_name}[/bold yellow]", expand=False, border_style="yellow"))
+                            console.print(
+                                Panel(
+                                    f"Calling tool: [bold yellow]{tool_name}[/bold yellow]",
+                                    expand=False,
+                                    border_style="yellow",
+                                )
+                            )
 
                         elif evt_type == "tool_result":
                             tool_name = event.get("name")
@@ -566,14 +945,29 @@ def main(
                             if status == "ok":
                                 result = event.get("result", {})
                                 output_str = str(result)
-                                console.print(Panel(f"Tool [bold yellow]{tool_name}[/bold yellow] output: {output_str[:150]}...", title="Tool Output", expand=False, border_style="dim yellow"))
+                                console.print(
+                                    Panel(
+                                        f"Tool [bold yellow]{tool_name}[/bold yellow] "
+                                        f"output: {output_str[:150]}...",
+                                        title="Tool Output",
+                                        expand=False,
+                                        border_style="dim yellow",
+                                    )
+                                )
                             else:
                                 error = event.get("error", "unknown")
                                 error_kind = event.get("error_kind", "")
                                 kind_str = f" ({error_kind})" if error_kind else ""
                                 if text_started or thinking_panel_active:
                                     console.print()
-                                console.print(Panel(f"Tool [bold red]{tool_name}[/bold red] error{kind_str}: {error}", title="Tool Error", border_style="red"))
+                                console.print(
+                                    Panel(
+                                        f"Tool [bold red]{tool_name}[/bold red] "
+                                        f"error{kind_str}: {error}",
+                                        title="Tool Error",
+                                        border_style="red",
+                                    )
+                                )
 
                         elif evt_type == "error":
                             if text_started or thinking_panel_active:

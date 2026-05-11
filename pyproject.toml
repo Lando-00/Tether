@@ -41,6 +41,14 @@ ollama = []    # Reserved for future provider support; no implementation in this
 mlc = []       # Qualcomm CodeLinaro Adreno wheels are installed separately; see environment.yml.
 nexa = []      # Reserved for future Snapdragon NPU provider support.
 sqlcipher = [] # Reserved for optional encrypted SQLite support.
+# Phase 2b (ADR-0018): WhatsApp connector via neonize (Python on whatsmeow Go).
+# Pin neonize EXACTLY — .post0 releases are DLL-only bumps; minor-version moves
+# may break the adapter's BLOCKER workarounds (wa-D-neonize.md §10).
+# phonenumbers is used by TargetResolver for E.164 normalisation.
+whatsapp = [
+    "neonize==0.3.17.post0",
+    "phonenumbers>=8.13,<9",
+]
 otel = [
     "opentelemetry-api>=1.20.0",
     "opentelemetry-sdk>=1.20.0",

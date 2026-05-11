@@ -238,6 +238,59 @@ have no turn awareness on their own.
 **Test fixture**: `tests/fixtures/echo_connector.py::EchoConnector` exercises every
 contract (`list[str]` arg, `Optional[T]` arg, confirm-send tool, inbound stream).
 
+### 4a. WhatsApp connector (Phase 2b)
+
+The WhatsApp connector is the first production connector built on the Phase 4.5 framework.
+It is **single-user, WhatsApp Web** (personal account) backed by
+[neonize](https://github.com/krypton-byte/neonize) (pinned `==0.3.17.post0`), a Python binding
+over the Go `whatsmeow` library. A `WhatsAppClientAdapter` ABC isolates the rest of Tether from
+neonize instabilities (Snapdragon X Elite DLL selection bug and event-loop singleton reset on
+restart — both patched at the adapter boundary; see ADR-0018 §D1). Once linked, the connector
+registers nine tools in the `ToolRegistry` under the mandatory `whatsapp_` prefix:
+
+| Tool | Purpose |
+|---|---|
+| `whatsapp_prepare_send` | Build a text draft (no send) |
+| `whatsapp_confirm_send` | Dispatch a draft after explicit user confirmation |
+| `whatsapp_list_unread` | List unread inbound events from Tether's local inbox |
+| `whatsapp_get_thread` | Recent messages with a peer (reads `SqliteInbox`) |
+| `whatsapp_inbox_mark_seen` | Mark Tether-local inbox events as seen (does not affect WhatsApp UI) |
+| `whatsapp_mark_platform_read` | Send WhatsApp read receipts (blue checkmarks visible to the other party) |
+| `whatsapp_send_media` | Build a media draft from a file path (image/video/audio/document) |
+| `whatsapp_get_contacts` | Search the contact list by name or E.164 substring |
+| `whatsapp_resolve_contact` | Resolve a display name / E.164 / JID to canonical JID |
+
+**State machine**: the connector lifecycle follows the standard `Connector` ABC states
+(`unconfigured → login_pending → running → stopped`). On `begin_login()` neonize emits a QR
+code; the CLI renders it and awaits `complete_login()` (QR scanned on the user's phone). The
+full state-transition table is in ADR-0018.
+
+**Send-safety doctrine** (ADR-0019): `whatsapp_prepare_send` / `whatsapp_send_media` return a
+draft id without touching the network. `whatsapp_confirm_send` calls
+`ToolExecutionContext.user_confirmed_send`; if the flag is `False` the tool refuses and the
+model must re-solicit affirmation from the user. The flag is set by the
+`ConfirmIntentClassifier` (v1: `RegexConfirmIntentClassifier`, injected via dotted-path config;
+default-safe — refuses on ambiguous affirmatives such as "yes but cancel"). This makes
+accidental sends structurally impossible regardless of what the model says.
+
+**Install**:
+
+```powershell
+pip install -e ".[whatsapp]"
+```
+
+**CLI subcommands**:
+
+```powershell
+tether-cli connect whatsapp    # QR-pair a new device
+tether-cli logout whatsapp     # unlink and delete local credentials
+```
+
+Full design: [ADR-0018](./adr/0018-whatsapp-connector-library-and-adapter.md) (library choice,
+adapter seam, upstream-defect patches) and
+[ADR-0019](./adr/0019-confirm-intent-classifier-seam.md) (ConfirmIntentClassifier ABC and
+`RegexConfirmIntentClassifier` v1).
+
 ---
 
 ## 5. Data layout

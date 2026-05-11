@@ -50,7 +50,7 @@ import asyncio
 import logging
 import time
 from pathlib import Path
-from typing import Any, Dict, List, Optional, Set, TYPE_CHECKING
+from typing import TYPE_CHECKING, Any, Dict, List, Optional, Set
 
 from tether.connectors.base import Connector
 from tether.connectors.types import ConnectorState, InboundEvent
@@ -151,6 +151,8 @@ class ConnectorRegistry:
             legacy default) skips drain wiring entirely — useful for tests
             that exercise lifecycle without DB coverage. Phase 6.5 step 66e
             (synthesis §4 + §13.4 M3).
+            Connectors that expose an ``_inbox`` attribute receive this
+            handle after validation, before the registry returns.
 
     Validation at construction (connector spec §3.3):
         * ``connectors`` ids are unique.
@@ -252,6 +254,12 @@ class ConnectorRegistry:
         #    outbound tools; nothing iterates ``inbound_stream()``.
         self._inbox: Optional["InboundInbox"] = inbox
         self._drain_tasks: Dict[str, "SupervisedTask"] = {}
+        for conn in self._connectors.values():
+            accept_inbox = getattr(conn, "accept_inbox", None)
+            if callable(accept_inbox):
+                accept_inbox(self._inbox)
+            elif hasattr(conn, "_inbox"):
+                conn._inbox = self._inbox  # type: ignore[attr-defined]
 
         logger.info(
             "ConnectorRegistry: %d connector(s), %d aggregated tool(s), "

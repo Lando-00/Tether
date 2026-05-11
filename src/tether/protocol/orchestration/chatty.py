@@ -75,28 +75,32 @@ import json
 import time
 import uuid
 from contextlib import aclosing
-
-import structlog
 from datetime import datetime, timezone
 from typing import (
+    TYPE_CHECKING,
     Any,
     AsyncIterator,
     Dict,
     List,
     Optional,
-    TYPE_CHECKING,
 )
+
+import structlog
 
 from tether.core.errors import (
     LoopLimitReached as LoopLimitReachedError,
+)
+from tether.core.errors import (
     TransientProviderError,
 )
 from tether.core.interfaces import (
     ModelProvider,
-    Orchestrator as OrchestratorABC,
     SessionStore,
     StreamParser,
     Tool,
+)
+from tether.core.interfaces import (
+    Orchestrator as OrchestratorABC,
 )
 from tether.core.logging import logger
 from tether.core.types import OrchestratorConfig, ToolExecutionContext
@@ -117,7 +121,6 @@ from tether.protocol.parsers.events import (
 from tether.protocol.wire.events import (
     Error,
     HwReset,
-    LoopLimitReached as LoopLimitReachedWire,
     MessageStart,
     MessageStop,
     TextDelta,
@@ -127,8 +130,12 @@ from tether.protocol.wire.events import (
     ToolResult,
     WireEvent,
 )
+from tether.protocol.wire.events import (
+    LoopLimitReached as LoopLimitReachedWire,
+)
 
 if TYPE_CHECKING:
+    from tether.protocol.intent.classifier import ConfirmIntentClassifier
     from tether.runtime.hw_watchdog import HardwareWatchdog
 
 
@@ -197,6 +204,7 @@ class ChattyAgentOrchestrator(OrchestratorABC):
         config: OrchestratorConfig,
         tool_runner: ToolRunner,
         hw_watchdog: Optional["HardwareWatchdog"] = None,
+        confirm_intent_classifier: "ConfirmIntentClassifier | None" = None,
         audit_store_args: bool = False,
     ):
         self.provider = provider
@@ -211,6 +219,11 @@ class ChattyAgentOrchestrator(OrchestratorABC):
         # alongside the SHA-256 hash. Default False (privacy-preserving).
         # Synthesis §3.6 + B5 step 7.
         self._audit_store_args = audit_store_args
+        if confirm_intent_classifier is None:
+            from tether.protocol.intent.classifier import NullConfirmIntentClassifier
+
+            confirm_intent_classifier = NullConfirmIntentClassifier()
+        self._confirm_intent_classifier = confirm_intent_classifier
 
     # --- Public entry point ------------------------------------------------
 
@@ -1038,7 +1051,7 @@ class ChattyAgentOrchestrator(OrchestratorABC):
             session_id=session_id,
             turn_id=turn_id,
             last_user_message=prompt,
-            user_confirmed_send=False,
+            user_confirmed_send=self._confirm_intent_classifier.classify(prompt or ""),
         )
 
         # Wrap the tool execution in a Task so we can cancel it with

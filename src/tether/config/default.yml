@@ -109,6 +109,16 @@ storage: {}
 # below requires no further config-loader changes.
 connectors:
   registry: {}  # connector_id -> {impl, args, enabled}
+  # Phase 2b — WhatsApp connector example. Uncomment to enable (after
+  # `pip install -e .[whatsapp]` to install neonize + phonenumbers).
+  # registry:
+  #   whatsapp:
+  #     impl: "tether.connectors.whatsapp.connector.WhatsAppConnector"
+  #     enabled: true
+  #     args:
+  #       # Optional: override data_dir for the neonize session DB.
+  #       # data_dir: "./data/connectors/whatsapp"
+  #       # uuid: "tether-wa"  # neonize client identifier
 # Phase 4.5 ships the schema (per connector spec §3.7); the SqliteInbox
 # impl lands in Phase 6.5. Connectors must clamp their InboundEvent
 # payloads to these caps before publishing.
@@ -117,3 +127,6 @@ inbox:
   retention_days: 30
   max_payload_bytes: 64000
   max_summary_chars: 512
+# Phase 2b (ADR-0019): confirm-intent classifier for *_confirm_send tools.
+intent:
+  classifier_impl: "tether.protocol.intent.regex_classifier.RegexConfirmIntentClassifier"

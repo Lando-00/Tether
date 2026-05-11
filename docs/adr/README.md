@@ -25,6 +25,8 @@ supersedes the old one.
 | [0015](./0015-single-user-outbound-send-doctrine.md) | Single-user, outbound-send + inbound-read doctrine | Accepted |
 | [0016](./0016-mlc-isolation-rule.md) | MLC isolation rule — no imports outside factory | Accepted |
 | [0017](./0017-practical-context-window-seam-c.md) | Practical context window — Seam C (deferred) | Accepted in principle |
+| [0018](./0018-whatsapp-connector-library-and-adapter.md) | WhatsApp connector — neonize backend with `WhatsAppClientAdapter` seam | Proposed |
+| [0019](./0019-confirm-intent-classifier-seam.md) | `ConfirmIntentClassifier` ABC for draft+confirm send gates | Proposed |
 
 ## Format
 
