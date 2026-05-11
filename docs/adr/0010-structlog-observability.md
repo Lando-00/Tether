@@ -87,3 +87,35 @@ and a redacted audit log:
 - `src/tether/runtime/logging.py`, `src/tether/core/log_redaction.py`
 - `src/tether/adapters/http/middleware/{request_id,redaction}.py`
 - ADR-0008 (`tool_audit` schema, `turn_timeline` view), ADR-0006 (correlation IDs on wire)
+
+
+## Implementation status (2026-05 Phase 9 P0-I)
+
+Tribunal §3 P0-19 (A9-F2, A9-F3) flagged that the OTel adapter as shipped in
+Phase 7 is **not real distributed tracing**. The structlog processor emits
+**zero-duration point spans at `*.end` time only** — it has no parent/child
+relationships, no waterfall, and the `tool.start` branch is documented in
+the module as a no-op until lifetime tracking lands. As a tracing UI source
+(Jaeger / Tempo / Honeycomb) the adapter is misleading; as a structured-log
+shipper to an OTel collector it is fine.
+
+Per Defender T2 we **gate** the adapter rather than delete it:
+
+- `observability.otel.experimental_acknowledged` (bool, default `False`)
+  is now required when `observability.otel.enabled = True`. Without the
+  ack flag, `OTelSettings` raises `ValueError` at boot via a Pydantic
+  `model_validator`. This forces operators to opt in deliberately and
+  prevents anyone from mistaking point spans for a working waterfall.
+- `install_otel_adapter()` emits a single WARNING-level
+  `otel_adapter.experimental` event whenever the adapter actually installs,
+  so the limitation is visible in the log stream even if the ack-flag
+  docstring was skipped.
+- The module docstring of `src/tether/observability/otel_adapter.py`
+  carries the same status banner at the top of the file.
+
+Real lifetime tracking — open a span on `provider.stream.start`, close it
+on `provider.stream.end`, attach tool spans as children via OTel context
+propagation through the async call stack — is scheduled as a follow-up
+**paired with P0-H Option 2** (the orchestrator span-context refactor).
+Once that lands the gate can be removed and the adapter promoted out of
+experimental status.

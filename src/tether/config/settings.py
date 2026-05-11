@@ -18,7 +18,7 @@ from pathlib import Path
 from typing import Any, Dict, List, Literal, Optional
 
 import yaml
-from pydantic import Field
+from pydantic import Field, model_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 from tether.config._strict import StrictModel
@@ -371,6 +371,36 @@ class OTelSettings(StrictModel):
             "Span sampling rate. 1.0 = sample all, 0.0 = sample none."
         ),
     )
+    experimental_acknowledged: bool = Field(
+        default=False,
+        description=(
+            "P0-I (Tribunal P0-19): the current OTel adapter emits zero-duration "
+            "point spans at *.end time only — no parent/child relationships, no "
+            "waterfall views. It is NOT suitable for tracing UIs; it IS suitable "
+            "as a structured-log shipper that happens to be wired to OTel "
+            "exporters. Set this to True to acknowledge the limitation and "
+            "enable the adapter anyway. Real lifetime tracking is a follow-up "
+            "(paired with P0-H Option 2) per Defender T2."
+        ),
+    )
+
+    @model_validator(mode="after")
+    def _require_experimental_ack(self) -> "OTelSettings":
+        """Refuse to enable the adapter without explicit experimental ack.
+
+        Tribunal §3 P0-19 (A9-F2, A9-F3): the adapter is not real tracing yet;
+        callers must opt in deliberately so they don't mistake point spans for
+        a working waterfall.
+        """
+        if self.enabled and not self.experimental_acknowledged:
+            raise ValueError(
+                "OTel adapter enabled but observability.otel.experimental_acknowledged "
+                "is False. The current adapter emits zero-duration point spans "
+                "(Tribunal P0-19) and is unsuitable for tracing UIs / waterfalls. "
+                "Set observability.otel.experimental_acknowledged=true to confirm "
+                "you understand the limitation and enable it anyway."
+            )
+        return self
 
 
 class ObservabilitySettings(StrictModel):

@@ -1,4 +1,25 @@
-"""OpenTelemetry adapter for Tether observability.
+"""OpenTelemetry adapter for Tether observability — **EXPERIMENTAL**.
+
+Status (2026-05 Phase 9 P0-I, Tribunal P0-19 / A9-F2, A9-F3):
+
+  This adapter emits **zero-duration point spans at ``*.end`` time only**.
+  There is no parent/child relationship between spans, no waterfall view,
+  and no real lifetime tracking. It is **NOT suitable** for tracing UIs
+  (Jaeger, Tempo, Honeycomb waterfalls). It **IS** suitable as a
+  structured-log shipper that happens to be wired to OTel exporters.
+
+  Real lifetime tracking — open a span on ``provider.stream.start``,
+  close it on ``provider.stream.end``, attach tool spans as children
+  via context propagation — is a follow-up scheduled with P0-H Option 2.
+  See ADR-0010 "Implementation status (2026-05 Phase 9 P0-I)".
+
+  To enable this adapter you must set both
+  ``observability.otel.enabled = true`` AND
+  ``observability.otel.experimental_acknowledged = true`` in settings.
+  Without the ack flag, Settings construction raises a validation error
+  at boot. When the adapter does install, it logs a WARNING-level
+  ``otel_adapter.experimental`` event so operators have a single
+  unmissable reminder of the limitation in their log stream.
 
 Phase 7 step 76. Synthesis §3 (observability), B3 step 10.
 
@@ -10,16 +31,12 @@ their stack.
 When ``enabled=False`` (default), this module is never imported and OTel is not a
 runtime dependency. Install with ``pip install tether[otel]`` to use.
 
-## MVP span model (Phase 7)
+## MVP span model (Phase 7) — known limitation, see top-of-file status
 
 Each ``*.end`` or ``*.error`` structlog event emitted by the orchestrator creates
 a *closed* OTel span carrying the event's attributes (including ``duration_ms``
 when present). This is a **fire-and-forget** model: no parent/child relationship
 is tracked across events because structlog processors are stateless.
-
-A future iteration can add full span-lifetime tracking (start span on
-``provider.stream.start``, close on ``provider.stream.end``) by storing the active
-span in an OTel context var and passing it through the async call stack.
 
 Known event names translated to spans:
   - ``provider.stream.end``   → span "provider.stream"
@@ -42,12 +59,15 @@ from __future__ import annotations
 
 from typing import TYPE_CHECKING, Any
 
+import structlog
+
 from tether.core.redact import redact_text
 
 if TYPE_CHECKING:
     from tether.config.settings import Settings
 
 
+_log = structlog.get_logger(__name__)
 _initialized = False
 
 # Structlog events that map to OTel spans (closed immediately — MVP model).
@@ -125,6 +145,20 @@ def install_otel_adapter(settings: "Settings") -> None:
 
     if not settings.observability.otel.enabled:
         return
+
+    # P0-I (Tribunal P0-19): single unmissable warning whenever the adapter
+    # actually installs, so operators see the limitation in their log stream
+    # even if they skipped the ack-flag docstring.
+    _log.warning(
+        "otel_adapter.experimental",
+        message=(
+            "OpenTelemetry adapter active. Current implementation emits "
+            "zero-duration point spans at *.end time only (Tribunal P0-19); "
+            "do not rely on spans for tracing UIs / parent-child waterfalls. "
+            "Real lifetime tracking is a follow-up paired with P0-H Option 2. "
+            "See ADR-0010 implementation status."
+        ),
+    )
 
     try:
         from opentelemetry import trace
