@@ -797,6 +797,35 @@ class ChattyAgentOrchestrator(OrchestratorABC):
                             size_bytes=_size,
                         )
                     logger.debug(f"Provider stream chunk: {chunk}")
+
+                    # P0-E / Tribunal §3 P0-10 (A11-F1, A1-F4): the
+                    # provider stream contract (core/interfaces.py:28)
+                    # is ``str | List[Dict[str, Any]]``. String chunks
+                    # carry text + ``<<function_call>>`` markers; list
+                    # chunks carry MLC-native ``delta.tool_calls`` deltas
+                    # (provider.py:792-795). ``SlidingParser.feed`` does
+                    # ``self.buf += chunk`` and TypeErrors on a list.
+                    # Today ``marker_only_tools=true`` suppresses the
+                    # list shape, but a single config flip would crash
+                    # the orchestrator. Dispatch the list shape directly
+                    # here, reusing the same ``_dispatch_tools`` path
+                    # the marker parser feeds into. The full
+                    # ``provider.stream_typed()`` cutover (Phase-5
+                    # step 52) is still the long-term plan.
+                    if isinstance(chunk, list):
+                        tool_call_to_run = self._native_tool_call_from_chunk(
+                            chunk
+                        )
+                        if tool_call_to_run is not None:
+                            logger.info(
+                                "Native tool_call from list-shaped chunk: "
+                                f"name={tool_call_to_run.name}, "
+                                f"id={tool_call_to_run.tool_call_id}"
+                            )
+                            break
+                        # Empty / malformed list — skip, continue stream.
+                        continue
+
                     for parser_evt in self.parser.feed(chunk):
                         logger.debug(f"Parser event: {parser_evt}")
 
@@ -898,6 +927,62 @@ class ChattyAgentOrchestrator(OrchestratorABC):
         turn_state["tool_call"] = tool_call_to_run
         turn_state["full_response_text"] = full_response_text
         turn_state["full_thinking_text"] = full_thinking_text
+
+    @staticmethod
+    def _native_tool_call_from_chunk(
+        chunk: List[Dict[str, Any]],
+    ) -> Optional[PToolCallParsed]:
+        """Adapt an MLC-native ``delta.tool_calls`` chunk to a
+        :class:`PToolCallParsed`.
+
+        P0-E / Tribunal §3 P0-10 (A11-F1, A1-F4). Only the first entry
+        is honoured — the orchestrator's loop is single-call-per-turn
+        (matches the marker-parser path which also exits the
+        provider-stream loop on the first :class:`PToolCallParsed`).
+
+        Each ``tc`` is the ``delta.tool_calls[i].model_dump()`` shape
+        produced by :mod:`tether.providers.mlc.provider` (see line 794
+        of that module): ``{"id"?, "type", "function":
+        {"name", "arguments": str | dict}}``. The ``arguments`` field
+        is a JSON string in the OpenAI-style protocol; we parse it.
+        Falls back to ``{"_raw": ...}`` on malformed JSON so the model
+        still sees something deterministic.
+
+        Returns ``None`` if ``chunk`` is empty or the first entry has
+        no resolvable name (treated as a dropped delta).
+        """
+        if not chunk:
+            return None
+        tc = chunk[0]
+        if not isinstance(tc, dict):
+            return None
+        fn = tc.get("function") if isinstance(tc.get("function"), dict) else {}
+        name = fn.get("name") or tc.get("name")
+        if not name:
+            return None
+        raw_args = fn.get("arguments")
+        if raw_args is None:
+            raw_args = tc.get("arguments", {})
+        if isinstance(raw_args, str):
+            if raw_args:
+                try:
+                    args = json.loads(raw_args)
+                except json.JSONDecodeError:
+                    args = {"_raw": raw_args}
+            else:
+                args = {}
+        elif isinstance(raw_args, dict):
+            args = raw_args
+        else:
+            args = {"_raw": raw_args}
+        if not isinstance(args, dict):
+            args = {"_raw": args}
+        tool_call_id = tc.get("id") or f"call-{uuid.uuid4().hex[:12]}"
+        return PToolCallParsed(
+            tool_call_id=str(tool_call_id),
+            name=str(name),
+            arguments=args,
+        )
 
     async def _dispatch_tools(
         self,
