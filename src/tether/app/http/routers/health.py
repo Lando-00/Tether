@@ -62,6 +62,11 @@ async def readyz(request: Request):
         ``ready`` — connectors in UNCONFIGURED / LOGGED_OUT / ERROR are an
         expected steady state until the user runs the login flow (connector
         spec §3.3).
+      - Connector start failures (P0-F / Tribunal P0-07 / A2-F2): when a
+        connector that was READY at config time raised from ``start()``
+        during ``Engine.__aenter__``, the failing id is included in the
+        ``connector_start_failures`` array and ``ready`` is set to false
+        so process supervisors can take action. The response remains 200.
 
     A streaming probe is still avoided: MLC engines may take 5–60s on cold
     cache. Health is reported by counting cached entries, not loading.
@@ -74,6 +79,14 @@ async def readyz(request: Request):
 
     connectors_block = await _connector_health_block(svc)
 
+    # P0-F / Tribunal P0-07 (A2-F2): if any connector that was READY at
+    # config time failed to start, Engine.__aenter__ will have already
+    # removed it from the registry and recorded its id here. Surface as
+    # ready=false on /readyz so process supervisors can take action.
+    connector_start_failures = list(
+        getattr(svc, "_connector_start_failures", []) or []
+    )
+
     try:
         if getattr(svc, "hw_watchdog", None) is not None:
             health = await svc.hw_watchdog.health_summary()
@@ -85,13 +98,15 @@ async def readyz(request: Request):
                     "error": "hw_health: error",
                     "hw_health": health,
                     "connectors": connectors_block,
+                    "connector_start_failures": connector_start_failures,
                 }
             return {
-                "ready": True,
+                "ready": not connector_start_failures,
                 "store": True,
                 "provider": True,
                 "hw_health": health,
                 "connectors": connectors_block,
+                "connector_start_failures": connector_start_failures,
             }
 
         models = svc.provider.list_models()
@@ -102,13 +117,15 @@ async def readyz(request: Request):
                 "provider": False,
                 "error": "no models available",
                 "connectors": connectors_block,
+                "connector_start_failures": connector_start_failures,
             }
         return {
-            "ready": True,
+            "ready": not connector_start_failures,
             "store": True,
             "provider": True,
             "models_available": len(models),
             "connectors": connectors_block,
+            "connector_start_failures": connector_start_failures,
         }
     except Exception as e:
         return {"ready": False, "store": True, "provider": False, "error": str(e)}

@@ -78,3 +78,16 @@ properties:
 - Connectors Spec: `session-state/5c8a15fc-.../plan.md` §3.1, §3.3, §3.5, §3.7, §3.8
 - `src/tether/core/connector_registry.py`, `src/tether/core/secrets.py`
 - `src/tether/adapters/http/routers/connectors.py`
+
+## Implementation status: connector start await (Phase 9 P0-F)
+
+Tribunal §3 P0-07 (A2-F2). Prior to Phase 9 P0-F, `Engine.__aenter__` scheduled `ConnectorRegistry.start_connector(cid)` for each READY-at-config-time connector with `asyncio.create_task` and returned without awaiting them. Failures were silently reaped by `aclose()`'s `gather(*tasks, return_exceptions=True)`. The first `chat()` arriving in the gap could land on a half-initialized connector.
+
+P0-F changes the contract:
+
+1. `__aenter__` now `await`s the gathered start tasks BEFORE returning control to the FastAPI lifespan.
+2. Per-failure exceptions are logged at `logger.exception` granularity with the connector id pulled from the task name (`start_connector:<cid>`).
+3. Failing connectors are removed from `ConnectorRegistry._connectors` so subsequent tool dispatch sees a deterministic `ConnectorNotConfiguredError` rather than a phantom object.
+4. `/readyz` exposes a `connector_start_failures: [cid, ...]` array and degrades `ready=false` when non-empty (response stays HTTP 200; the Tribunal P1-29 status-code posture is a separate change).
+
+The 2 s `stop_all` budget on shutdown is unaffected — start tasks are completed (success or failure) by the time `aclose()` runs, so the cancel-pending block is a no-op for the awaited path.
