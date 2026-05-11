@@ -108,8 +108,11 @@ def _minimal_settings(db_path: Path) -> Settings:
                 },
                 "session_store": {
                     "impl": "tether.context.sqlite_store.SqliteSessionStore",
-                    "args": {"dsn": dsn},
+                    "args": {},
                 },
+            },
+            "storage": {
+                "sqlite": {"dsn": dsn},
             },
             "tools": {
                 "registry": [],

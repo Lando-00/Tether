@@ -93,6 +93,20 @@
           "default": null,
           "description": "Static token. If None and enabled=True, server generates a fresh secrets.token_urlsafe(32) at startup and logs it once.",
           "title": "Token"
+        },
+        "token_file": {
+          "anyOf": [
+            {
+              "format": "path",
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "On-disk path for the persisted CSRF token (mode 0600). When None (default), resolves to ``platformdirs.user_config_dir('Tether', appauthor=False) / 'csrf_token'``. P0-B3 / ADR-0012: CLI clients read this file to bootstrap the CSRF header without scraping stderr.",
+          "title": "Token File"
         }
       },
       "title": "CSRFTokenSettings",
@@ -313,6 +327,12 @@
           "default": false,
           "description": "Enable OpenTelemetry tracing adapter. Off by default. Requires `tether[otel]` extra.",
           "title": "Enabled",
+          "type": "boolean"
+        },
+        "experimental_acknowledged": {
+          "default": false,
+          "description": "P0-I (Tribunal P0-19): the current OTel adapter emits zero-duration point spans at *.end time only — no parent/child relationships, no waterfall views. It is NOT suitable for tracing UIs; it IS suitable as a structured-log shipper that happens to be wired to OTel exporters. Set this to True to acknowledge the limitation and enable the adapter anyway. Real lifetime tracking is a follow-up (paired with P0-H Option 2) per Defender T2.",
+          "title": "Experimental Acknowledged",
           "type": "boolean"
         },
         "exporter": {
@@ -668,10 +688,10 @@
     },
     "TrustedHostSettings": {
       "additionalProperties": false,
-      "description": "``security.trusted_host:`` sub-model. Phase 7 step 79.",
+      "description": "``security.trusted_host:`` sub-model.\n\nP0-B2 (Tribunal §3 P0-04): default-on. Mitigates browser DNS-rebinding\nagainst localhost endpoints. IPv6 loopback included so ``::1`` hosts\naren't accidentally locked out.",
       "properties": {
         "allowed_hosts": {
-          "description": "Allowed Host header values. '*' matches any. Wildcards like '*.example.com' supported per Starlette TrustedHostMiddleware.",
+          "description": "Allowed Host header values. '*' matches any. Wildcards like '*.example.com' supported per Starlette TrustedHostMiddleware. Defaults include IPv6 loopback ('[::1]', '::1').",
           "items": {
             "type": "string"
           },
@@ -679,7 +699,7 @@
           "type": "array"
         },
         "enabled": {
-          "default": false,
+          "default": true,
           "description": "Enable TrustedHost middleware.",
           "title": "Enabled",
           "type": "boolean"
