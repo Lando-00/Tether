@@ -89,3 +89,17 @@ rename `local_token` → `csrf_token` per §11 R12:
 - `src/tether/adapters/http/api.py` (`create_asgi_app` middleware mount block)
 - ADR-0011 (outbound URL allowlist — complementary outbound-side defense)
 - Starlette docs: `https://www.starlette.io/middleware/` (last-added = outermost)
+
+## Implementation status (2026-05 Phase 9 P0-B3)
+
+The ADR originally described writing the generated CSRF token to `~/.tether/token` for CLI bootstrap. That file did not exist; `CSRFTokenMiddleware` only `print()`-ed the token to stderr (Tribunal §3 P1-10 / A4-F1). This blocked flipping `security.csrf_token.enabled` default-on, because no client could reliably retrieve the token.
+
+P0-B3 closes the gap:
+
+- **Path**: `platformdirs.user_config_dir('Tether', appauthor=False) / 'csrf_token'` (XDG-compliant on Linux/macOS, `%APPDATA%\Tether\csrf_token` on Windows). Overridable via `security.csrf_token.token_file` and resolved through `CSRFTokenSettings.resolved_token_file()`.
+- **Mode**: `0600` on POSIX (best-effort `os.fchmod`; on Windows the default `%APPDATA%` ACL is already user-only).
+- **Atomicity**: `tempfile.mkstemp` in the same directory → `fchmod 0600` → write → `fsync` → `os.replace` → best-effort directory `fsync`. Same recipe as `tether.core.secrets` (A5-F2). Stale `.csrf_token.*` temps are cleaned up in `finally`.
+- **Fallback**: if the on-disk write raises `OSError` (read-only FS, denied ACL), the middleware logs `csrf.token_persist_failed_falling_back_to_stderr` and prints the token to stderr as before. The token is never lost.
+- **CLI**: `tether.cli.main._read_csrf_token()` reads the same path and `_mutating_headers()` injects `X-Tether-CSRF` on every `POST/PUT/PATCH/DELETE`. When the file is absent (CSRF disabled), the header is omitted and behavior is unchanged.
+
+This un-blocks flipping `security.csrf_token.enabled` to default-on; the actual flip is deferred to a follow-up so the persistence change can bake on its own.

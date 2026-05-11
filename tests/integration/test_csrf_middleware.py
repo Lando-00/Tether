@@ -153,13 +153,41 @@ def test_generated_token_logged_without_value(caplog):
     assert "token" not in record.__dict__ or record.__dict__.get("token") is None
 
 
-def test_generated_token_printed_to_stderr(capsys):
-    """The actual token value is printed to stderr (not logged) on startup."""
-    settings = CSRFTokenSettings(enabled=True, token=None)
+def test_generated_token_persisted_to_file(tmp_path):
+    """P0-B3: the actual token value is written to a 0600 file (not stderr).
+
+    Pre-P0-B3 this was printed to stderr; ADR-0012 promised a token
+    file but didn't ship one. The persisted file is now the bootstrap
+    contract for CLI clients (see ``tests/unit/app/test_csrf_token_file.py``
+    for the atomic-write / 0o600 / no-residue regressions).
+    """
+    token_file = tmp_path / "csrf_token"
+    settings = CSRFTokenSettings(enabled=True, token=None, token_file=token_file)
     from unittest.mock import MagicMock
     mw = CSRFTokenMiddleware(app=MagicMock(), settings=settings)
+    assert token_file.exists(), "Token file must be written on startup"
+    assert token_file.read_text(encoding="utf-8").strip() == mw._token
+
+
+def test_generated_token_stderr_fallback_on_write_failure(capsys, monkeypatch):
+    """If the token-file write raises ``OSError``, fall back to stderr.
+
+    Defense in depth: an unwritable filesystem (read-only mount, denied
+    ACL) must never silently lose the token, otherwise the operator has
+    no way to recover the CSRF secret.
+    """
+    from tether.app.http import csrf_middleware as mw_mod
+
+    def _boom(path, token):
+        raise OSError("simulated read-only fs")
+
+    monkeypatch.setattr(mw_mod, "_atomic_write_token", _boom)
+
+    settings = CSRFTokenSettings(enabled=True, token=None)
+    from unittest.mock import MagicMock
+    mw = mw_mod.CSRFTokenMiddleware(app=MagicMock(), settings=settings)
     captured = capsys.readouterr()
-    assert mw._token in captured.err, "Token must appear in stderr"
+    assert mw._token in captured.err, "Token must appear in stderr fallback"
     assert "[Tether] CSRF token generated:" in captured.err
     assert "X-Tether-CSRF" in captured.err  # header name hint
 
