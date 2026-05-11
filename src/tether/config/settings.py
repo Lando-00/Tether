@@ -256,14 +256,20 @@ class CORSSettings(StrictModel):
 
 
 class TrustedHostSettings(StrictModel):
-    """``security.trusted_host:`` sub-model. Phase 7 step 79."""
+    """``security.trusted_host:`` sub-model.
 
-    enabled: bool = Field(default=False, description="Enable TrustedHost middleware.")
+    P0-B2 (Tribunal §3 P0-04): default-on. Mitigates browser DNS-rebinding
+    against localhost endpoints. IPv6 loopback included so ``::1`` hosts
+    aren't accidentally locked out.
+    """
+
+    enabled: bool = Field(default=True, description="Enable TrustedHost middleware.")
     allowed_hosts: list[str] = Field(
-        default_factory=lambda: ["localhost", "127.0.0.1"],
+        default_factory=lambda: ["localhost", "127.0.0.1", "[::1]", "::1"],
         description=(
             "Allowed Host header values. '*' matches any. Wildcards like "
-            "'*.example.com' supported per Starlette TrustedHostMiddleware."
+            "'*.example.com' supported per Starlette TrustedHostMiddleware. "
+            "Defaults include IPv6 loopback ('[::1]', '::1')."
         ),
     )
 

@@ -37,8 +37,12 @@ def _make_app(settings: TrustedHostSettings) -> FastAPI:
 # Tests
 # ---------------------------------------------------------------------------
 
-def test_default_off_any_host_passes():
-    """TrustedHost disabled by default — any Host header passes through."""
+def test_explicit_disabled_any_host_passes():
+    """TrustedHost explicitly disabled — any Host header passes through.
+
+    P0-B2 (Phase 9) flipped ``enabled`` to default-on; this test now
+    constructs ``enabled=False`` explicitly to exercise the disabled path.
+    """
     settings = TrustedHostSettings(enabled=False)
     with TestClient(_make_app(settings)) as client:
         resp = client.get("/test", headers={"Host": "evil.example.com"})
