@@ -87,3 +87,26 @@ and a redacted audit log:
 - `src/tether/runtime/logging.py`, `src/tether/core/log_redaction.py`
 - `src/tether/adapters/http/middleware/{request_id,redaction}.py`
 - ADR-0008 (`tool_audit` schema, `turn_timeline` view), ADR-0006 (correlation IDs on wire)
+
+## Implementation status (2026-05 Phase 9 P0-H)
+
+The shared module **M4** `runtime/spans.py::async_span` listed in
+`docs/architecture.md` §8 is **not implemented**. The file does not exist
+on disk; every "span" site in the current build is a bare
+`structlog.get_logger().info(name, ...)` call (see Tribunal §3 P0-18,
+A9-F1). `docs/architecture.md` §8 has been updated this phase (P0-H,
+Option 1) to mark the M4 row as **DEFERRED** rather than claim a module
+that ships nothing.
+
+The real `async_span` (context-managed start/stop with duration, error
+capture, and structured `span_id` binding) lands with the OTel adapter
+rework — tracked as **P0-I** in the Phase 9 fleet and gated behind the
+experimental observability flag introduced in a sibling branch. The
+related Tribunal **P0-19** finding (the existing OTel adapter emits
+zero-duration spans) is deferred to that same rework rather than patched
+in place, since fixing the duration without first landing the
+`async_span` helper would just move the bug.
+
+Until the rework lands, treat `async_span` references in architecture.md
+and synthesis as **design contract**, not as available API. Do not
+import `tether.runtime.spans`; it does not exist.

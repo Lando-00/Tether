@@ -3,6 +3,15 @@
 > Post-Phase-8 architecture. This is the **living map** for new contributors and AI agents.
 > Binding contract lives in `files/investigations/_synthesis.md` (session-state).
 
+### Living doc; see ADR-0010 for current observability status
+
+> **Truth-pass note (Phase 9 P0-H)**: this document is the post-Phase-8
+> architecture diagram + invariants.  Items marked **DEFERRED** (M4
+> `async_span`, Seam C `get_practical_context_window`, parts of Seam D) are
+> documented here so the seams stay visible, but they are *not* implemented
+> in the current build.  Treat them as design contracts the next phase has
+> to honour, not as features available today.  Tribunal §3 P0-18.
+
 Tether is a single-user, local-first FastAPI service that streams chat completions from
 on-device LLMs (currently MLC-LLM on Snapdragon X Elite Adreno GPU) with first-class
 function calling, persistent session history, and a connector framework for inbound-read /
@@ -332,7 +341,7 @@ These exist to dedup logic and keep the layering honest:
 | **M1** | `runtime/daemon_call.py::daemon_thread_call` | GC-disabled daemon thread for blocking native cleanup | HardwareWatchdog · MLC `_terminate_bounded` · future native-cleanup connectors |
 | **M2** | `context/_async_sqlite_base.py::AsyncSqliteStore` | aiosqlite + WAL + yoyo-migrations base | SqliteSessionStore · SqliteInbox |
 | **M3** | `runtime/task_supervisor.py::SupervisedTask` | structured-concurrency wrapper for long-running tasks | Connector drain tasks · future Gmail polling |
-| **M4** | `runtime/spans.py::async_span` | structlog span helper | tool spans · provider spans · connector spans |
+| **M4** | (deferred) | structlog span helper — **NOT IMPLEMENTED** as of 2026-05. Today every "span" site uses bare `structlog.get_logger().info(name, ...)`. Real `async_span` lifetime tracking lands with the OTel adapter rework (P0-I follow-up; ADR-0010). | n/a |
 | **M5** | `core/registry_validator.py::validate_unique_names` | uniqueness + forbidden-name + required-prefix checks at boot | ToolRegistry · ConnectorRegistry |
 | **M6** | `config/_strict.py::StrictModel` | Pydantic base with `extra='forbid'` and frozen | every Settings sub-model (~12) |
 
