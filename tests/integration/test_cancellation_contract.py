@@ -439,7 +439,7 @@ class _SlowCompleteTurnStore(MinimalMemoryStore):
 
 @pytest.mark.anyio
 async def test_complete_turn_timeout_swallowed_when_store_too_slow():
-    """If ``store.complete_turn`` exceeds ``_PARTIAL_PERSIST_TIMEOUT_SEC``,
+    """If ``store.complete_turn`` exceeds ``_AWAITER_PERSIST_BUDGET_SEC``,
     the wait_for fires, the exception is swallowed (with a structured
     ``turn.complete_timeout`` warning emitted via structlog), and the
     orchestrator still emits its terminal MessageStop within the budget.
@@ -536,7 +536,7 @@ class _AuditSlowStore(MinimalMemoryStore):
 
 @pytest.mark.anyio
 async def test_audit_tool_call_cancel_path_bounded_when_store_too_slow():
-    """If ``_audit_tool_call`` exceeds ``_PARTIAL_PERSIST_TIMEOUT_SEC`` on
+    """If ``_audit_tool_call`` exceeds ``_AWAITER_PERSIST_BUDGET_SEC`` on
     the cancel path, the wait_for fires, the TimeoutError is swallowed
     (with a ``tool_audit.cancel_path_timeout`` warning), and the
     orchestrator still emits MessageStop within the budget. FIX 3.
