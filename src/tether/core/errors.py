@@ -128,6 +128,16 @@ class ConnectorAuthError(TetherError):
     """
 
 
+class ConfigError(TetherError):
+    """A configuration-level error detected during Engine boot.
+
+    Raised when typed settings parse cleanly but their *combination* is
+    inconsistent — e.g., the legacy ``providers.session_store.args.dsn``
+    disagrees with ``storage.sqlite.dsn`` (Phase-9 P0-A: ``storage.sqlite.dsn``
+    is the single source of truth per ADR-0009).
+    """
+
+
 __all__ = [
     "TetherError",
     "FatalProviderError",
@@ -137,4 +147,5 @@ __all__ = [
     "LoopLimitReached",
     "ConnectorNotConfiguredError",
     "ConnectorAuthError",
+    "ConfigError",
 ]

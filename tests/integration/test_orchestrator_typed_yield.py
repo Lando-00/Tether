@@ -42,9 +42,10 @@ def _settings(tmp_path) -> Settings:
                 },
                 "session_store": {
                     "impl": "tether.context.sqlite_store.SqliteSessionStore",
-                    "args": {"dsn": f"sqlite:///{tmp_path}/typed.db"},
+                    "args": {},
                 },
             },
+            "storage": {"sqlite": {"dsn": f"sqlite:///{tmp_path}/typed.db"}},
             "tools": {
                 "registry": [],
                 "enabled": [],

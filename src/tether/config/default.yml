@@ -34,8 +34,7 @@ providers:
       max_tool_chars: 32768
   session_store:
     impl: "tether.context.sqlite_store.SqliteSessionStore"
-    args:
-      dsn: "sqlite:///./data/tether.db"
+    args: {}      # dsn injected from storage.sqlite.dsn (single source of truth, ADR-0009 / P0-A)
 tools:
   # Phase 4 (synthesis §4 step 42): tools may be configured two ways:
   #   1. Legacy (this section): `registry` + `enabled` lists explicitly

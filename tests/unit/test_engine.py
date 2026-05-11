@@ -28,13 +28,14 @@ def _settings_dict(tmp_db: str) -> dict:
             },
             "session_store": {
                 "impl": "tether.context.sqlite_store.SqliteSessionStore",
-                "args": {"dsn": f"sqlite:///{tmp_db}"},
+                "args": {},
             },
         },
         # Empty registry → discover path; disable every in-tree @tool so the
         # engine boots with zero tools (the assertion below pins the dict).
         # Phase 4 step 42 gave ToolsSettings the `disabled` field for exactly
         # this kind of opt-out.
+        "storage": {"sqlite": {"dsn": f"sqlite:///{tmp_db}"}},
         "tools": {
             "registry": [],
             "enabled": [],
