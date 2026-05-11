@@ -89,3 +89,22 @@ rename `local_token` → `csrf_token` per §11 R12:
 - `src/tether/adapters/http/api.py` (`create_asgi_app` middleware mount block)
 - ADR-0011 (outbound URL allowlist — complementary outbound-side defense)
 - Starlette docs: `https://www.starlette.io/middleware/` (last-added = outermost)
+
+
+## Implementation status (2026-05 Phase 9 P0-B2)
+
+Tribunal Section 3 P0-04 (A4-F4 / B3-P0-3) flipped TrustedHost to default-on:
+
+- `security.trusted_host.enabled` now defaults to `True`.
+- `allowed_hosts` defaults expanded to include IPv6 loopback:
+  `["localhost", "127.0.0.1", "[::1]", "::1"]`.
+- New `RequireJsonContentTypeMiddleware` (in
+  `src/tether/app/http/content_type_middleware.py`) rejects mutating
+  requests (POST/PUT/PATCH/DELETE) lacking `Content-Type: application/json`
+  with HTTP 415. This closes the browser CORS-simple-POST + DNS-rebinding
+  read-primitive vector: any non-JSON CT now triggers a CORS preflight,
+  and missing/text content types are rejected before reaching the handler.
+- Runtime middleware order is now:
+  `RequestId -> TrustedHost -> CORS -> RequireJsonContentType -> CSRF -> handler`.
+  TrustedHost still fires first so host-spoofing 400s short-circuit; the 415
+  check runs before CSRF so a missing CT is rejected before token validation.

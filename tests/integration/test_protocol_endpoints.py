@@ -27,7 +27,7 @@ from tether.protocol.wire.events import (
 @pytest.fixture
 def client():
     """Use the lifespan-aware client so engine startup/shutdown run."""
-    with TestClient(create_app()) as c:
+    with TestClient(create_app(), base_url="http://localhost") as c:
         yield c
 
 

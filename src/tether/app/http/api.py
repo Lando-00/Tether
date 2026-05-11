@@ -104,16 +104,23 @@ def create_app(settings: Optional[Settings] = None) -> FastAPI:
 
     # Middleware order: last-added = outermost in Starlette's execution model.
     # Desired runtime order:
-    #   RequestId (outermost overall) → TrustedHost → CORS → CSRF → handler
-    # So we add: security middlewares in REVERSE order (CSRF first / innermost,
-    # then CORS, then TrustedHost), then RequestId LAST (outermost overall).
-    # This means TrustedHost rejects bad-Host requests with 400 BEFORE CSRF/CORS
-    # run, and EVERY response — including 400 (TrustedHost), 403 (CSRF), CORS
-    # preflight, and 200 — passes back through RequestIdMiddleware and carries
-    # X-Request-ID for correlation. Phase 7 step 68 + step 79 + RD followup (FIX 1).
+    #   RequestId (outermost) → TrustedHost → CORS → RequireJsonContentType
+    #   → CSRF → handler
+    # So we add: CSRF first (innermost), then RequireJsonContentType,
+    # then CORS, then TrustedHost, then RequestId LAST (outermost overall).
+    # This means TrustedHost rejects bad-Host requests with 400 BEFORE other
+    # security middlewares run; the Content-Type 415 reject (Phase 9 P0-B2,
+    # Tribunal §3 P0-04) fires before CSRF so a missing/wrong CT never
+    # reaches the CSRF check; and EVERY response — 400 (TrustedHost),
+    # 415 (Content-Type), 403 (CSRF), CORS preflight, 200 — passes back
+    # through RequestIdMiddleware and carries X-Request-ID for correlation.
+    # Phase 7 step 68 + step 79 + RD followup (FIX 1) + Phase 9 P0-B2.
     if settings_v2.security.csrf_token.enabled:
         from tether.app.http.csrf_middleware import CSRFTokenMiddleware
         app.add_middleware(CSRFTokenMiddleware, settings=settings_v2.security.csrf_token)
+
+    from tether.app.http.content_type_middleware import RequireJsonContentTypeMiddleware
+    app.add_middleware(RequireJsonContentTypeMiddleware)
 
     if settings_v2.security.cors.enabled:
         from fastapi.middleware.cors import CORSMiddleware

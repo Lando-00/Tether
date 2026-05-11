@@ -13,7 +13,7 @@ from tether.app.http.api import create_app
 
 @pytest.fixture
 def client():
-    with TestClient(create_app()) as c:
+    with TestClient(create_app(), base_url="http://localhost") as c:
         yield c
 
 
