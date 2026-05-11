@@ -933,6 +933,33 @@
           "sessions"
         ]
       }
+    },
+    "/api/v1/tools": {
+      "get": {
+        "description": "Return the registered tools' auto-schemas, sorted by name.\n\nEach entry contains:\n  * ``name``: tool name (registry key, e.g. ``\"web_search\"``).\n  * ``description``: first paragraph of the tool's docstring.\n  * ``parameters``: JSON Schema object describing arguments.\n\nEmpty list when no tools are configured (settings.tools.registry / .enabled\nboth empty). 200 always; this route never errors on a healthy server.",
+        "operationId": "list_tools_api_v1_tools_get",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "items": {
+                    "additionalProperties": true,
+                    "type": "object"
+                  },
+                  "title": "Response List Tools Api V1 Tools Get",
+                  "type": "array"
+                }
+              }
+            },
+            "description": "Successful Response"
+          }
+        },
+        "summary": "List Tools",
+        "tags": [
+          "tools"
+        ]
+      }
     }
   }
 }
