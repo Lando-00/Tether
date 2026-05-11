@@ -478,20 +478,23 @@ async def test_engine_aclose_stops_all_connectors(tmp_path):
 
 
 @pytest.mark.anyio
-async def test_engine_aclose_cancels_pending_start_tasks(tmp_path):
-    """A still-pending ``start_connector(id)`` task is cancelled by
-    aclose BEFORE ``stop_all`` runs."""
+async def test_engine_aenter_awaits_start_tasks(tmp_path):
+    """P0-F / Tribunal P0-07 (A2-F2): ``__aenter__`` MUST await connector
+    start tasks before returning, so the first ``chat()`` cannot land on
+    a half-initialized connector. Consequently, by the time ``aclose``
+    runs the start-tasks list is already drained and the cancel-pending
+    branch is a no-op (kept as defence-in-depth).
+    """
 
     started = asyncio.Event()
-    cancelled = asyncio.Event()
+    finished = asyncio.Event()
 
     async def _slow_start() -> None:
         started.set()
-        try:
-            await asyncio.sleep(10.0)
-        except asyncio.CancelledError:
-            cancelled.set()
-            raise
+        # Brief, bounded sleep so __aenter__ can demonstrate it waits
+        # without hanging the test if the contract regresses.
+        await asyncio.sleep(0.05)
+        finished.set()
 
     start_mock = AsyncMock(side_effect=_slow_start)
     conn = _fake_connector(
@@ -511,13 +514,15 @@ async def test_engine_aclose_cancels_pending_start_tasks(tmp_path):
     )
 
     await engine.__aenter__()
-    # Wait until start() actually entered (otherwise we'd race the
-    # create_task scheduling).
-    await started.wait()
-    # Now aclose should cancel that task and proceed.
+    # __aenter__ must not return until start() finished (P0-F).
+    assert started.is_set()
+    assert finished.is_set(), (
+        "__aenter__ returned before start() completed — P0-F regression"
+    )
+    # Pending tasks list cleared by __aenter__ — aclose has nothing to cancel.
+    assert engine._connector_start_tasks == []
+
     await engine.aclose()
-    assert cancelled.is_set()
-    # Pending tasks list cleared so a re-aclose wouldn't re-cancel.
     assert engine._connector_start_tasks == []
 
 

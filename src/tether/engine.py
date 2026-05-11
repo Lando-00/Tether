@@ -160,6 +160,11 @@ class Engine:
         # tasks before invoking stop_all so we never tear down a connector
         # mid-start.
         self._connector_start_tasks: List[asyncio.Task] = []
+        # P0-F / Tribunal P0-07 (A2-F2): connectors whose start() raised
+        # during __aenter__. Exposed via /readyz so process supervisors
+        # can take action; populated by the awaited start loop in
+        # __aenter__ and consumed by app.http.routers.health.
+        self._connector_start_failures: List[str] = []
 
     @classmethod
     def from_settings(
@@ -581,6 +586,43 @@ class Engine:
                         name=f"start_connector:{conn.id}",
                     )
                     self._connector_start_tasks.append(task)
+
+            # P0-F / Tribunal P0-07 / A2-F2: await connector startup BEFORE
+            # returning control to the FastAPI lifespan. Otherwise the first
+            # chat() can arrive at a half-initialized connector. Failures are
+            # logged and the connector is removed from the registry so
+            # subsequent tool dispatch sees a deterministic
+            # ConnectorNotConfiguredError rather than a phantom object.
+            if self._connector_start_tasks:
+                results = await asyncio.gather(
+                    *self._connector_start_tasks, return_exceptions=True
+                )
+                for task, outcome in zip(self._connector_start_tasks, results):
+                    if isinstance(outcome, BaseException):
+                        task_name = task.get_name() or ""
+                        cid_from_name = (
+                            task_name.split(":", 1)[-1]
+                            if ":" in task_name
+                            else "<unknown>"
+                        )
+                        logger.exception(
+                            "connector.start_failed cid=%s error_class=%s "
+                            "error_message=%s",
+                            cid_from_name,
+                            type(outcome).__name__,
+                            str(outcome),
+                            exc_info=outcome,
+                        )
+                        self._connector_start_failures.append(cid_from_name)
+                        # Remove the failing connector so it cannot serve
+                        # traffic. ``pop(..., None)`` is a no-op if the
+                        # registry already evicted it.
+                        self.connector_registry._connectors.pop(
+                            cid_from_name, None
+                        )
+                # Tasks are no longer pending; aclose() doesn't need to
+                # cancel them.
+                self._connector_start_tasks = []
         return self
 
     async def __aexit__(self, exc_type, exc, tb) -> None:
