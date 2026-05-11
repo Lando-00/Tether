@@ -37,12 +37,20 @@ Cancellation contract (synthesis §3.5):
   1. Provider stream wrapped in ``aclosing()`` — ``async for`` exit
      triggers the generator's ``finally`` block immediately.
   2. In-flight tool task cancelled with **250 ms grace**
-     (``asyncio.wait_for(task, 0.25)``).
-  3. Partial assistant text persisted with **200 ms write timeout**
+     (``asyncio.wait_for(task, 0.25)``).  Note: this bounds the
+     AWAITER only; tasks holding native handles may still run on the
+     background loop.  P0-C / Tribunal P0-06.
+  3. Partial assistant text persisted with **200 ms awaiter budget**
      (``asyncio.wait_for(store.add_assistant_text(...), 0.20)``).
-  4. Parser ``finalize()`` called.
-  5. ONE :class:`MessageStop` with ``stop_reason='cancelled'`` emitted
-     (in v2 vocabulary, ``MessageStop`` IS the "done" event).
+     Same awaiter-only caveat: the underlying aiosqlite worker thread
+     keeps executing SQL even after ``wait_for`` times out.
+  4. Parser ``finalize()`` called from the ``finally:`` block — runs
+     on every exit path (success, cancel, exception, loop-limit
+     raise).  P0-C / Tribunal P0-05.
+  5. ONE :class:`MessageStop` with the appropriate ``stop_reason``
+     emitted (in v2 vocabulary, ``MessageStop`` IS the "done" event).
+     On the cancel path the ``MessageStop`` is yielded from the
+     ``except CancelledError`` branch BEFORE re-raise.
 
 Tool-error policy (default ``FEED_BACK_TO_MODEL``): tool errors no
 longer break the loop — a :class:`ToolResult` row with
@@ -125,8 +133,18 @@ if TYPE_CHECKING:
 
 
 # Synthesis §3.5: cancellation contract bounds.
-_TOOL_CANCEL_GRACE_SEC = 0.25  # in-flight tool task gets 250 ms after cancel
-_PARTIAL_PERSIST_TIMEOUT_SEC = 0.20  # partial-text write budget on cancel
+#
+# P0-C / Tribunal P0-06: both timeouts below bound the AWAITER (the
+# coroutine that calls ``await``), NOT the underlying worker.  For
+# ``_TOOL_CANCEL_GRACE_SEC`` a tool that holds a native handle (HTTP
+# socket, GPU buffer, file descriptor) can keep running on the
+# background loop after the awaiter gives up.  For the persist budget
+# (renamed to ``_AWAITER_PERSIST_BUDGET_SEC``), the aiosqlite worker
+# thread keeps executing SQL even after ``wait_for`` times out.  True
+# work-bounded cancellation requires a shared cancel event consulted
+# inside the store / tool implementation; see backlog fu-* items.
+_TOOL_CANCEL_GRACE_SEC = 0.25  # awaiter-only: 250 ms after cancel
+_AWAITER_PERSIST_BUDGET_SEC = 0.20  # awaiter-only: partial-text write budget
 
 
 def _redact(payload: Any, max_len: int = 120) -> str:
@@ -232,6 +250,11 @@ class ChattyAgentOrchestrator(OrchestratorABC):
             }
 
         cancelled = False
+        # P0-C / Tribunal P0-05: track whether an exception is propagating
+        # so the parser-finalize residue loop in ``finally`` knows not to
+        # yield (async generators cannot yield through a finally that's
+        # serving an exception).
+        exception_in_flight = False
         last_response_text = ""
         last_thinking_text = ""
         text_persisted = False
@@ -475,13 +498,6 @@ class ChattyAgentOrchestrator(OrchestratorABC):
                 )
                 final_stop_reason = "tool_loop_exhausted"
 
-            # Flush parser residue (text/think/parse-errors pending).
-            for parser_evt in self.parser.finalize() or []:
-                logger.debug(f"Parser finalize event: {parser_evt}")
-                wire = self._wire(parser_evt, _envelope())
-                if wire is not None:
-                    yield wire
-
         except asyncio.CancelledError:
             # Loop-level cancellation: yield ONE terminal MessageStop
             # before re-raising. Async generators cannot yield once an
@@ -510,8 +526,10 @@ class ChattyAgentOrchestrator(OrchestratorABC):
             raise
         except LoopLimitReachedError:
             # RAISE policy — propagate to caller without further wire events.
+            exception_in_flight = True
             raise
         except Exception as e:
+            exception_in_flight = True
             logger.exception(
                 f"Exception in orchestrate: session_id={session_id}, error={e}"
             )
@@ -524,6 +542,48 @@ class ChattyAgentOrchestrator(OrchestratorABC):
             if final_stop_reason is None:
                 final_stop_reason = "error"
         finally:
+            # P0-C / Tribunal P0-05 / Synthesis §3.5 cancel-contract step 4:
+            # parser.finalize() is invoked on EVERY exit path (success,
+            # cancel, exception, loop-limit raise, outer ``aclose()``).
+            # Guarded with try/except so a misbehaving parser cannot mask
+            # the original exception.
+            #
+            # We do NOT yield from the parser-finalize residue when an
+            # outer exception is already propagating — async generators
+            # cannot yield through a ``finally`` that's serving an
+            # exception (Python raises ``RuntimeError: async generator
+            # ignored GeneratorExit``).  We detect that case three ways:
+            #
+            #   * ``cancelled`` is set in the ``except CancelledError``
+            #     branch before the bare ``raise``;
+            #   * ``exception_in_flight`` is set in the
+            #     ``except LoopLimitReachedError`` / ``except Exception``
+            #     branches;
+            #   * ``sys.exc_info()`` catches the leftover case of an
+            #     un-caught exception flowing into ``finally`` —
+            #     in particular ``GeneratorExit`` from
+            #     ``aclose()`` / ``aclosing(...)``.
+            import sys as _sys
+            _active_exc_type = _sys.exc_info()[0]
+            try:
+                _residue = self.parser.finalize() or []
+            except BaseException as _fin_exc:  # noqa: BLE001
+                logger.exception(
+                    "parser.finalize_raised",
+                    error=str(_fin_exc),
+                )
+                _residue = []
+            if (
+                not cancelled
+                and not exception_in_flight
+                and _active_exc_type is None
+            ):
+                for parser_evt in _residue:
+                    logger.debug(f"Parser finalize event: {parser_evt}")
+                    wire = self._wire(parser_evt, _envelope())
+                    if wire is not None:
+                        yield wire
+
             # Cancellation contract step 2: cancel in-flight tool task
             # with 250 ms grace.
             if active_tool_task is not None and not active_tool_task.done():
@@ -578,7 +638,7 @@ class ChattyAgentOrchestrator(OrchestratorABC):
                 _final_turn_status = "cancelled"
             try:
                 # Phase 7 RD followup (FIX 5): bound complete_turn with the
-                # same _PARTIAL_PERSIST_TIMEOUT_SEC budget used for partial-text
+                # same _AWAITER_PERSIST_BUDGET_SEC budget used for partial-text
                 # persistence. The whole `finally` block runs on cancel paths,
                 # so a slow store can stall outer cancel — symmetric to the
                 # _persist_partial budget above.
@@ -588,13 +648,13 @@ class ChattyAgentOrchestrator(OrchestratorABC):
                         status=_final_turn_status,
                         stop_reason=final_stop_reason or ("cancelled" if cancelled else "complete"),
                     ),
-                    timeout=_PARTIAL_PERSIST_TIMEOUT_SEC,
+                    timeout=_AWAITER_PERSIST_BUDGET_SEC,
                 )
             except asyncio.TimeoutError:
                 logger.warning(
                     "turn.complete_timeout",
                     turn_id=turn_id,
-                    timeout_sec=_PARTIAL_PERSIST_TIMEOUT_SEC,
+                    timeout_sec=_AWAITER_PERSIST_BUDGET_SEC,
                 )
             except Exception as ct_exc:
                 logger.warning(
@@ -969,14 +1029,14 @@ class ChattyAgentOrchestrator(OrchestratorABC):
                                 error_kind="cancelled",
                                 duration_ms=int((time.monotonic() - _tool_dispatch_start) * 1000),
                             ),
-                            timeout=_PARTIAL_PERSIST_TIMEOUT_SEC,
+                            timeout=_AWAITER_PERSIST_BUDGET_SEC,
                         )
                     except asyncio.TimeoutError:
                         logger.warning(
                             "tool_audit.cancel_path_timeout",
                             tool_name=tool_name,
                             tool_call_id=tool_call_id,
-                            timeout_sec=_PARTIAL_PERSIST_TIMEOUT_SEC,
+                            timeout_sec=_AWAITER_PERSIST_BUDGET_SEC,
                         )
                     dispatch_state["cancelled"] = True
                     dispatch_state["should_break"] = True
@@ -1183,7 +1243,7 @@ class ChattyAgentOrchestrator(OrchestratorABC):
                 thinking_text=thinking_text,
                 save_thinking=self.config.save_thinking,
             ),
-            timeout=_PARTIAL_PERSIST_TIMEOUT_SEC,
+            timeout=_AWAITER_PERSIST_BUDGET_SEC,
         )
 
     def _classify_outcome(
