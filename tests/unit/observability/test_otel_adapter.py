@@ -27,11 +27,21 @@ from tether.observability.otel_adapter import (
 
 
 def _make_settings(otel_overrides: dict[str, Any] | None = None):
-    """Return a Settings instance with optional OTel overrides (via env vars)."""
+    """Return a Settings instance with optional OTel overrides (via env vars).
+
+    P0-I: when ``enabled=True`` is requested, auto-injects
+    ``experimental_acknowledged=true`` so legacy adapter tests continue to
+    exercise the adapter path without tripping the new validator.
+    """
     from tether.config.settings import load_settings
 
     if not otel_overrides:
         return load_settings(env={})
+
+    # P0-I cross-fix: every test that flips enabled=True must also ack the
+    # experimental status, otherwise OTelSettings.model_validator raises.
+    if otel_overrides.get("enabled") is True and "experimental_acknowledged" not in otel_overrides:
+        otel_overrides = {**otel_overrides, "experimental_acknowledged": True}
 
     env: dict[str, str] = {}
     for k, v in otel_overrides.items():
@@ -183,6 +193,7 @@ def test_yaml_override_settings_parsing(tmp_path: Path):
         "observability:\n"
         "  otel:\n"
         "    enabled: true\n"
+        "    experimental_acknowledged: true\n"
         "    sample_rate: 0.1\n"
         "    service_name: my-svc\n",
         encoding="utf-8",

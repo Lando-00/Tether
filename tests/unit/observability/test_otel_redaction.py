@@ -218,6 +218,7 @@ def test_otel_span_status_description_is_redacted_end_to_end():
     settings = load_settings(
         env={
             "TETHER__OBSERVABILITY__OTEL__ENABLED": "true",
+            "TETHER__OBSERVABILITY__OTEL__EXPERIMENTAL_ACKNOWLEDGED": "true",
             "TETHER__OBSERVABILITY__OTEL__EXPORTER": "console",
         }
     )
@@ -299,6 +300,7 @@ def test_otel_record_exception_message_is_redacted_end_to_end():
     settings = load_settings(
         env={
             "TETHER__OBSERVABILITY__OTEL__ENABLED": "true",
+            "TETHER__OBSERVABILITY__OTEL__EXPERIMENTAL_ACKNOWLEDGED": "true",
             "TETHER__OBSERVABILITY__OTEL__EXPORTER": "console",
         }
     )
@@ -397,6 +399,7 @@ def test_otel_span_attribute_is_redacted_end_to_end():
     settings = load_settings(
         env={
             "TETHER__OBSERVABILITY__OTEL__ENABLED": "true",
+            "TETHER__OBSERVABILITY__OTEL__EXPERIMENTAL_ACKNOWLEDGED": "true",
             "TETHER__OBSERVABILITY__OTEL__EXPORTER": "console",
         }
     )
