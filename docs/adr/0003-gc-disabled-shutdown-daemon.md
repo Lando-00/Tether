@@ -71,3 +71,33 @@ Extract all hardware-shutdown gymnastics into a **`HardwareWatchdog` runtime mod
 - `docs/runbooks/shutdown-hang-fix-summary.md`, `docs/runbooks/model-dependent-shutdown-fix.md`
 - `src/tether/runtime/hw_watchdog.py`, `src/tether/runtime/signal_supervisor.py`
 - `src/tether/providers/hw.py` (`HardwareLifecycle` Protocol)
+
+## Implementation status (2026-05 Phase 9 P0-D)
+
+Tribunal §3 P0-08 (A6-F1 + A2-F4 + B6-F11) found that
+`MLCProvider._terminate_bounded` — the inline helper used by
+`unload_model`, `shutdown_all`, and (transitively) `hw_reset` — spawned
+a daemon thread but did **NOT** disable GC. That violated the invariant
+above on the recovery path: `hw_reset` is invoked precisely when an
+MLC engine has reached a fatal-recoverable state, and the unload it
+performs to rebuild the engine could deadlock in the OpenCL/TVM
+destructor on exactly the `prefill_chunk_size <= 256` models this ADR
+exists for (Qwen2.5-7B).
+
+Resolution: the inline helper is deleted. Every `engine.terminate()`
+call site in `MLCProvider` now goes through a single thin wrapper,
+`_terminate_engine(...)`, which delegates to
+`tether.runtime.daemon_call.daemon_thread_call(engine.terminate,
+timeout=..., gc_disable=True, label=...)`. The three call sites are:
+
+- `MLCProvider.unload_model` (single-model unload)
+- `MLCProvider.unload_model_by_cache_key` (cache-key unload)
+- `MLCProvider.shutdown_all` (parallel teardown of every cached engine)
+
+`hw_reset` invokes `unload_model`, so it inherits the GC-disabled
+teardown for free. A regression test
+(`tests/unit/providers/mlc/test_hw_reset_gc_invariant.py`) asserts both
+that `daemon_thread_call` is called with `gc_disable=True` from
+`hw_reset` / `shutdown_all`, and that the inline `_terminate_bounded`
+identifier no longer appears in the provider source — preventing
+silent re-introduction of the duplicate helper (A6-F14).
