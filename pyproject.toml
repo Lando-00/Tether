@@ -56,6 +56,16 @@ tether-cli = "tether.cli._entry:main"
 [tool.hatch.build.targets.wheel]
 packages = ["src/tether", "src/tether_service"]
 
+# Force-include the DLL-search-path fix as a top-level .pth file so it lands
+# directly in site-packages/. The .pth file pre-imports `ssl` during Python's
+# site initialization, before tvm (transitively imported by mlc_llm) can
+# corrupt the DLL search path by feeding stale base-conda %PATH% entries to
+# os.add_dll_directory(). See docs/runbooks/fresh-env-setup.md
+# Troubleshooting → "import mlc_llm fails with ImportError: DLL load failed
+# while importing _ssl" and fu-fresh-env-mlc-llm-import for the full diagnosis.
+[tool.hatch.build.targets.wheel.force-include]
+"src/_tether_dll_fix.pth" = "_tether_dll_fix.pth"
+
 [tool.pytest.ini_options]
 testpaths = ["tests"]
 markers = [
