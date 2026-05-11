@@ -42,7 +42,7 @@ Replace `<envpy>` with the path printed by the bootstrap script (typically `C:\P
 & <envpy> -m pytest -q
 ```
 
-Expected: **1343 passed, 4 skipped, 49 deselected** (matches `mlc-venv2` baseline).
+Expected: **1355 passed, 3 skipped, 49 deselected** (matches `mlc-venv2` baseline within ±1).
 
 ### Docs drift gate
 
@@ -98,13 +98,43 @@ The bootstrap script does this automatically; this manual fix is for the rare ca
 
 ### Symptom: `import mlc_llm` fails with `ImportError: DLL load failed while importing _ssl`
 
-Cause: `import tvm.relax` (transitively pulled in by `mlc_llm.__init__`) loads `libtvm.dll` which alters the DLL search path in a way that prevents Python's `_ssl.pyd` from loading correctly afterwards. Reproduces with `python -c "import tvm.relax; import ssl"` even when `import ssl` alone works.
+**Root cause** — a stale base-conda `libcrypto-3-x64.dll` masks the env's own copy when TVM iterates `%PATH%`.
 
-The fresh `tether` env hits this; `mlc-venv2` does not. Both envs have identical `libtvm.dll` bytes, openssl 3.5.3, and Python 3.12.11 — but `tether` exhibits the symptom and `mlc-venv2` does not. The difference is unidentified (possibly accumulated `os.add_dll_directory()` state from earlier installs in `mlc-venv2`'s history).
+In detail:
 
-**Workarounds**:
-- For non-runtime workflows (tests that don't exercise the real MLC engine, server smoke that doesn't load a model): the Tether package still works — `import tether`, `from tether import Engine`, and 1295/1306 tests pass per the validation log. Tests that fail to collect are MLC-runtime-dependent.
-- For real chat sessions: use `mlc-venv2`. This is an env-fragility issue with the CodeLinaro `2025.06.r1` TVM wheel on certain conda-forge package combinations; fixing it likely requires either rebuilding the wheels OR pinning a specific TVM wheel + DLL search order strategy. Tracked as `fu-fresh-env-mlc-llm-import` (future work).
+1. `tvm._ffi.libinfo.get_dll_directories()` (inside the CodeLinaro TVM wheel) iterates every entry of the parent shell's `%PATH%` and feeds each one to `os.add_dll_directory()` as part of `import tvm`. This is hard-coded behaviour upstream — we cannot change it.
+2. When the parent shell has the **base conda env** on `%PATH%` (i.e. `C:\ProgramData\miniconda3\Library\bin`), TVM prepends that directory to the per-process DLL search list.
+3. The base conda env was created with conda-forge's older openssl (3.0.17 in the validation host), so `C:\ProgramData\miniconda3\Library\bin\libcrypto-3-x64.dll` is **5.3 MB** and only exports the OpenSSL 3.0 symbol set.
+4. The tether env itself ships conda-forge openssl 3.5.3 (`Library\bin\libcrypto-3-x64.dll` is **7.3 MB**), and CPython's `_ssl.pyd` is linked against the 3.5 symbol set.
+5. After `import tvm`, Windows resolves `libcrypto-3-x64.dll` (a *bare-name* dependency of `_ssl.pyd`) to the **3.0.17** copy first, then the import of `_ssl` aborts with `ImportError: DLL load failed while importing _ssl: The specified procedure could not be found.` because a 3.5-only symbol is missing.
+
+mlc-venv2 does not exhibit the bug only because at the time of validation it was the active conda env and `conda activate` puts `…\envs\mlc-venv2\Library\bin` (3.5.3 openssl) *before* the base env on `%PATH%`. As soon as the tether env is invoked via its full python path from any other shell, the precondition collapses and the bug surfaces. Both envs have **byte-identical** `libtvm.dll` and `libcrypto-3-x64.dll` files — the difference is purely DLL search ordering.
+
+**Real fix landed in this repo** — a `.pth` file pre-imports `ssl` during Python's site initialization, *before* any user code (including `import tvm`) has a chance to mutate the DLL search list. Once `_ssl.pyd` is bound to the correct `libcrypto-3-x64.dll`, Windows caches that binding for the process lifetime and every later `import ssl` (transitively via `mlc_llm → fastapi → anyio → ssl`, `openai → httpx → ssl`, etc.) reuses it.
+
+- File: [`src/_tether_dll_fix.pth`](../../src/_tether_dll_fix.pth) — single-line `import ssl` plus a long comment explaining the rationale.
+- Wired into the wheel via `[tool.hatch.build.targets.wheel.force-include]` in `pyproject.toml` so the file lands directly in `site-packages/_tether_dll_fix.pth` for both regular and editable installs.
+
+Earlier strategies that **did not** work (kept here for the next person who tries them):
+
+| Attempt | Why it failed |
+|---|---|
+| `os.add_dll_directory(<env>/Library/bin)` *before* `import tvm` | TVM's later `os.add_dll_directory()` calls prepend to the search list, so they win regardless of pre-existing entries. |
+| Prepend `<env>/Library/bin` to `%PATH%` before `import tvm` | Same — TVM iterates `%PATH%` in order but each `add_dll_directory` call moves that entry to the head; the last `add` wins. |
+| Adding a shim in `tether.providers.mlc.provider.__init__` | Runs too late — `import mlc_llm` (which is what triggers `import tvm`) has already corrupted the search path before the provider module loads. |
+
+**Verification** (run after `conda env remove -n tether; conda env create -f environment-tether.yml; .\scripts\setup_fresh_env.ps1`):
+
+```powershell
+& C:\ProgramData\miniconda3\envs\tether\python.exe -c "import mlc_llm; print('mlc_llm:', mlc_llm.__version__)"
+# Expected: mlc_llm: 0.1.dev0
+& C:\ProgramData\miniconda3\envs\tether\python.exe -m pytest -q --ignore=tests/integration/test_cancellation_contract.py
+# Expected: 1355 passed, 3 skipped, 49 deselected (matches mlc-venv2's 1354 passed within ±1).
+```
+
+Tracked as `fu-fresh-env-mlc-llm-import` — **resolved** as of this fix.
+
+Note: a second fresh-env gap surfaced during the same validation — `trio` was missing from the env, which collapsed ~60 anyio-based tests from `[asyncio,trio]` to `[asyncio]` only. `scripts/setup_fresh_env.ps1` now installs `trio` after the editable install as a stopgap; the proper pin will move to `pyproject.toml` as part of `fu-pin-fastapi-pydantic-versions`.
 
 ### Symptom: docs drift gate (`pytest -m docs`) fails on `test_openapi_no_drift`
 

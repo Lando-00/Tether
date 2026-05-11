@@ -16,13 +16,19 @@ channels:
 #
 # Or simply run scripts/setup_fresh_env.ps1 which handles all of the above.
 dependencies:
-  # Pin Python + OpenSSL to match mlc-venv2's working versions.
-  # Conda-forge's openssl 3.6.x is ABI-incompatible with the CodeLinaro
-  # 2025.06.r1 TVM wheel — TVM bundles OpenSSL 3.5.x runtime expectations
-  # and Python's _ssl.pyd fails to load DLLs after `import tvm`.
-  # Symptom: ImportError: DLL load failed while importing _ssl on
-  # `import mlc_llm` (which transitively imports tvm + fastapi + anyio + ssl).
-  # See docs/runbooks/fresh-env-setup.md "Troubleshooting" for full diagnosis.
+  # Pin Python + OpenSSL to match mlc-venv2's working versions. The CodeLinaro
+  # `2025.06.r1` TVM wheel hard-codes `os.add_dll_directory()` of every entry
+  # in %PATH% during `import tvm`, which means if the parent shell has the
+  # BASE conda env on PATH (e.g. `C:\ProgramData\miniconda3\Library\bin`) and
+  # that base env has an older `libcrypto-3-x64.dll` than this env, Windows
+  # will resolve `_ssl.pyd`'s dependency to the older copy and abort with
+  # `ImportError: DLL load failed while importing _ssl: The specified
+  # procedure could not be found.` Pinning openssl here keeps tether on the
+  # version that `_ssl.pyd` is linked against; the cross-env mismatch is
+  # mitigated separately by `src/_tether_dll_fix.pth` (pre-imports ssl at
+  # site-init time, before tvm has a chance to mutate the DLL search list).
+  # See docs/runbooks/fresh-env-setup.md "Troubleshooting" for the full
+  # diagnosis and fu-fresh-env-mlc-llm-import for the investigation history.
   - python=3.12.11
   - openssl=3.5.3
   - pip

@@ -182,6 +182,21 @@ if ($LASTEXITCODE -ne 0) {
     throw "pip install -e . failed with exit code $LASTEXITCODE"
 }
 
+# --- 5b. Extra test-only deps not yet in pyproject extras -----------------
+#
+# `trio` enables anyio's dual-backend pytest parametrization (`[asyncio]` AND
+# `[trio]`). Without it, ~60 anyio-based tests collapse to asyncio-only and
+# the suite undershoots the mlc-venv2 baseline by ~60 tests. The CodeLinaro
+# wheels do NOT require trio; it is purely a test-matrix concern. Pinning
+# trio in pyproject.toml is owned by fu-pin-fastapi-pydantic-versions; until
+# that lands, install it here so the fresh-env validation suite hits parity.
+
+Write-Stage "Extra test-only deps (trio)"
+& $envPython -m pip install trio 2>&1 | Select-Object -Last 3
+if ($LASTEXITCODE -ne 0) {
+    Write-Warning "pip install trio failed (exit $LASTEXITCODE); fresh env will run asyncio-only test parametrizations."
+}
+
 # --- 6. Smoke tests --------------------------------------------------------
 
 Write-Stage "Smoke tests"

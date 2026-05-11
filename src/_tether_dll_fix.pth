@@ -1,0 +1,27 @@
+# Pre-import ssl at Python startup so the standard library's _ssl.pyd binds
+# to the env's matching libcrypto-3-x64.dll BEFORE any other package (notably
+# TVM via mlc_llm) can corrupt the DLL search path.
+#
+# Root cause: tvm._ffi.libinfo.get_dll_directories() iterates every entry in
+# %PATH% and feeds each to os.add_dll_directory(). When a parent shell's PATH
+# contains C:\ProgramData\miniconda3\Library\bin (the BASE conda env's bin),
+# a stale libcrypto-3-x64.dll (OpenSSL 3.0.17) ends up at the head of the DLL
+# search list. The env's own libcrypto-3-x64.dll (OpenSSL 3.5.3) is then
+# masked. Python's _ssl.pyd is linked against 3.5.3 and fails to resolve
+# 3.5-only symbols against the 3.0.17 DLL — surfacing as:
+#
+#   ImportError: DLL load failed while importing _ssl:
+#               The specified procedure could not be found.
+#
+# Pre-importing ssl during site initialization (before user code runs)
+# resolves _ssl.pyd's dynamic-link against the correct libcrypto/libssl
+# immediately, while only the env's own DLL search paths are active. Windows
+# caches that binding for the process lifetime, so subsequent imports of ssl
+# (transitively through mlc_llm → fastapi → anyio → ssl, openai → httpx → ssl,
+# etc.) reuse the loaded module and remain healthy.
+#
+# A .pth file is the only mechanism that runs early enough: site.py loads
+# .pth files BEFORE any user-installed package can run, including the package
+# that ships this file. See fu-fresh-env-mlc-llm-import + ADR-0014 +
+# docs/runbooks/fresh-env-setup.md "Troubleshooting" for the full investigation.
+import ssl  # noqa: F401  # pre-load _ssl.pyd against env's matching libcrypto
