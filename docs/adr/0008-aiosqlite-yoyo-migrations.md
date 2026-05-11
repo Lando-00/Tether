@@ -2,7 +2,7 @@
 
 - **Status**: Accepted (Phase 6 of refactor)
 - **Date**: 2026-05 (Phase 6)
-- **Synthesis citation**: §3.6, §4 Phase 6 (steps 59–66)
+- **Synthesis digest**: [`../refactor/synthesis-2026-05.md`](../refactor/synthesis-2026-05.md)
 
 ## Context
 
@@ -81,7 +81,7 @@ for forward-only SQL files:
 
 ## References
 
-- `files/investigations/_synthesis.md` §3.6, §4 Phase 6, §11 R3, §11.6, §12.3 Seam B
+- Synthesis digest: [`../refactor/synthesis-2026-05.md`](../refactor/synthesis-2026-05.md)
 - `src/tether/context/sqlite_store.py`, `src/tether/context/memory_store.py`
 - `src/tether/context/migrations/00{1,2,3}_*.sql`
 - ADR-0006 (Wire v2 correlation IDs), ADR-0009 (inbox table), ADR-0010 (audit log columns)

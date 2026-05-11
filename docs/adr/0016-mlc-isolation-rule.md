@@ -2,7 +2,7 @@
 
 - **Status**: Accepted
 - **Date**: 2026-05 (refactor close)
-- **Synthesis citation**: §3.1 (composition root), §6 (engine.py factory pattern)
+- **Synthesis digest**: [`../refactor/synthesis-2026-05.md`](../refactor/synthesis-2026-05.md)
 
 ## Context
 
@@ -68,7 +68,7 @@ violation found in review MUST be treated as a bug.
 
 ## References
 
-- `_synthesis.md` §3.1 + §6
+- Synthesis digest: [`../refactor/synthesis-2026-05.md`](../refactor/synthesis-2026-05.md)
 - `src/tether/core/factory.py::load` — the sole authorised import site
 - `src/tether/core/interfaces.py` — `ModelProvider` ABC
 - ADR-0001: Library-first composition root

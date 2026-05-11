@@ -2,7 +2,7 @@
 
 - **Status**: Accepted (Phase 4 of refactor)
 - **Date**: 2026-05 (Phase 4, with `ToolExecutionContext` plumbed in Phase 0/4 per §10)
-- **Synthesis citation**: §3.2, §4 Phase 0 step 8, §4 Phase 4 (steps 40–48), §10.5
+- **Synthesis digest**: [`../refactor/synthesis-2026-05.md`](../refactor/synthesis-2026-05.md)
 
 ## Context
 
@@ -80,6 +80,6 @@ Adopt **Tool v2** with a hybrid authoring model:
 
 ## References
 
-- `files/investigations/_synthesis.md` §3.2, §4 Phase 0 step 8, §4 Phase 4, §6 bugs #4–#6, §10.5
+- Synthesis digest: [`../refactor/synthesis-2026-05.md`](../refactor/synthesis-2026-05.md)
 - `src/tether/tools/base.py`, `src/tether/tools/registry.py`
 - `src/tether/core/types.py` (`ToolExecutionContext`), `src/tether/core/capabilities.py`

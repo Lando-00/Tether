@@ -2,7 +2,7 @@
 
 - **Status**: Accepted (Phase 2 of refactor)
 - **Date**: 2026-05 (Phase 2)
-- **Synthesis citation**: §2.3, §3.1, §3.2, §4 Phase 2 step 17
+- **Synthesis digest**: [`../refactor/synthesis-2026-05.md`](../refactor/synthesis-2026-05.md)
 
 ## Context
 
@@ -66,5 +66,5 @@ Adopt **Pydantic v2 Settings** as the single typed configuration seam:
 
 ## References
 
-- `files/investigations/_synthesis.md` §2.3, §3.1, §3.2, §4 Phase 2 steps 17–19, §6 bugs #8, #10, #11, §12.6
+- Synthesis digest: [`../refactor/synthesis-2026-05.md`](../refactor/synthesis-2026-05.md)
 - `src/tether/config/settings.py`, `src/tether/config/default.yml`

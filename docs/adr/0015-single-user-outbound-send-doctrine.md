@@ -2,7 +2,7 @@
 
 - **Status**: Accepted (locked at refactor planning; ratified by 3-way RD)
 - **Date**: 2026-05
-- **Synthesis citation**: §1, §10 (connector spec integration), §13.4 forbidden features list
+- **Synthesis digest**: [`../refactor/synthesis-2026-05.md`](../refactor/synthesis-2026-05.md)
 
 ## Context
 
@@ -67,7 +67,7 @@ The system is locked to the following constraints:
 
 ## References
 
-- `_synthesis.md` §1, §10, §13.4
+- Synthesis digest: [`../refactor/synthesis-2026-05.md`](../refactor/synthesis-2026-05.md)
 - `AGENTS.md` — Operating rules
 - ADR-0004: Tool v2 `BaseTool` + `ToolExecutionContext` (defines `user_confirmed_send`)
 - ADR-0011: Outbound URL allowlist + `assert_safe_url`

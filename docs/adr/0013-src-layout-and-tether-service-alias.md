@@ -2,7 +2,7 @@
 
 - **Status**: Accepted (Phase 8 of refactor)
 - **Date**: 2026-05 (Phase 8)
-- **Synthesis citation**: §3.11, §4 Phase 8 (steps 80–82, 95), §11 R22
+- **Synthesis digest**: [`../refactor/synthesis-2026-05.md`](../refactor/synthesis-2026-05.md)
 
 ## Context
 
@@ -84,7 +84,7 @@ re-export package:
 
 ## References
 
-- `files/investigations/_synthesis.md` §3.11, §4 Phase 8 steps 80–82, 95, §11 R22, §11.6
+- Synthesis digest: [`../refactor/synthesis-2026-05.md`](../refactor/synthesis-2026-05.md)
 - `src/tether/__init__.py`, `src/tether_service/__init__.py` (alias)
 - `pyproject.toml` (hatchling, extras), `[tool.pytest.ini_options]`
 - ADR-0001 (the public surface this layout exports)

@@ -9,8 +9,8 @@
   from on-device LLMs (MLC-LLM on Snapdragon X Elite Adreno GPU) with
   function calling and persistent sessions.
 - **Architecture map**: [`docs/architecture.md`](./docs/architecture.md) — start here for the layered overview, request lifecycle, and extension seams.
-- **Binding contract**: `files/investigations/_synthesis.md` (in session-state) — the locked refactor plan; never relitigate decisions ratified there.
-- **Live execution status**: `RESUME.md` (in session-state) — current phase, in-flight todos, last completed work.
+- **Locked decisions / phase digest**: [`docs/refactor/synthesis-2026-05.md`](./docs/refactor/synthesis-2026-05.md) — invariants, deferrals, in-flight Phase-9 work; never relitigate decisions ratified there.
+- **Per-decision detail**: [`docs/adr/`](./docs/adr/) — Architecture Decision Records.
 
 ## Operating rules
 

@@ -2,7 +2,7 @@
 
 - **Status**: Accepted (Phase 7 of refactor)
 - **Date**: 2026-05 (Phase 7)
-- **Synthesis citation**: §3.7, §4 Phase 7 (steps 67–76), §11 R4
+- **Synthesis digest**: [`../refactor/synthesis-2026-05.md`](../refactor/synthesis-2026-05.md)
 
 ## Context
 
@@ -83,7 +83,7 @@ and a redacted audit log:
 
 ## References
 
-- `files/investigations/_synthesis.md` §3.7, §4 Phase 7 steps 67–76, §11 R3, R4
+- Synthesis digest: [`../refactor/synthesis-2026-05.md`](../refactor/synthesis-2026-05.md)
 - `src/tether/runtime/logging.py`, `src/tether/core/log_redaction.py`
 - `src/tether/adapters/http/middleware/{request_id,redaction}.py`
 - ADR-0008 (`tool_audit` schema, `turn_timeline` view), ADR-0006 (correlation IDs on wire)

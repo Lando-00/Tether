@@ -2,7 +2,7 @@
 
 - **Status**: Accepted (Phase 0A locked)
 - **Date**: 2026-05 (refactor close)
-- **Synthesis citation**: §1, §3.3, §6 (research notes), RESUME.md Locked decisions
+- **Synthesis digest**: [`../refactor/synthesis-2026-05.md`](../refactor/synthesis-2026-05.md)
 
 ## Context
 
@@ -58,6 +58,6 @@ Pin the runtime explicitly:
 - `environment-mlc-venv2.yml` + `environment-tether.yml`
 - `scripts/setup_fresh_env.ps1` (idempotent bootstrap)
 - `docs/runbooks/fresh-env-setup.md`
-- `_synthesis.md` §1 (deployment baseline) and §6 research notes
+- Synthesis digest: [`../refactor/synthesis-2026-05.md`](../refactor/synthesis-2026-05.md)
 - `docs/runbooks/shutdown-hang-fix-summary.md` (the GC-disable fix is r1-specific)
 - ADR-0003: GC-disabled daemon-thread shutdown for OpenCL

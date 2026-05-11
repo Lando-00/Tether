@@ -10,8 +10,9 @@ Model-Context-Protocol (MCP) architecture. No data leaves your machine.
 
 ## Status
 
-Active development — Phase 8 refactor underway. See [`RESUME.md`](./RESUME.md) for the
-current work-in-progress state and [`AGENTS.md`](./AGENTS.md) for AI-agent navigation.
+Active development. See [`docs/refactor/synthesis-2026-05.md`](./docs/refactor/synthesis-2026-05.md)
+for the current phase digest (locked decisions, open deferrals, in-flight work)
+and [`AGENTS.md`](./AGENTS.md) for AI-agent navigation.
 
 ## Quickstart
 
@@ -126,7 +127,7 @@ Request body for `/chat/stream`: `{"session_id": "...", "prompt": "..."}`.
 | Design decision records           | [`docs/adr/`](./docs/adr/)                        |
 | Operational runbooks              | [`docs/runbooks/`](./docs/runbooks/)              |
 | AI-agent navigation               | [`AGENTS.md`](./AGENTS.md)                        |
-| Current task state / resume point | [`RESUME.md`](./RESUME.md)                        |
+| Locked decisions / phase digest   | [`docs/refactor/synthesis-2026-05.md`](./docs/refactor/synthesis-2026-05.md) |
 
 ## Development
 

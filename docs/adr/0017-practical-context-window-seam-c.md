@@ -2,7 +2,7 @@
 
 - **Status**: Accepted in principle (implementation deferred — see status note below)
 - **Date**: 2026-05
-- **Synthesis citation**: §12.4
+- **Synthesis digest**: [`../refactor/synthesis-2026-05.md`](../refactor/synthesis-2026-05.md)
 
 ## Status note
 
@@ -98,7 +98,7 @@ provider.
 
 ## References
 
-- `_synthesis.md` §12.4
+- Synthesis digest: [`../refactor/synthesis-2026-05.md`](../refactor/synthesis-2026-05.md)
 - `docs/research/06_context_strategies.md`
 - `docs/architecture.md` §3 Seam C row
 - `src/tether/core/interfaces.py` — `ModelProvider` ABC (method to be added)

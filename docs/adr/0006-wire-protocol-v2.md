@@ -2,7 +2,7 @@
 
 - **Status**: Accepted (Phase 5 of refactor)
 - **Date**: 2026-05 (Phase 5)
-- **Synthesis citation**: §3.4, §4 Phase 5 (steps 49–58), §11 R1, §11 R2, §12.5
+- **Synthesis digest**: [`../refactor/synthesis-2026-05.md`](../refactor/synthesis-2026-05.md)
 
 ## Context
 
@@ -82,7 +82,7 @@ provider-owned parsers (Seam D):
 
 ## References
 
-- `files/investigations/_synthesis.md` §3.4, §4 Phase 5, §6 bug #3, §11 R1, R2, R18, §12.5
+- Synthesis digest: [`../refactor/synthesis-2026-05.md`](../refactor/synthesis-2026-05.md)
 - `src/tether/protocol/wire/events.py` (`WireEvent` discriminated union)
 - `src/tether/protocol/parsers/{events.py, sliding.py}`
 - `src/tether/providers/base.py::create_parser`

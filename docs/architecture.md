@@ -1,7 +1,7 @@
 # Tether — Architecture
 
 > Post-Phase-8 architecture. This is the **living map** for new contributors and AI agents.
-> Binding contract lives in `files/investigations/_synthesis.md` (session-state).
+> Locked decisions / phase digest: [`refactor/synthesis-2026-05.md`](./refactor/synthesis-2026-05.md).
 
 Tether is a single-user, local-first FastAPI service that streams chat completions from
 on-device LLMs (currently MLC-LLM on Snapdragon X Elite Adreno GPU) with first-class
@@ -361,9 +361,9 @@ The refactor was developed in conda env `mlc-venv2`. A fresh env `tether` exists
 
 ## 10. Pointers
 
-- **Binding plan**: `files/investigations/_synthesis.md` (session-state, ~125 KB, 13 sections).
-- **Live execution status**: `RESUME.md` (session-state).
-- **Per-todo state**: SQL `todos` table.
-- **Sub-agent prompt templates**: `.github/agents/` (`implementation.agent.md`, `code-review.agent.md`).
-- **Repository conventions**: `.github/copilot-instructions.md`.
-- **Connector contract**: synthesis §10 (integrated from a parallel planning session).
+- **Locked decisions / phase digest**: [`refactor/synthesis-2026-05.md`](./refactor/synthesis-2026-05.md) — curated successor to the prior (private) refactor-planning document.
+- **Per-decision detail**: [`adr/`](./adr/) — Architecture Decision Records.
+- **Per-todo state**: SQL `todos` table (session-local).
+- **Sub-agent prompt templates**: [`.github/agents/`](../.github/agents/) (`implementation.agent.md`, `code-review.agent.md`).
+- **Repository conventions**: [`.github/copilot-instructions.md`](../.github/copilot-instructions.md).
+- **Connector contract**: see [ADR-0005](./adr/0005-connector-registry-prefix-enforcement.md) and [ADR-0009](./adr/0009-sqlite-inbox-shared-db.md).

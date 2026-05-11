@@ -2,7 +2,7 @@
 
 - **Status**: Accepted (Phase 6.5)
 - **Date**: 2026-05 (Phase 6.5)
-- **Synthesis citation**: §10 (especially §10.8 #5), §11.6, §4 Phase 6.5 (steps 66a–66d)
+- **Synthesis digest**: [`../refactor/synthesis-2026-05.md`](../refactor/synthesis-2026-05.md)
 
 ## Context
 
@@ -97,8 +97,8 @@ Phase 6.5 landed via `refactor/p65-implement` (synthesis §4 steps 66a–66h):
 
 ## References
 
-- `files/investigations/_synthesis.md` §10 (whole), §10.8 #5, §11.6, §4 Phase 6.5
-- Connectors Spec: `session-state/5c8a15fc-.../plan.md` §3.4, §3.6
+- Synthesis digest: [`../refactor/synthesis-2026-05.md`](../refactor/synthesis-2026-05.md)
+- Connectors Spec: see ADR-0005 and ADR-0009 (the source spec was a private planning document; its decisions are ratified in those ADRs).
 - `src/tether/context/inbox_store.py` (`InboundInbox` ABC + `SqliteInbox`)
 - `src/tether/context/migrations/004_inbox.sql`
 - ADR-0005 (`ConnectorRegistry`), ADR-0008 (persistence stack)

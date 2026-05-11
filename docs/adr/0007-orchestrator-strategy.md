@@ -2,7 +2,7 @@
 
 - **Status**: Accepted (Phase 5 of refactor)
 - **Date**: 2026-05 (Phase 5)
-- **Synthesis citation**: §3.5, §12.3 (Seam B), §4 Phase 5 (steps 56–58 + §12.7 new todos)
+- **Synthesis digest**: [`../refactor/synthesis-2026-05.md`](../refactor/synthesis-2026-05.md)
 
 ## Context
 
@@ -87,7 +87,7 @@ strategy and a stub `NotebookOrchestrator` reserved for research mode:
 
 ## References
 
-- `files/investigations/_synthesis.md` §3.5, §4 Phase 5, §11 R7, R13, §12.3, §12.7
+- Synthesis digest: [`../refactor/synthesis-2026-05.md`](../refactor/synthesis-2026-05.md)
 - `docs/research/06_context_strategies.md` (Notebook context strategy)
 - `src/tether/core/interfaces.py::Orchestrator`
 - `src/tether/protocol/orchestration/{chatty.py, notebook.py}`

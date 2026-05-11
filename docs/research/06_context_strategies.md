@@ -84,9 +84,9 @@ through tool use plus the Notebook compression.
 ## Why this matters for Tether specifically
 
 Look at the current orchestration shape in
-[`tether_service/protocol/orchestration/orchestrator.py`](../../tether_service/protocol/orchestration/orchestrator.py)
+[`src/tether/protocol/orchestration/orchestrator.py`](../../src/tether/protocol/orchestration/orchestrator.py)
 and the history-handling in
-[`tether_service/context/sqlite_store.py`](../../tether_service/context/sqlite_store.py):
+[`src/tether/context/sqlite_store.py`](../../src/tether/context/sqlite_store.py):
 
 - Each tool-call loop iteration adds the tool *result* to history as
   a `tool_result` message, then sends the full history to the model
