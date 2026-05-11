@@ -16,9 +16,12 @@ from __future__ import annotations
 
 import hmac
 import logging
+import os
 import secrets
 import sys
-from typing import TYPE_CHECKING, Callable, Optional
+import tempfile
+from pathlib import Path
+from typing import TYPE_CHECKING, Callable
 
 from starlette.middleware.base import BaseHTTPMiddleware
 from starlette.requests import Request
@@ -30,6 +33,46 @@ if TYPE_CHECKING:
 logger = logging.getLogger(__name__)
 
 _SAFE_METHODS = frozenset({"GET", "HEAD", "OPTIONS"})
+
+
+def _atomic_write_token(path: Path, token: str) -> None:
+    """Atomically write *token* to *path* with mode 0600.
+
+    Recipe: open-with-mode (mkstemp in same dir) → fchmod 0600 → write →
+    fsync → os.replace → best-effort directory fsync. Matches the A5-F2
+    pattern in ``tether.core.secrets``. POSIX file-mode bits and dir
+    fsync are best-effort: on Windows they no-op, which is acceptable
+    because Windows ACLs default to user-only on ``%APPDATA%``.
+    """
+    path.parent.mkdir(parents=True, exist_ok=True)
+    fd, tmp_path = tempfile.mkstemp(prefix=".csrf_token.", dir=str(path.parent))
+    try:
+        try:
+            os.fchmod(fd, 0o600)
+        except (AttributeError, NotImplementedError, OSError):
+            pass
+        with os.fdopen(fd, "w", encoding="utf-8") as f:
+            f.write(token)
+            f.flush()
+            try:
+                os.fsync(f.fileno())
+            except OSError:
+                pass
+        os.replace(tmp_path, path)
+        try:
+            dfd = os.open(str(path.parent), os.O_RDONLY)
+            try:
+                os.fsync(dfd)
+            finally:
+                os.close(dfd)
+        except (OSError, AttributeError):
+            pass
+    finally:
+        if Path(tmp_path).exists():
+            try:
+                Path(tmp_path).unlink()
+            except OSError:
+                pass
 
 
 class CSRFTokenMiddleware(BaseHTTPMiddleware):
@@ -44,24 +87,37 @@ class CSRFTokenMiddleware(BaseHTTPMiddleware):
         else:
             self._token = secrets.token_urlsafe(32)
             self._token_source = "generated"
-            # Log existence (not the value) for ops auditing.  The token
-            # itself must not reach log files — it's a long-lived secret and
-            # the JSON log is append-only.  Print to stderr instead; stderr
-            # is not captured by the file handlers in core/logging.py.
-            logger.info(
-                "csrf.token_generated",
-                extra={
-                    "source": "secrets.token_urlsafe(32)",
-                    "token_chars": len(self._token),
-                },
-            )
-            print(
-                f"\n[Tether] CSRF token generated: {self._token}\n"
-                f"[Tether] Pass it as the {settings.header_name!r} header"
-                " on POST/PUT/PATCH/DELETE requests.\n",
-                file=sys.stderr,
-                flush=True,
-            )
+            # P0-B3 / Tribunal P1-10 / ADR-0012: persist the generated CSRF
+            # token to a 0600 file so CLI clients can read it
+            # deterministically. Stderr fallback retained for unwritable
+            # filesystems — never lose the token.
+            token_path = self._cfg.resolved_token_file()
+            try:
+                _atomic_write_token(token_path, self._token)
+                logger.info(
+                    "csrf.token_generated",
+                    extra={
+                        "source": "secrets.token_urlsafe(32)",
+                        "token_chars": len(self._token),
+                        "path": str(token_path),
+                    },
+                )
+            except OSError as exc:
+                logger.warning(
+                    "csrf.token_persist_failed_falling_back_to_stderr",
+                    extra={
+                        "path": str(token_path),
+                        "error": str(exc),
+                    },
+                )
+                print(
+                    f"\n[Tether] CSRF token generated: {self._token}\n"
+                    f"[Tether] Token-file write failed ({exc}); pass it as "
+                    f"the {settings.header_name!r} header on "
+                    f"POST/PUT/PATCH/DELETE.\n",
+                    file=sys.stderr,
+                    flush=True,
+                )
 
         self._exempt = {p.rstrip("/") for p in settings.exempt_paths}
 

@@ -2,6 +2,7 @@
 A modern CLI for interacting with the Tether service.
 """
 import json
+from pathlib import Path
 from typing import Optional
 
 import requests
@@ -22,6 +23,40 @@ from rich.live import Live
 # without a flag, useful for development).
 import os as _os
 API_BASE_URL = _os.environ.get("TETHER_API_URL", "http://127.0.0.1:8080/api/v1")
+
+# CSRF header name must match Settings.security.csrf_token.header_name.
+_CSRF_HEADER = "X-Tether-CSRF"
+
+
+def _read_csrf_token() -> Optional[str]:
+    """Read the persisted CSRF token from platformdirs, if present.
+
+    P0-B3 / ADR-0012: the server writes its generated CSRF token to
+    ``platformdirs.user_config_dir('Tether', appauthor=False)/csrf_token``
+    at mode 0600. CLI clients read the same path to bootstrap the
+    ``X-Tether-CSRF`` header without scraping stderr. Returns ``None`` if
+    the file is absent (CSRF disabled) or unreadable.
+    """
+    try:
+        import platformdirs
+    except ImportError:
+        return None
+    path = Path(platformdirs.user_config_dir("Tether", appauthor=False)) / "csrf_token"
+    try:
+        token = path.read_text(encoding="utf-8").strip()
+    except (FileNotFoundError, OSError):
+        return None
+    return token or None
+
+
+def _mutating_headers(extra: Optional[dict] = None) -> dict:
+    """Return headers for state-changing requests, injecting CSRF if known."""
+    headers: dict = dict(extra) if extra else {}
+    token = _read_csrf_token()
+    if token is not None and _CSRF_HEADER not in headers:
+        headers[_CSRF_HEADER] = token
+    return headers
+
 
 
 # --- Rich Console Initialization ---
@@ -97,7 +132,7 @@ def get_sessions() -> list:
 def create_session() -> Optional[str]:
     """Creates a new session and returns its ID."""
     try:
-        response = requests.post(f"{API_BASE_URL}/sessions")
+        response = requests.post(f"{API_BASE_URL}/sessions", headers=_mutating_headers())
         response.raise_for_status()
         session_id = response.json().get("session_id")
         console.print(f"✅ New session created: [yellow]{session_id}[/yellow]")
@@ -109,7 +144,7 @@ def create_session() -> Optional[str]:
 def delete_session(session_id: str):
     """Deletes a specific session."""
     try:
-        response = requests.delete(f"{API_BASE_URL}/sessions/{session_id}")
+        response = requests.delete(f"{API_BASE_URL}/sessions/{session_id}", headers=_mutating_headers())
         response.raise_for_status()
         console.print(f"✅ {response.json().get('detail', 'Session deleted.')}")
     except requests.RequestException as e:
@@ -118,7 +153,7 @@ def delete_session(session_id: str):
 def delete_all_sessions():
     """Deletes all sessions on the server."""
     try:
-        response = requests.delete(f"{API_BASE_URL}/sessions")
+        response = requests.delete(f"{API_BASE_URL}/sessions", headers=_mutating_headers())
         response.raise_for_status()
         console.print(f"✅ {response.json().get('detail', 'All sessions deleted.')}")
     except requests.RequestException as e:
@@ -146,7 +181,7 @@ def unload_all_models():
     model_to_specify = available_models[0]
 
     try:
-        response = requests.post(f"{API_BASE_URL}/models/{model_to_specify}/unload")
+        response = requests.post(f"{API_BASE_URL}/models/{model_to_specify}/unload", headers=_mutating_headers())
         response.raise_for_status()
         console.print(f"✅ {response.json().get('detail', 'Unload command sent successfully.')}")
     except requests.RequestException as e:
@@ -456,9 +491,9 @@ def main(
                     "prompt": user_prompt,
                     "model_name": model_name,
                 },
-                headers={
+                headers=_mutating_headers({
                     "Accept": "application/x-ndjson; version=1.0",
-                },
+                }),
                 stream=True,
             ) as response:
                 response.raise_for_status()

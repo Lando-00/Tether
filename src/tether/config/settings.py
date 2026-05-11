@@ -234,6 +234,33 @@ class CSRFTokenSettings(StrictModel):
             "endpoints). GET requests are also exempt regardless of path."
         ),
     )
+    token_file: Optional[Path] = Field(
+        default=None,
+        description=(
+            "On-disk path for the persisted CSRF token (mode 0600). When "
+            "None (default), resolves to "
+            "``platformdirs.user_config_dir('Tether', appauthor=False) / "
+            "'csrf_token'``. P0-B3 / ADR-0012: CLI clients read this file "
+            "to bootstrap the CSRF header without scraping stderr."
+        ),
+    )
+
+    def resolved_token_file(self) -> Path:
+        """Return the effective token-file path (configured or defaulted).
+
+        Defaults to ``platformdirs.user_config_dir('Tether',
+        appauthor=False)/csrf_token``. Cross-platform: on Windows
+        ``%APPDATA%\\Tether``; on Linux/macOS XDG-compliant.
+
+        ``platformdirs`` is lazy-imported here to preserve the
+        library-first invariant: ``import tether`` must not trigger it.
+        """
+        if self.token_file is not None:
+            return Path(self.token_file)
+
+        import platformdirs
+
+        return Path(platformdirs.user_config_dir("Tether", appauthor=False)) / "csrf_token"
 
 
 class CORSSettings(StrictModel):
