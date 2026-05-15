@@ -52,8 +52,20 @@ def _read_csrf_token() -> Optional[str]:
 
 
 def _mutating_headers(extra: Optional[dict] = None) -> dict:
-    """Return headers for state-changing requests, injecting CSRF if known."""
-    headers: dict = dict(extra) if extra else {}
+    """Return headers for state-changing requests.
+
+    Always sets ``Content-Type: application/json`` so calls land cleanly
+    past the Phase-9 P0-B2 ``RequireJsonContentTypeMiddleware`` even when
+    the request has no body (``POST /sessions``, ``DELETE /sessions/{id}``,
+    ``POST /connectors/{id}/login/begin``, etc.). Callers passing ``json=``
+    to ``requests`` get the same header for free, but no-body mutating
+    calls need it explicitly. Per-call ``extra`` wins so callers can
+    override (e.g. the chat stream uses ``Accept: application/x-ndjson``).
+    Also injects the CSRF token if one is configured.
+    """
+    headers: dict = {"Content-Type": "application/json"}
+    if extra:
+        headers.update(extra)
     token = _read_csrf_token()
     if token is not None and _CSRF_HEADER not in headers:
         headers[_CSRF_HEADER] = token
@@ -139,9 +151,14 @@ def _render_http_error(exc: requests.HTTPError, action: str) -> None:
 
     status = getattr(response, "status_code", "unknown")
     detail = _response_error_detail(response)
+    # Show the actual request URL (sub-route + query) rather than the
+    # base ``API_BASE_URL`` — the base alone is uninformative when a
+    # specific endpoint 4xx's. Falls back to ``API_BASE_URL`` if the
+    # ``requests`` response object lacks a ``url`` (legacy / mock).
+    request_url = getattr(response, "url", None) or API_BASE_URL
     panel_body = (
         f"[bold red]Could not {action}.[/bold red]\n\n"
-        f"[bold]URL:[/bold] {API_BASE_URL}\n"
+        f"[bold]URL:[/bold] {request_url}\n"
         f"[bold]Status:[/bold] {status}\n"
         f"[bold]Detail:[/bold] {detail}"
     )
