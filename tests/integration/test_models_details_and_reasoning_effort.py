@@ -178,6 +178,13 @@ def test_models_details_default_provider_has_no_reasoning():
         assert info["supports_reasoning_effort"] is False
         assert info["reasoning_efforts"] is None
         assert info["is_default"] is False
+        # Phase 2.B (ADR-0021): provider_id field must always be present.
+        # The ABC default emits "_unwrapped_" sentinel; Engine wraps with the
+        # registry key post-merge. Here we just verify the field exists and
+        # is a non-empty string (bare provider, no Engine wrap → sentinel).
+        assert "provider_id" in info
+        assert isinstance(info["provider_id"], str)
+        assert len(info["provider_id"]) > 0
 
 
 def test_models_details_reasoning_provider_advertises_efforts():

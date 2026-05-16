@@ -92,15 +92,36 @@ class StreamRequest(BaseModel):
         # authoritative whitelist is enforced via ModelDetails below.
         pattern=r"^[A-Za-z0-9._-]{1,32}$",
     )
+    provider_id: Optional[str] = Field(
+        default=None,
+        description=(
+            "Optional provider routing key. When omitted, the server uses "
+            "providers.default_model_provider. Unknown values return 422; "
+            "known-but-unhealthy values return 503."
+        ),
+        # Same alphabet as model_name; provider ids are config-controlled
+        # and never user-typed at runtime, but keep the validator tight.
+        pattern=r"^[A-Za-z0-9._-]{1,64}$",
+    )
 
 
-def _validate_reasoning_effort(engine, model_name: str, reasoning_effort: str) -> None:
+def _validate_reasoning_effort(
+    engine,
+    model_name: str,
+    reasoning_effort: str,
+    provider_id: Optional[str] = None,
+) -> None:
     """Reject unsupported ``reasoning_effort`` values BEFORE streaming starts.
 
     Reads the engine's :class:`ModelDetails` list and confirms (a) the
     chosen model exists, (b) the model advertises reasoning support, and
     (c) the requested value is in its ``reasoning_efforts`` whitelist.
     Raises :class:`HTTPException` 422 otherwise.
+
+    When ``provider_id`` is supplied (Phase 2.B / ADR-0021), only
+    ``ModelDetails`` rows whose ``provider_id`` matches are considered so
+    that the same model name hosted on two providers with different
+    reasoning support doesn't cause a false 422.
 
     Called only when ``reasoning_effort`` is non-``None`` so the legacy
     request shape pays no extra cost.
@@ -118,12 +139,18 @@ def _validate_reasoning_effort(engine, model_name: str, reasoning_effort: str) -
     for info in details:
         if info.id != model_name:
             continue
+        # When a provider_id scope is active, skip rows from other providers.
+        # Allow "_unwrapped_" sentinel through so pre-Phase-2.A providers
+        # (which don't know their registry key) still participate in validation.
+        if provider_id is not None and info.provider_id not in ("_unwrapped_", provider_id):
+            continue
         if not info.supports_reasoning_effort:
             raise HTTPException(
                 status_code=422,
                 detail=(
-                    f"Model '{model_name}' does not support reasoning_effort; "
-                    "omit the field or pick a model with "
+                    f"Model '{model_name}' does not support reasoning_effort"
+                    + (f" on provider '{provider_id}'" if provider_id else "")
+                    + "; omit the field or pick a model with "
                     "supports_reasoning_effort=true in /models/details."
                 ),
             )
@@ -184,18 +211,48 @@ async def stream(request: Request, body: StreamRequest):
         f"/chat/stream called: session_id={body.session_id}, "
         f"model_name={body.model_name}, mode={body.mode}, "
         f"sse={use_sse}, ndjson_v0_legacy={use_ndjson_v0_legacy}, "
-        f"reasoning_effort={body.reasoning_effort}"
+        f"reasoning_effort={body.reasoning_effort}, "
+        f"provider_id={body.provider_id}"
     )
 
     engine = request.app.state.gen_svc
     headers = {"X-Tether-Protocol-Version": "1.0"}
+
+    # --- Provider routing (ADR-0021 Phase 2.B) ---
+    # Resolve the effective provider_id. Phase 2.A guarantees
+    # engine.default_provider_id; on pre-2.A engines (tests) fall back to
+    # None so the provider check below is skipped gracefully.
+    pid: Optional[str] = body.provider_id or getattr(engine, "default_provider_id", None)
+
+    # Validate provider availability BEFORE streaming begins.
+    # engine.providers and engine._provider_start_failures are guaranteed by
+    # Phase 2.A. On pre-2.A engines these attrs are absent and the guard
+    # below skips the check, preserving all existing test behaviour.
+    _providers = getattr(engine, "providers", None)
+    if pid is not None and _providers is not None:
+        if pid not in _providers:
+            _failures = getattr(engine, "_provider_start_failures", {})
+            if pid in _failures:
+                raise HTTPException(
+                    status_code=503,
+                    detail=f"Provider '{pid}' unhealthy: {_failures[pid]}",
+                )
+            raise HTTPException(
+                status_code=422,
+                detail=f"Unknown provider_id '{pid}'.",
+            )
+
+    # Forwarded into engine.chat / engine.stream when non-None (Phase 2.A
+    # adds the kwarg; pre-2.A engines don't accept it so we omit it entirely
+    # by using a conditional dict splice below to preserve backward compat).
+    _provider_kwarg: dict = {"provider_id": pid} if pid is not None else {}
 
     # Validate reasoning_effort against the chosen model's metadata BEFORE
     # we begin streaming. Skipped when reasoning_effort is None so the
     # legacy request shape never pays the provider-introspection cost
     # (e.g. MLC filesystem scan).
     if body.reasoning_effort is not None:
-        _validate_reasoning_effort(engine, body.model_name, body.reasoning_effort)
+        _validate_reasoning_effort(engine, body.model_name, body.reasoning_effort, provider_id=pid)
 
     # Eagerly resolve the Orchestrator class to return 501 before streaming
     # begins if the mode is a stub (is_implemented=False). Pydantic's Literal
@@ -242,6 +299,7 @@ async def stream(request: Request, body: StreamRequest):
                         mode=body.mode,
                         cancel_token=cancel_token,
                         reasoning_effort=body.reasoning_effort,
+                        **_provider_kwarg,
                     ):
                         if await request.is_disconnected():
                             logger.info(
@@ -305,6 +363,7 @@ async def stream(request: Request, body: StreamRequest):
                     mode=body.mode,
                     cancel_event=cancel_event,
                     reasoning_effort=body.reasoning_effort,
+                    **_provider_kwarg,
                 ):
                     if await request.is_disconnected():
                         logger.info(
@@ -362,6 +421,7 @@ async def stream(request: Request, body: StreamRequest):
                     mode=body.mode,
                     cancel_token=cancel_token,
                     reasoning_effort=body.reasoning_effort,
+                    **_provider_kwarg,
                 ):
                     if await request.is_disconnected():
                         logger.info(
