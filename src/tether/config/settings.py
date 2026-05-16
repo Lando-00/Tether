@@ -13,6 +13,7 @@ Citations:
 from __future__ import annotations
 
 import os
+import warnings
 from importlib import resources
 from pathlib import Path
 from typing import Any, Dict, List, Literal, Optional
@@ -22,6 +23,7 @@ from pydantic import Field, model_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 from tether.config._strict import StrictModel
+from tether.core.errors import ConfigError
 
 # ---------------------------------------------------------------------------
 # Sub-models
@@ -49,11 +51,76 @@ class ProviderSpec(StrictModel):
 
 
 class ProvidersSettings(StrictModel):
-    """``providers:`` section — model / parser / session_store implementations."""
+    """``providers:`` section — multi-provider registry + parser/store.
 
-    model: ProviderSpec
+    Two shapes are accepted on load:
+
+      (NEW)    model_registry: { id: ProviderSpec, ... }
+               default_model_provider: str
+      (LEGACY) model: ProviderSpec
+               -> synthesised into model_registry={"default": <spec>} with
+                  default_model_provider="default". DeprecationWarning logged.
+
+    Setting BOTH 'model' and 'model_registry' raises ConfigError.
+    """
+
+    # Legacy singular — kept for one release cycle. Validator below
+    # promotes it into model_registry. Default None so absence is legal.
+    model: Optional[ProviderSpec] = None
+
+    # New multi-provider registry. Key = provider_id (stable, config-set).
+    model_registry: Dict[str, ProviderSpec] = Field(default_factory=dict)
+
+    # Server-wide default provider_id. Required once the validator has
+    # finished promoting legacy 'model' into the registry. MUST be a key
+    # of the resolved registry.
+    default_model_provider: Optional[str] = None
+
     parser: ProviderSpec
     session_store: ProviderSpec
+
+    @model_validator(mode="after")
+    def _promote_legacy_and_validate(self) -> "ProvidersSettings":
+        # 1. Reject ambiguous config.
+        if self.model is not None and self.model_registry:
+            raise ConfigError(
+                "providers.model (singular, deprecated) and "
+                "providers.model_registry are mutually exclusive. "
+                "Remove providers.model."
+            )
+        # 2. Promote legacy form. object.__setattr__ used because the
+        #    model is frozen.
+        if self.model is not None and not self.model_registry:
+            warnings.warn(
+                "providers.model is deprecated; use providers.model_registry "
+                "with default_model_provider. Will be removed in the next "
+                "release. (ADR-0021)",
+                DeprecationWarning,
+                stacklevel=2,
+            )
+            object.__setattr__(self, "model_registry", {"default": self.model})
+            if self.default_model_provider is None:
+                object.__setattr__(self, "default_model_provider", "default")
+        # 3. Reject empty registry.
+        if not self.model_registry:
+            raise ConfigError(
+                "providers.model_registry is empty (and providers.model "
+                "is unset). At least one provider is required."
+            )
+        # 4. Resolve default_model_provider.
+        if self.default_model_provider is None:
+            raise ConfigError(
+                "providers.default_model_provider is required when "
+                "providers.model_registry is set."
+            )
+        if self.default_model_provider not in self.model_registry:
+            raise ConfigError(
+                f"providers.default_model_provider="
+                f"{self.default_model_provider!r} is not a key of "
+                f"providers.model_registry "
+                f"(known ids: {sorted(self.model_registry)})."
+            )
+        return self
 
 
 class ToolSpec(StrictModel):
