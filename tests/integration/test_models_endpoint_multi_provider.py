@@ -16,7 +16,6 @@ from __future__ import annotations
 from typing import Any, AsyncGenerator, Dict, List, Optional
 from unittest.mock import AsyncMock
 
-import pytest
 from fastapi import APIRouter, FastAPI
 from fastapi.testclient import TestClient
 
@@ -28,7 +27,6 @@ from tether.core.interfaces import ModelProvider
 from tether.engine import Engine
 from tether.protocol.parsers.sliding import SlidingParser
 from tether.providers.types import ModelDetails
-
 
 # ---------------------------------------------------------------------------
 # Fake providers

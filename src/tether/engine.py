@@ -548,16 +548,15 @@ class Engine:
         HTTP boundary validates the value against the chosen model's
         :class:`ModelDetails` before this is reached.
         """
-        from tether.protocol.orchestration.registry import (
-            resolve_orchestrator_class,
-        )
-
         # ADR-0021 P2.A: resolve provider routing FIRST so unknown /
         # unhealthy ids surface as typed errors before any orchestrator
         # work. HTTP layer (Phase 2.B) maps these to 422 / 503.
         from tether.core.errors import (
             ProviderUnhealthyError,
             UnknownProviderError,
+        )
+        from tether.protocol.orchestration.registry import (
+            resolve_orchestrator_class,
         )
 
         pid = provider_id or self.default_provider_id
@@ -1057,6 +1056,7 @@ class Engine:
         # MagicMock-style fake whose ``aclose()`` returns a non-awaitable
         # is tolerated (test paths use MagicMock providers).
         import inspect as _inspect
+
         from tether.providers.hw import HardwareLifecycle as _HwLC
         non_hw_providers = [
             p for p in self.providers.values()

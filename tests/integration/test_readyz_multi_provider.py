@@ -15,7 +15,6 @@ from __future__ import annotations
 
 from typing import Any, AsyncGenerator, Dict, List, Optional
 
-import pytest
 from fastapi import APIRouter, FastAPI
 from fastapi.testclient import TestClient
 

@@ -27,7 +27,6 @@ from tether.core.errors import (
     ProviderUnhealthyError,
     UnknownProviderError,
 )
-from tether.providers.dummy.provider import DummyProvider
 
 
 # Module-level marker so factory.load can instantiate it via dotted path.

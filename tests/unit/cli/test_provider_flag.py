@@ -5,7 +5,6 @@ ADR-0021 Phase 2.C — CLI disambiguation.
 from __future__ import annotations
 
 import io
-from typing import Optional
 from unittest.mock import Mock
 
 import pytest
@@ -15,7 +14,6 @@ from rich.table import Table
 from typer.testing import CliRunner
 
 from tether.cli import main as cli_main
-
 
 # ---------------------------------------------------------------------------
 # Shared helpers

@@ -19,10 +19,9 @@ adds it at the HTTP boundary. Tests here verify the HTTP layer only.
 from __future__ import annotations
 
 from datetime import datetime, timezone
-from typing import Any, AsyncGenerator, Dict, List, Optional
+from typing import Dict, List, Optional
 from unittest.mock import AsyncMock
 
-import pytest
 from fastapi import APIRouter, FastAPI
 from fastapi.testclient import TestClient
 
@@ -32,7 +31,6 @@ from tether.app.http.routers.health import router as health_router
 from tether.app.http.routers.models import router as models_router
 from tether.core.interfaces import ModelProvider
 from tether.providers.types import ModelDetails
-
 
 # ---------------------------------------------------------------------------
 # Fake engine — records provider_id kwarg from HTTP layer

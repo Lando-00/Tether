@@ -216,7 +216,11 @@ class ModelProvider(ABC):
         return [
             ModelDetails(
                 id=name,
-                provider_id="_unwrapped_",  # Engine wraps with the registry key; sentinel for direct provider-level use.
+                # Sentinel: Engine wraps each provider's list_model_info()
+                # output via model_copy(update={"provider_id": pid}) before
+                # serving it. Rows reaching clients with this sentinel
+                # bypassed the engine wrap (e.g. direct provider tests).
+                provider_id="_unwrapped_",
                 provider_kind=kind,
                 source=source,  # type: ignore[arg-type]
                 context_window=self.get_context_window(name),

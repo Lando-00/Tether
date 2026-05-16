@@ -5,9 +5,8 @@ import warnings
 
 import pytest
 
-from tether.config.settings import ProvidersSettings, ProviderSpec
+from tether.config.settings import ProviderSpec, ProvidersSettings
 from tether.core.errors import ConfigError
-
 
 _PARSER = {"impl": "x.P", "args": {}}
 _STORE = {"impl": "x.S", "args": {}}
