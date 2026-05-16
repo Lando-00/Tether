@@ -216,6 +216,7 @@ class ModelProvider(ABC):
         return [
             ModelDetails(
                 id=name,
+                provider_id="_unwrapped_",  # Engine wraps with the registry key; sentinel for direct provider-level use.
                 provider_kind=kind,
                 source=source,  # type: ignore[arg-type]
                 context_window=self.get_context_window(name),
