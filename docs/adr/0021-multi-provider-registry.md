@@ -1,6 +1,6 @@
 # ADR-0021: Multi-provider registry (per-request routing, degraded-mode lifecycle)
 
-- **Status**: Proposed
+- **Status**: Accepted
 - **Date**: 2026-06 (Phase 12, multi-provider rollout)
 - **Supersedes (partially)**: ADR-0001 §"single `provider` on Engine"
 - **Related**: ADR-0007 (strategy registry pattern — orchestrators), ADR-0016
@@ -125,3 +125,32 @@ client has asked for.
 ## Lifecycle semantics
 
 `Engine.from_settings` (degraded-mode pseudocode):
+
+---
+
+## Implementation notes
+
+Implemented across commits `8e57a32` through `6cc2e25` on
+`feature/copilot-sdk-provider` (Phase 12):
+
+- **`8e57a32`** — `feat(config)`: `ProvidersSettings` multi-provider registry with
+  back-compat alias (P1.2)
+- **`8437297`** — `feat(types)`: `ModelDetails.provider_id` with sentinel default
+- **`22b0ea7`** — `merge: mp-2a-engine` — `Engine` multi-provider dict,
+  `from_settings` degraded-mode startup, `HardwareWatchdog` multi-provider list,
+  `/readyz` per-provider health block (P2.A)
+- **`ee9e672`** — `merge: mp-2b-http` — `provider_id` routing on `/chat/stream`,
+  merged `/models` + `/models/details` across providers (P2.B)
+- **`ce43cea`** — `merge: mp-2c-cli` — `--provider / -P` flag, `\providers` slash
+  command, `\models` `provider_id` column, ambiguous-model fallback (P2.C)
+- **`6cc2e25`** — `fix(adr-0021)`: addressed 1 BLOCKING + 2 HIGH + 3 MEDIUM
+  findings from the parallel rubber-duck + code-review pass. The BLOCKING fix
+  tightened `Engine.__init__` validation so an unhealthy `default_provider_id`
+  can no longer reach the legacy `self.provider` shim and crash; the two HIGH
+  fixes corrected the CLI `\models` switch (dropping a new `provider_id` when
+  only the provider changed) and the `/readyz` `provider` bool (which was
+  forced False in the hw-error branch, lying about registry health); the three
+  MEDIUM fixes patched `/readyz` error-path response completeness (additive
+  schema contract), CLI reasoning-effort capability lookup (now
+  `(id, provider_id)`-scoped), and 503 detail message redaction (was leaking
+  raw exception text that could contain paths or tokens).

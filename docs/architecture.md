@@ -184,14 +184,31 @@ implementation; adding a second impl is a config change + one new class.
 
 | Seam | Where | What | Status |
 |---|---|---|---|
-| **A — ModelProvider** | `providers/types.py::ModelProvider` | Swap inference backend. Default: `MLCProvider`. Future: `NexaProvider` (NPU), `OllamaProvider` (reserved). | ✅ ABC live; MLC impl + Nexa stub |
+| **A — ModelProvider** | `providers/types.py::ModelProvider` | Swap inference backend. Default: `MLCProvider`. Phase 12 adds `CopilotProvider` (remote SDK). Future: `NexaProvider` (NPU), `OllamaProvider` (reserved). | ✅ ABC live; MLC + Copilot impls; Nexa stub |
 | **B — Orchestrator strategy** | `protocol/orchestration/types.py::Orchestrator` | Swap conversation policy. Default: `ChattyAgentOrchestrator` (ReAct-style chatty loop). Future: Ralph Loop / Notebook of Atomic Facts (small-context strategy). Selected via `mode` field on `StreamRequest` + per-session state. | ✅ ABC live; one impl |
 | **C — Practical context window** | `providers/types.py::get_practical_context_window(model_name, ram_budget_gb)` | Per-provider RAM-aware effective context. Used to clamp history before send. | ❌ DEFERRED — synthesis §12.4 work; ABC method not yet on ModelProvider; tracked as a follow-up. |
 | **D — Per-provider parser** | `protocol/parsers/types.py::Parser` | Per-provider tool-call detection. MLC: `<<function_call>>` marker (`SlidingParser`). Future: provider-native function-call schemas (Ollama JSON mode, NexaSDK OpenAI-compat). System prompt lives under `providers.<id>.args.system_prompt` so parsers and prompts ship together. | ⚠️ Partial — per-turn factory wired in orchestrator; `Provider.create_parser()` ABC method NOT yet on ModelProvider. `system.prompt` still globally bound (synthesis §12.5 #2 requires moving to providers.mlc.args.system_prompt). Tracked as a follow-up. |
 
----
+### 3a. Multi-provider registry (ADR-0021, Phase 12)
 
-## 4. Connector framework (Phase 4.5; foundation for WhatsApp/Gmail)
+As of Phase 12, `Engine` holds `providers: Dict[str, ModelProvider]` instead of a
+single `provider`. `Engine.from_settings` iterates `settings.providers.model_registry`,
+constructs each entry via `factory.load`, and captures per-id failures in
+`engine._provider_start_failures` — so a broken MLC wheel or missing GPU never
+prevents the Copilot provider (or any other healthy provider) from starting. The
+engine is healthy as long as at least one provider is up.
+
+Per-request routing: `StreamRequest.provider_id` (optional) selects which provider
+handles a turn. Omitting it falls back to `settings.providers.default_model_provider`.
+Unknown ids → 422; known-but-unhealthy → 503. `/readyz` gains a `providers` block
+reporting per-id health, kind, source, and any construction error. `/models/details`
+merges `ModelDetails` across healthy providers, with `provider_id` set by `Engine`
+via `info.model_copy(update={"provider_id": pid})`. The legacy `engine.provider`
+shim (points to the default provider) stays for one release cycle.
+
+See [ADR-0021](./adr/0021-multi-provider-registry.md) and
+[docs/runbooks/copilot-sdk-provider.md](./runbooks/copilot-sdk-provider.md) for
+the full contract and operator YAML.
 
 Connectors are first-class extensions for personal-data integrations. They appear to the
 model as **regular tools** (with mandatory `{connector_id}_` prefix) but additionally

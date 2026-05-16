@@ -33,6 +33,25 @@ providers:
       # use_function_calling conv template are combined. Flip to false
       # only for diagnostic comparison against the native path.
       marker_only_tools: true
+
+  # NEW (ADR-0021, Phase 12): multi-provider registry. Uncomment this block
+  # to expose multiple providers from one server. When you use this shape,
+  # you MUST remove the `model:` block above (the two are mutually exclusive —
+  # setting both raises ConfigError). See docs/runbooks/copilot-sdk-provider.md.
+  #
+  # model_registry:
+  #   mlc-local:
+  #     impl: "tether.providers.mlc.provider.MLCProvider"
+  #     args:
+  #       device: "auto"
+  #       max_tokens: 1024
+  #       marker_only_tools: true
+  #   copilot-gpt5:
+  #     impl: "tether.providers.copilot.provider.CopilotProvider"
+  #     args:
+  #       model: "gpt-5"
+  #       reasoning_efforts: ["minimal", "low", "medium", "high"]
+  # default_model_provider: "mlc-local"
   parser:
     impl: "tether.protocol.parsers.sliding.SlidingParser"
     args:

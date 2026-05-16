@@ -30,6 +30,7 @@
 ## Conventions enforced by tests/lint
 
 - All settings are typed Pydantic `StrictModel` (extra=forbid, frozen).
+- Provider config uses `providers.model_registry` (dict of `ProviderSpec` + `default_model_provider`) as of ADR-0021 (Phase 12); `providers.model` (singular) is the one-cycle deprecation alias.
 - All tools subclass `BaseTool` and use `@tool(name=...)` from `tether.tools.registration`.
 - All connectors subclass `Connector` (ABC) and tools they expose carry the
   mandatory `{connector_id}_` prefix.
