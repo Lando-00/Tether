@@ -40,6 +40,7 @@ brave = []     # httpx is in core; reserved for future Brave-specific dependenci
 ollama = []    # Reserved for future provider support; no implementation in this refactor.
 mlc = []       # Qualcomm CodeLinaro Adreno wheels are installed separately; see environment.yml.
 nexa = []      # Reserved for future Snapdragon NPU provider support.
+copilot = ["github-copilot-sdk>=0.1.0,<0.2.0"]  # Public-preview GitHub Copilot SDK provider.
 sqlcipher = [] # Reserved for optional encrypted SQLite support.
 # Phase 2b (ADR-0018): WhatsApp connector via neonize (Python on whatsmeow Go).
 # Pin neonize EXACTLY — .post0 releases are DLL-only bumps; minor-version moves
