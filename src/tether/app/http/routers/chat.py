@@ -70,7 +70,10 @@ class StreamRequest(BaseModel):
         default="chat",
         description=(
             "Orchestrator mode. 'chat' uses ChattyAgentOrchestrator; "
-            "'research' uses NotebookOrchestrator (currently 501 Not Implemented). "
+            "'research' uses NotebookOrchestrator (Hanov 5-phase Plan→"
+            "Search→Extract→Refine→Synthesize loop; see ADR-0020). "
+            "Research mode is opt-in: it must be registered in "
+            "orchestrator.registry and requires 'web_search' in tools.enabled. "
             "Honored on both Accept: text/event-stream (SSE) and "
             "application/x-ndjson (NDJSON back-compat) responses."
         ),

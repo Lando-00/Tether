@@ -151,7 +151,12 @@ class Engine:
         self._closed = False
         self._orchestrator_registry: Dict[str, str] = orchestrator_registry or {
             "chat": "tether.protocol.orchestration.chatty.ChattyAgentOrchestrator",
-            "research": "tether.protocol.orchestration.notebook.NotebookOrchestrator",
+            # Wave 4 reconcile R-F3: research mode is opt-in. Direct Engine()
+            # constructors that want research must pass orchestrator_registry
+            # explicitly. The from_settings path threads it from default.yml
+            # (also opt-in, commented by default). Avoids test/prod divergence
+            # where direct-construct silently activated research without the
+            # web_search boot validation that lives in from_settings.
         }
         self._orchestrator_default_mode = orchestrator_default_mode
         # ADR-0020 R3: research-mode-specific settings, threaded into the
@@ -345,6 +350,21 @@ class Engine:
                     "orchestrator.research requires tools.enabled to include "
                     "'web_search'; either add it to tools.enabled or remove "
                     "the 'research' orchestrator registration. (ADR-0020 §D6)"
+                )
+            # Wave 4 reconcile R-F1 (GPT-5.5 final review HIGH): also verify
+            # the tool is actually CONSTRUCTED in the tools dict. tools.enabled
+            # is config intent; the tools dict is reality. A registry entry can
+            # fail import (ToolRegistry.from_settings skips silently) and the
+            # gate above misses it. NotebookOrchestrator's silent-skip on
+            # tool errors (R23) would then degrade to empty-notebook
+            # responses with no visible signal.
+            if "web_search" not in tools:
+                raise ConfigError(
+                    "orchestrator.research requires 'web_search' in the "
+                    "constructed tool registry, but it could not be loaded. "
+                    "Verify tools.registry includes a working 'web_search' "
+                    "entry and its impl class imports successfully. "
+                    "(ADR-0020 §D6, Wave 4 R-F1)"
                 )
 
             research = settings.orchestrator.research

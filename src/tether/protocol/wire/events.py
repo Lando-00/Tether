@@ -168,8 +168,8 @@ class HwReset(_Base):
 # Phase 9 (ADR-0020): research-mode wire events. All four are emitted
 # BEFORE :class:`MessageStart`. They inherit :class:`_Base`, so they
 # carry the same envelope (``session_id``, ``turn_id``, ``seq``, ``ts``,
-# ``protocol_version``) as the existing v2 events. Sourced verbatim from
-# ``files/investigations/rs-D-events.md`` §1.3.
+# ``protocol_version``) as the existing v2 events. See ADR-0020 Appendix B
+# for the authoritative event-schema spec.
 
 
 class NotebookPhaseStart(_Base):
@@ -195,15 +195,23 @@ class NotebookPhaseStart(_Base):
         Notebook is considered complete; LLM will now synthesize the final
         answer. Followed immediately by ``MessageStart``.
 
-    ``iteration`` is 0-indexed loop counter. It is 0 for ``plan`` and
-    ``synthesize`` (which happen exactly once), and matches the dequeue
-    ordinal for ``explore``/``extract``/``refine``.
+    ``iteration`` is the loop iteration counter. It is ``0`` for the
+    one-shot ``plan`` and ``synthesize`` phases. For ``explore``/``extract``/
+    ``refine`` it is ``1``-indexed (i.e., the first dequeued sub-query
+    yields ``iteration=1``) — matches the impl's increment-before-yield
+    pattern in ``notebook.py`` (Wave 4 reconcile R-F2). Pydantic accepts
+    ``ge=0`` to cover both shapes.
     """
 
     type: Literal["notebook_phase_start"] = "notebook_phase_start"
     phase: Literal["plan", "explore", "extract", "refine", "synthesize"]
     iteration: int = Field(
-        default=0, ge=0, description="0-indexed loop iteration counter"
+        default=0,
+        ge=0,
+        description=(
+            "Loop iteration counter. 0 for one-shot plan/synthesize; "
+            "1-indexed for explore/extract/refine (Wave 4 R-F2)."
+        ),
     )
 
 

@@ -38,13 +38,21 @@ from tether.providers.dummy.provider import DummyProvider
 
 def _build_test_app() -> FastAPI:
     """Minimal FastAPI app with DummyProvider engine (same pattern as
-    test_chat_content_negotiation)."""
+    test_chat_content_negotiation).
+
+    Wave 4 R-F3: pass orchestrator_registry explicitly since the Engine.__init__
+    fallback no longer includes "research" by default (production parity).
+    """
     engine = Engine(
         provider=DummyProvider(),
         parser=SlidingParser(),
         session_store=AsyncMock(),
         tools={},
         system_prompt="You are a helpful assistant.",
+        orchestrator_registry={
+            "chat": "tether.protocol.orchestration.chatty.ChattyAgentOrchestrator",
+            "research": "tether.protocol.orchestration.notebook.NotebookOrchestrator",
+        },
     )
 
     app = FastAPI(lifespan=lifespan)
