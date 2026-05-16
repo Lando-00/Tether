@@ -308,6 +308,68 @@ def _model_details_for(model_name: str) -> Optional[dict]:
     return None
 
 
+# Sentinel value returned by /models/details for pre-registry servers that do
+# not have a provider registry.  When every row carries this value the
+# per-provider "Provider" column is not shown (ADR-0021 Phase 2.B).
+_PROVIDER_ID_SENTINEL = "_unwrapped_"
+
+
+def get_provider_health() -> tuple[Optional[dict], Optional[str]]:
+    """Return ({pid: {healthy, kind, source, error}}, default_provider_id)
+    from /readyz, or (None, None) on connection error.
+
+    Phase 2.A adds the ``providers:`` block + ``default_provider_id`` to
+    /readyz; older servers return None for both so the slash command can
+    render a degraded fallback.
+    """
+    try:
+        response = requests.get(f"{API_BASE_URL}/readyz", timeout=5)
+        response.raise_for_status()
+        data = response.json()
+        if not isinstance(data, dict):
+            return None, None
+        providers = data.get("providers")
+        default_pid = data.get("default_provider_id")
+        if not isinstance(providers, dict):
+            return None, None
+        return providers, default_pid
+    except requests.RequestException:
+        return None, None
+
+
+def get_providers_table() -> Optional[Table]:
+    """Build the Rich Table for the ``\\providers`` slash command.
+
+    Returns ``None`` when the server lacks the multi-provider block (older
+    server) so the caller can render a degraded fallback message instead.
+    """
+    providers, default_pid = get_provider_health()
+    if providers is None:
+        return None
+
+    table = Table(title="Registered Providers", border_style="cyan")
+    table.add_column("id", style="bold")
+    table.add_column("kind")
+    table.add_column("source")
+    table.add_column("default", justify="center")
+    table.add_column("health")
+    table.add_column("error", style="dim")
+
+    for pid, info in providers.items():
+        is_default = pid == default_pid
+        healthy = info.get("healthy", False)
+        table.add_row(
+            pid,
+            info.get("kind", "—"),
+            info.get("source", "—"),
+            "✓" if is_default else "",
+            "[green]healthy[/green]" if healthy else "[red]DOWN[/red]",
+            info.get("error") or "",
+        )
+
+    return table
+
+
 def get_available_tools() -> list:
     """Fetches the list of registered tools (name/description/parameters).
 
@@ -517,80 +579,223 @@ def manage_sessions() -> tuple[Optional[str], str]:
         return None, "manage"
 
 
-def select_model(model_name: Optional[str]) -> str:
-    """Guides the user to select a model if one isn't provided.
+def _interactive_model_select(
+    rows: list,
+    *,
+    title: str = "Available Models",
+) -> tuple[str, Optional[str]]:
+    """Render a Rich table of *rows* from ``/models/details`` and prompt.
 
-    When ``GET /models/details`` is available, render provider / context /
-    capability columns. Falls back to plain names if the metadata endpoint
-    isn't reachable (e.g. older server).
+    Returns ``(model_id, provider_id_or_None)``.
+
+    Default-row markers:
+      ★ — globally-default model (``is_default=True`` AND
+          ``provider_id == default_provider_id`` from /readyz).
+      ☆ — provider-local default only (``is_default=True`` under a
+          non-global-default provider).
     """
-    if model_name:
-        # The new API just returns a list of strings, so we just check for existence
-        models = get_available_models()
-        if model_name in models:
-            return model_name
-        console.print(f"[bold red]Error:[/bold red] Model '{model_name}' not found.")
-        raise typer.Exit(1)
+    # Show provider_id column only when the registry is active — i.e. any
+    # row carries a non-sentinel value.  Single-provider legacy servers send
+    # _PROVIDER_ID_SENTINEL for every row, so the column is suppressed there.
+    show_provider_col = any(
+        r.get("provider_id") and r.get("provider_id") != _PROVIDER_ID_SENTINEL
+        for r in rows
+    )
 
-    console.print("🔍 Searching for available models...")
-    available_models = get_available_models()
-    if not available_models:
-        console.print("[bold red]Error:[/bold red] No models found.")
-        console.print("Please make sure your compiled models are correctly placed and the service is running.")
-        raise typer.Exit(1)
+    # Sort by (provider_id, id) so each provider's models group together.
+    sorted_rows = sorted(
+        rows,
+        key=lambda r: (r.get("provider_id") or "", r.get("id") or ""),
+    )
 
-    details = get_available_model_details()
-    details_by_id = {d["id"]: d for d in details if isinstance(d, dict) and "id" in d}
+    # Fetch default_provider_id for the global-default marker (★ vs ☆).
+    _, default_pid = get_provider_health()
 
-    if details_by_id:
-        models_table = Table(title="Available Models", border_style="cyan")
-        models_table.add_column("#", style="bold cyan", justify="right")
-        models_table.add_column("Model", style="bold")
-        models_table.add_column("Provider")
-        models_table.add_column("Source")
-        models_table.add_column("Ctx", justify="right")
-        models_table.add_column("Reasoning")
-        models_table.add_column("Default", justify="center")
-        for i, name in enumerate(available_models):
-            info = details_by_id.get(name, {})
-            reasoning = (
-                ",".join(info.get("reasoning_efforts") or [])
-                if info.get("supports_reasoning_effort")
-                else "—"
-            )
-            ctx = info.get("context_window")
-            ctx_str = f"{ctx:,}" if isinstance(ctx, int) else "—"
-            models_table.add_row(
-                str(i + 1),
-                name,
-                info.get("provider_kind", "—"),
-                info.get("source", "—"),
-                ctx_str,
-                reasoning,
-                "★" if info.get("is_default") else "",
-            )
-        console.print(models_table)
-    else:
-        console.print("\nAvailable Models:")
-        for i, name in enumerate(available_models):
-            console.print(f"  [bold cyan][{i+1}][/bold cyan] {name}")
+    models_table = Table(title=title, border_style="cyan")
+    models_table.add_column("#", style="bold cyan", justify="right")
+    models_table.add_column("Model", style="bold")
+    models_table.add_column("Provider")
+    models_table.add_column("Source")
+    models_table.add_column("Ctx", justify="right")
+    models_table.add_column("Reasoning")
+    models_table.add_column("Default", justify="center")
+
+    for i, info in enumerate(sorted_rows):
+        reasoning = (
+            ",".join(info.get("reasoning_efforts") or [])
+            if info.get("supports_reasoning_effort")
+            else "—"
+        )
+        ctx = info.get("context_window")
+        ctx_str = f"{ctx:,}" if isinstance(ctx, int) else "—"
+
+        pid = info.get("provider_id")
+        if pid == _PROVIDER_ID_SENTINEL:
+            pid = None
+
+        is_default = info.get("is_default", False)
+        if is_default:
+            # ★ = server-wide default; ☆ = default within a non-primary provider.
+            default_marker = "★" if (default_pid is None or pid == default_pid) else "☆"
+        else:
+            default_marker = ""
+
+        # Provider column: show provider_id when registry is active,
+        # otherwise fall back to provider_kind (single-provider legacy).
+        provider_cell = (pid or "—") if show_provider_col else info.get("provider_kind", "—")
+
+        models_table.add_row(
+            str(i + 1),
+            info.get("id", "?"),
+            provider_cell,
+            info.get("source", "—"),
+            ctx_str,
+            reasoning,
+            default_marker,
+        )
+
+    console.print(models_table)
 
     while True:
         try:
             choice_str = Prompt.ask(
                 "\nPlease enter the number of the model you want to use",
-                default="1"
+                default="1",
+            )
+            if not choice_str.strip():
+                choice_str = "1"
+            choice = int(choice_str)
+            if 1 <= choice <= len(sorted_rows):
+                selected = sorted_rows[choice - 1]
+                sel_id = selected.get("id", "")
+                sel_pid = selected.get("provider_id")
+                if sel_pid == _PROVIDER_ID_SENTINEL:
+                    sel_pid = None
+                return sel_id, sel_pid
+            console.print(
+                f"[red]Invalid choice. Please enter a number between "
+                f"1 and {len(sorted_rows)}.[/red]"
+            )
+        except ValueError:
+            console.print("[red]Invalid input. Please enter a number.[/red]")
+
+
+def select_model(
+    model_name: Optional[str],
+    provider: Optional[str] = None,
+) -> tuple[str, Optional[str]]:
+    """Validate or interactively select a model; return ``(model_id, provider_id)``.
+
+    When *model_name* is given:
+
+    - Exactly one ``/models/details`` row matches → return its id and
+      provider_id (``None`` when the sentinel ``_unwrapped_`` is present).
+    - Multiple rows share the same id (ambiguous; multi-provider):
+      - *provider* is supplied → filter to the matching row.
+      - *provider* is absent → drop into the interactive selector
+        pre-filtered to those rows so the user can pick a provider.
+    - No details row matches → fall back to the legacy ``/models`` plain
+      list.  If also absent, print an error and exit.
+
+    When *model_name* is ``None``, open the interactive selector over all
+    available models (using ``/models/details`` when possible, otherwise
+    the legacy plain list).
+
+    Returns ``(model_id, provider_id_or_None)``.
+    """
+    details = get_available_model_details()
+
+    if model_name:
+        if not details:
+            # /models/details unavailable; fall back to legacy /models list.
+            models = get_available_models()
+            if model_name in models:
+                return model_name, None
+            console.print(f"[bold red]Error:[/bold red] Model '{model_name}' not found.")
+            raise typer.Exit(1)
+
+        matching_rows = [
+            d for d in details
+            if isinstance(d, dict) and d.get("id") == model_name
+        ]
+
+        if len(matching_rows) == 0:
+            console.print(f"[bold red]Error:[/bold red] Model '{model_name}' not found.")
+            raise typer.Exit(1)
+
+        if len(matching_rows) == 1:
+            pid = matching_rows[0].get("provider_id")
+            if pid == _PROVIDER_ID_SENTINEL:
+                pid = None
+            return model_name, pid
+
+        # Multiple rows share the same model id across different providers.
+        if provider is not None:
+            filtered = [r for r in matching_rows if r.get("provider_id") == provider]
+            if len(filtered) == 1:
+                pid = filtered[0].get("provider_id")
+                if pid == _PROVIDER_ID_SENTINEL:
+                    pid = None
+                return model_name, pid
+            if len(filtered) == 0:
+                console.print(
+                    f"[bold red]Error:[/bold red] Model '{model_name}' not found "
+                    f"under provider '{provider}'."
+                )
+                raise typer.Exit(1)
+            # len > 1 is a server configuration error.
+            console.print(
+                f"[bold red]Error:[/bold red] Multiple entries for model "
+                f"'{model_name}' under provider '{provider}'. "
+                "Check server configuration."
+            )
+            raise typer.Exit(1)
+
+        # No --provider given; drop into selector pre-filtered to the
+        # ambiguous rows so the user can pick which provider to use.
+        console.print(
+            f"[yellow]Model '{model_name}' is ambiguous across providers; "
+            "pick a provider:[/yellow]"
+        )
+        return _interactive_model_select(
+            matching_rows,
+            title=f"Providers for model '{model_name}'",
+        )
+
+    # No model_name given: open the interactive selector over all models.
+    console.print("🔍 Searching for available models...")
+    if details:
+        return _interactive_model_select(details)
+
+    # Legacy fallback: /models/details unavailable.
+    available_models = get_available_models()
+    if not available_models:
+        console.print("[bold red]Error:[/bold red] No models found.")
+        console.print(
+            "Please make sure your compiled models are correctly placed "
+            "and the service is running."
+        )
+        raise typer.Exit(1)
+
+    console.print("\nAvailable Models:")
+    for i, name in enumerate(available_models):
+        console.print(f"  [bold cyan][{i+1}][/bold cyan] {name}")
+
+    while True:
+        try:
+            choice_str = Prompt.ask(
+                "\nPlease enter the number of the model you want to use",
+                default="1",
             )
             if not choice_str.strip():
                 choice_str = "1"
             choice = int(choice_str)
             if 1 <= choice <= len(available_models):
-                return available_models[choice - 1]
-            else:
-                console.print(
-                    "[red]Invalid choice. Please enter a number between "
-                    f"1 and {len(available_models)}.[/red]"
-                )
+                return available_models[choice - 1], None
+            console.print(
+                "[red]Invalid choice. Please enter a number between "
+                f"1 and {len(available_models)}.[/red]"
+            )
         except ValueError:
             console.print("[red]Invalid input. Please enter a number.[/red]")
 
@@ -681,6 +886,16 @@ def cli(
             "Server returns 422 if the model does not support the value."
         ),
     ),
+    provider: Optional[str] = typer.Option(
+        None,
+        "--provider",
+        "-P",
+        help=(
+            "Provider id to route the request to. When omitted, the server "
+            "uses its configured default. Use `\\providers` in the REPL to "
+            "see available ids and health."
+        ),
+    ),
 ):
     """Run chat by default, or choose a subcommand."""
     global API_BASE_URL
@@ -692,6 +907,7 @@ def cli(
             debug=debug,
             show_thinking=show_thinking,
             reasoning_effort=reasoning_effort,
+            provider=provider,
         )
 
 
@@ -872,6 +1088,16 @@ def main(
             "the model does not advertise support."
         ),
     ),
+    provider: Optional[str] = typer.Option(
+        None,
+        "--provider",
+        "-P",
+        help=(
+            "Provider id to route the request to. When omitted, the server "
+            "uses its configured default. Use `\\providers` in the REPL to "
+            "see available ids and health."
+        ),
+    ),
 ):
     """
     Main entry point for the Tether CLI.
@@ -889,7 +1115,7 @@ def main(
     ))
 
     model_name_arg = model_name
-    model_name = select_model(model_name_arg)
+    model_name, provider_id = select_model(model_name_arg, provider)
 
     # Sanity-check the startup --reasoning-effort against the chosen
     # model. We don't error here — the server is the authoritative gate —
@@ -971,6 +1197,10 @@ def main(
     )
     info_table.add_row(
         "",
+        "Type [bold cyan]\\providers[/bold cyan] to list providers"
+    )
+    info_table.add_row(
+        "",
         "Type [bold cyan]\\exit[/bold cyan] or [bold cyan]\\quit[/bold cyan] to end"
     )
     if reasoning_effort is not None:
@@ -978,6 +1208,13 @@ def main(
             f"Reasoning effort: [bold green]{reasoning_effort}[/bold green]",
             "",
         )
+    provider_display = (
+        f"[bold green]{provider_id}[/bold green]" if provider_id else "[dim]default[/dim]"
+    )
+    info_table.add_row(
+        f"Provider: {provider_display}",
+        "",
+    )
     console.print(Panel(info_table, title="Chat Info", border_style="dim"))
 
 
@@ -1002,6 +1239,7 @@ def main(
                     debug=debug,
                     show_thinking=show_thinking,
                     reasoning_effort=reasoning_effort,
+                    provider=provider_id,
                 )
                 break # Exit current chat loop to prevent it from continuing after menu
             if stripped_prompt == "\\thinking":
@@ -1030,13 +1268,14 @@ def main(
                 console.rule()
                 continue
             if stripped_prompt == "\\models":
-                new_model = select_model(None)
+                new_model, new_pid = select_model(None)
                 if new_model and new_model != model_name:
                     console.print(
                         f"🔄 Switching from [yellow]{model_name}[/yellow] "
                         f"to [bold green]{new_model}[/bold green]"
                     )
                     model_name = new_model
+                    provider_id = new_pid
                     # Clear stale reasoning_effort if the new model
                     # doesn't accept the current value. Rubber-duck
                     # follow-up: a left-over high-effort hint would
@@ -1073,6 +1312,17 @@ def main(
                     reasoning_effort = new_effort
                 console.rule()
                 continue
+            if stripped_prompt == "\\providers":
+                table = get_providers_table()
+                if table is None:
+                    console.print(
+                        "[yellow]Server does not expose multi-provider metadata; "
+                        "using legacy single-provider routing.[/yellow]"
+                    )
+                else:
+                    console.print(table)
+                console.rule()
+                continue
 
             # --- Call the streaming generate endpoint and process events ---
             # Accept header opts into v2 NDJSON vocabulary (p5-cutover-b).
@@ -1085,6 +1335,8 @@ def main(
             }
             if reasoning_effort is not None:
                 _post_body["reasoning_effort"] = reasoning_effort
+            if provider_id is not None:
+                _post_body["provider_id"] = provider_id
             with requests.post(
                 f"{API_BASE_URL}/chat/stream",
                 json=_post_body,
