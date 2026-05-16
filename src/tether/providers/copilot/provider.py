@@ -10,6 +10,7 @@ from typing import Any, AsyncGenerator, AsyncIterator, Dict, List, Optional
 
 from tether.core.interfaces import ModelProvider
 from tether.providers.types import (
+    ModelDetails,
     ProviderCapabilities,
     ProviderEvent,
     ProviderText,
@@ -17,6 +18,12 @@ from tether.providers.types import (
 )
 
 _DONE = object()
+
+# Default reasoning effort values surfaced for Copilot models that
+# advertise reasoning_effort support (see ``reasoning_effort_models``).
+# Matches the public-preview SDK enum; clients are encouraged to query
+# /models/details rather than hard-coding this list.
+DEFAULT_REASONING_EFFORTS: tuple[str, ...] = ("minimal", "low", "medium", "high")
 
 
 class CopilotProvider(ModelProvider):
@@ -43,6 +50,8 @@ class CopilotProvider(ModelProvider):
         client_config: Optional[Dict[str, Any]] = None,
         provider: Optional[Dict[str, Any]] = None,
         enable_builtin_tools: bool = False,
+        reasoning_effort_models: Optional[List[str]] = None,
+        reasoning_efforts: Optional[List[str]] = None,
     ) -> None:
         self.model = model
         self.models = tuple(dict.fromkeys([model, *(models or [])]))
@@ -57,10 +66,28 @@ class CopilotProvider(ModelProvider):
         self.client_config = dict(client_config or {})
         self.provider = dict(provider or {})
         self.enable_builtin_tools = enable_builtin_tools
+        # When ``reasoning_effort_models`` is None, every configured model
+        # is assumed to support reasoning_effort (Copilot SDK lists this as
+        # a per-model capability; users override here when the SDK adds
+        # non-reasoning models). Explicit empty list = none support it.
+        self._reasoning_effort_models = (
+            None
+            if reasoning_effort_models is None
+            else tuple(reasoning_effort_models)
+        )
+        self.reasoning_efforts = tuple(
+            reasoning_efforts
+            if reasoning_efforts is not None
+            else DEFAULT_REASONING_EFFORTS
+        )
 
     @property
     def kind(self) -> str:
         return "copilot"
+
+    @property
+    def source(self) -> str:
+        return "remote"
 
     @property
     def capabilities(self) -> ProviderCapabilities:
@@ -74,6 +101,43 @@ class CopilotProvider(ModelProvider):
             warm_up_required=False,
         )
 
+    def _model_supports_reasoning_effort(self, model_name: str) -> bool:
+        if self._reasoning_effort_models is None:
+            return True
+        return model_name in self._reasoning_effort_models
+
+    def default_model(self) -> Optional[str]:
+        return self.model
+
+    def list_model_info(self) -> List[ModelDetails]:
+        """Override the ABC default to advertise reasoning_effort support.
+
+        Copilot SDK accepts ``reasoning_effort`` on :meth:`create_session`
+        for compatible models. ``reasoning_effort_models`` constructor
+        arg narrows this when needed; the default treats every
+        configured model as supporting it (matches today's SDK shape).
+        """
+        caps = self.capabilities
+        efforts = list(self.reasoning_efforts)
+        details: List[ModelDetails] = []
+        for name in self.models:
+            supports = self._model_supports_reasoning_effort(name)
+            details.append(
+                ModelDetails(
+                    id=name,
+                    provider_kind="copilot",
+                    source="remote",
+                    context_window=int(
+                        self.context_windows.get(name, self.context_window)
+                    ),
+                    supports_thinking=caps.thinking_channel,
+                    supports_reasoning_effort=supports,
+                    reasoning_efforts=efforts if supports else None,
+                    is_default=(name == self.model),
+                )
+            )
+        return details
+
     async def stream(
         self,
         model_name: str,
@@ -81,12 +145,14 @@ class CopilotProvider(ModelProvider):
         tools: Optional[List[Dict[str, Any]]] = None,
         *,
         request_id: Optional[str] = None,
+        reasoning_effort: Optional[str] = None,
     ) -> AsyncGenerator[str | List[Dict[str, Any]], None]:
         """Stream assistant text chunks from a short-lived Copilot SDK session."""
         async for kind, text in self._run_copilot_turn(
             model_name=model_name,
             messages=messages,
             request_id=request_id,
+            reasoning_effort=reasoning_effort,
         ):
             if kind == "text":
                 yield text
@@ -100,12 +166,14 @@ class CopilotProvider(ModelProvider):
         request_id: Optional[str] = None,
         max_output_tokens: Optional[int] = None,
         cancel_token: Optional[Any] = None,
+        reasoning_effort: Optional[str] = None,
     ) -> AsyncIterator[ProviderEvent]:
         """Stream typed provider events from Copilot SDK session events."""
         async for kind, text in self._run_copilot_turn(
             model_name=model_name,
             messages=messages,
             request_id=request_id,
+            reasoning_effort=reasoning_effort,
         ):
             if cancel_token is not None and self._cancelled(cancel_token):
                 break
@@ -142,6 +210,7 @@ class CopilotProvider(ModelProvider):
         model_name: str,
         messages: List[Dict[str, Any]],
         request_id: Optional[str],
+        reasoning_effort: Optional[str] = None,
     ) -> AsyncIterator[tuple[str, str]]:
         copilot_mod, session_mod = self._load_sdk()
         client = self._build_client(copilot_mod)
@@ -174,12 +243,18 @@ class CopilotProvider(ModelProvider):
 
         try:
             await client.start()
-            session = await client.create_session(
+            session_kwargs: Dict[str, Any] = dict(
                 on_permission_request=self._permission_handler(session_mod),
                 model=model_name or self.model,
                 streaming=True,
                 provider=self.provider or None,
             )
+            effective_model = model_name or self.model
+            if reasoning_effort is not None and self._model_supports_reasoning_effort(
+                effective_model
+            ):
+                session_kwargs["reasoning_effort"] = reasoning_effort
+            session = await client.create_session(**session_kwargs)
             unsubscribe = session.on(on_event)
             prompt = self._messages_to_prompt(messages)
 

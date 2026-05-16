@@ -234,6 +234,7 @@ class ChattyAgentOrchestrator(OrchestratorABC):
         prompt: str,
         model_name: str,
         cancel_token: Optional[CancelToken] = None,
+        reasoning_effort: Optional[str] = None,
     ) -> AsyncIterator[WireEvent]:
         """Run one turn of the model→parser→tool-execution loop.
 
@@ -241,6 +242,11 @@ class ChattyAgentOrchestrator(OrchestratorABC):
         serialize via :func:`v0_compat_serialize` (legacy) or
         :class:`NdjsonEmitter` (v2). Library consumers use
         :meth:`Engine.chat` to iterate :data:`WireEvent` directly.
+
+        ``reasoning_effort`` (when non-``None``) is forwarded to the
+        provider on each provider.stream(...) call. The HTTP boundary
+        validates the value against the chosen model's
+        :class:`ModelDetails` before reaching this method.
         """
         turn_id = uuid.uuid4().hex[:12]
         seq = 0
@@ -339,6 +345,7 @@ class ChattyAgentOrchestrator(OrchestratorABC):
                     cancel_token=cancel_token,
                     envelope_factory=_envelope,
                     turn_state=turn_state,
+                    reasoning_effort=reasoning_effort,
                 ):
                     yield wire
                     # Mirror accumulators into the carry-over variables
@@ -743,6 +750,7 @@ class ChattyAgentOrchestrator(OrchestratorABC):
         cancel_token: Optional[CancelToken],
         envelope_factory,
         turn_state: Dict[str, Any],
+        reasoning_effort: Optional[str] = None,
     ) -> AsyncIterator[WireEvent]:
         """Drive one provider stream until a tool call is detected, the
         stream completes, an error fires, or cancellation arrives.
@@ -786,14 +794,36 @@ class ChattyAgentOrchestrator(OrchestratorABC):
         _plog.info("provider.stream.start", model_id=model_name)
 
         try:
-            async with aclosing(
-                self.provider.stream(
-                    model_name=model_name,
-                    messages=messages,
-                    tools=tool_schemas,
-                    request_id=_caller_rid,
-                )
-            ) as provider_stream:
+            # Only forward ``reasoning_effort`` when explicitly set: test
+            # fakes and providers without ``**kwargs`` (e.g.
+            # tests/unit/protocol/orchestration/test_chatty_orchestrator.py)
+            # must keep working unchanged. Validation that the chosen
+            # model accepts the value happens at the HTTP boundary.
+            _stream_kwargs: Dict[str, Any] = dict(
+                model_name=model_name,
+                messages=messages,
+                tools=tool_schemas,
+                request_id=_caller_rid,
+            )
+            if reasoning_effort is not None:
+                _stream_kwargs["reasoning_effort"] = reasoning_effort
+            try:
+                provider_stream_call = self.provider.stream(**_stream_kwargs)
+            except TypeError as te:
+                # The provider advertised reasoning support via ModelDetails
+                # but its stream() signature doesn't accept the kwarg.
+                # Surface a clear capability-bug message instead of a
+                # generic TypeError swallowed by the async generator.
+                if reasoning_effort is not None and "reasoning_effort" in str(te):
+                    raise RuntimeError(
+                        f"Provider {type(self.provider).__name__} advertised "
+                        "reasoning_effort support but its stream() signature "
+                        "does not accept the 'reasoning_effort' kwarg. "
+                        "Fix the provider implementation."
+                    ) from te
+                raise
+
+            async with aclosing(provider_stream_call) as provider_stream:
                 async for chunk in provider_stream:
                     _stream_chunks += 1
                     if _chunk_sample and (

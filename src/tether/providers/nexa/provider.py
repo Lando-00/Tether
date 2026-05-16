@@ -56,6 +56,9 @@ class NexaProvider(ModelProvider):
         model_name: str,
         messages: List[Dict[str, Any]],
         tools: Optional[List[Dict[str, Any]]] = None,
+        *,
+        request_id: Optional[str] = None,
+        reasoning_effort: Optional[str] = None,
     ) -> AsyncGenerator[Any, None]:
         raise NotImplementedError(
             "NexaProvider is a stub for forward-compatibility verification only. "
@@ -105,6 +108,7 @@ class NexaProvider(ModelProvider):
         request_id: Optional[str] = None,
         max_output_tokens: Optional[int] = None,
         cancel_token: Optional[Any] = None,
+        reasoning_effort: Optional[str] = None,
     ) -> AsyncIterator[ProviderEvent]:
         raise NotImplementedError(
             "NexaProvider stub: stream_typed requires Nexa SDK integration."

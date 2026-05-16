@@ -366,6 +366,7 @@ class Engine:
         model_name: str,
         mode: Optional[str] = None,
         cancel_event: Optional[asyncio.Event] = None,
+        reasoning_effort: Optional[str] = None,
     ) -> AsyncGenerator[bytes, None]:
         """Drive the core orchestration to stream NDJSON bytes (v0 vocabulary).
 
@@ -379,6 +380,12 @@ class Engine:
         get :class:`NotebookOrchestrator` (which raises
         :class:`NotImplementedError`) rather than silently falling back to
         ``ChattyAgentOrchestrator``. Briefing §2 Seam B item 4.
+
+        ``reasoning_effort`` (when non-``None``) is forwarded to the
+        orchestrator's ``run()`` method, which forwards it to the provider
+        for models that advertise reasoning support. Validation that the
+        chosen model accepts the requested value happens at the HTTP
+        boundary (``app/http/routers/chat.py``).
         """
         from tether.protocol.orchestration.cancel import AsyncEventCancelToken
         from tether.protocol.orchestration.emitter import v0_compat_serialize
@@ -391,6 +398,7 @@ class Engine:
             model_name=model_name,
             mode=mode,
             cancel_token=cancel_token,
+            reasoning_effort=reasoning_effort,
         ):
             bytes_out = v0_compat_serialize(wire_event)
             if bytes_out:  # MessageStart returns b"" — skip
@@ -404,6 +412,7 @@ class Engine:
         model_name: str,
         mode: Optional[str] = None,
         cancel_token: Optional["CancelToken"] = None,
+        reasoning_effort: Optional[str] = None,
     ) -> AsyncGenerator["WireEvent", None]:
         """Library-mode typed event stream (synthesis §3.4).
 
@@ -416,6 +425,12 @@ class Engine:
         ``mode`` selects the Orchestrator class from the registry. Defaults
         to ``self._orchestrator_default_mode`` ("chat") when None.
         Briefing §2 Seam B item 4; synthesis §3.5.
+
+        ``reasoning_effort`` is forwarded to ``orch.run(...)`` only when the
+        orchestrator's ``run`` signature accepts it (introspected via
+        ``inspect.signature``), mirroring the audit_store_args pattern. The
+        HTTP boundary validates the value against the chosen model's
+        :class:`ModelDetails` before this is reached.
         """
         from tether.protocol.orchestration.registry import (
             resolve_orchestrator_class,
@@ -453,12 +468,23 @@ class Engine:
             _orch_kwargs["confirm_intent_classifier"] = self._confirm_intent_classifier
 
         orch = orchestrator_cls(**_orch_kwargs)
-        async for wire_event in orch.run(
+
+        # Per-turn run kwargs: only forward reasoning_effort to orchestrator
+        # impls that opt in via their ``run()`` signature. Stub
+        # orchestrators (NotebookOrchestrator) and existing impls without
+        # the kwarg keep working unchanged.
+        _run_kwargs: Dict[str, Any] = dict(
             session_id=session_id,
             prompt=prompt,
             model_name=model_name,
             cancel_token=cancel_token,
-        ):
+        )
+        if reasoning_effort is not None:
+            _run_sig = _inspect.signature(orchestrator_cls.run)
+            if "reasoning_effort" in _run_sig.parameters:
+                _run_kwargs["reasoning_effort"] = reasoning_effort
+
+        async for wire_event in orch.run(**_run_kwargs):
             yield wire_event
 
     # --- Session / model CRUD pass-throughs (no business logic) ---
@@ -488,6 +514,14 @@ class Engine:
 
     def list_models(self) -> List[str]:
         return self.provider.list_models()
+
+    def list_model_info(self):
+        """Return :class:`ModelDetails` for every model the provider exposes.
+
+        Thin pass-through to :meth:`ModelProvider.list_model_info` for the
+        HTTP ``/models/details`` endpoint. Synthesis §3.4.
+        """
+        return self.provider.list_model_info()
 
     def unload_model(self, model_name: str) -> bool:
         return self.provider.unload_model(model_name)

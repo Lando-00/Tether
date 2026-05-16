@@ -271,3 +271,118 @@ def test_capabilities_are_safe_defaults() -> None:
     assert caps.multi_model is True
     assert caps.warm_up_required is False
 
+
+def test_source_is_remote() -> None:
+    """CopilotProvider must advertise ``source='remote'`` so clients
+    show hosted-model UX hints; the ABC default is ``'local'``.
+    """
+    assert CopilotProvider().source == "remote"
+
+
+def test_default_model_returns_configured_model() -> None:
+    """``default_model()`` is the source of truth for ``is_default`` in
+    :class:`ModelDetails`; CopilotProvider exposes ``self.model``."""
+    assert CopilotProvider(model="gpt-5").default_model() == "gpt-5"
+
+
+def test_list_model_info_advertises_reasoning_support() -> None:
+    """All configured models support reasoning by default; the
+    constructor flags the right ``is_default`` entry.
+    """
+    provider = CopilotProvider(model="gpt-5", models=["gpt-5", "claude-sonnet-4.5"])
+    details = provider.list_model_info()
+    by_id = {d.id: d for d in details}
+
+    assert set(by_id) == {"gpt-5", "claude-sonnet-4.5"}
+    assert by_id["gpt-5"].is_default is True
+    assert by_id["claude-sonnet-4.5"].is_default is False
+    for info in details:
+        assert info.provider_kind == "copilot"
+        assert info.source == "remote"
+        assert info.supports_reasoning_effort is True
+        assert info.reasoning_efforts == ["minimal", "low", "medium", "high"]
+        assert info.supports_thinking is True
+
+
+def test_list_model_info_respects_reasoning_effort_models_whitelist() -> None:
+    """``reasoning_effort_models`` narrows reasoning support per model."""
+    provider = CopilotProvider(
+        model="gpt-5",
+        models=["gpt-5", "claude-sonnet-4.5"],
+        reasoning_effort_models=["gpt-5"],
+        reasoning_efforts=["low", "high"],
+    )
+    by_id = {d.id: d for d in provider.list_model_info()}
+
+    assert by_id["gpt-5"].supports_reasoning_effort is True
+    assert by_id["gpt-5"].reasoning_efforts == ["low", "high"]
+    assert by_id["claude-sonnet-4.5"].supports_reasoning_effort is False
+    assert by_id["claude-sonnet-4.5"].reasoning_efforts is None
+
+
+def test_stream_forwards_reasoning_effort_to_create_session() -> None:
+    """``reasoning_effort`` reaches ``client.create_session(...)`` only
+    when the model supports it; the kwarg is omitted otherwise so the
+    SDK uses its default.
+    """
+    _FakeClient.events = [
+        _event("assistant.message_delta", delta_content="ok"),
+    ]
+    provider = CopilotProvider(model="gpt-5")
+
+    _ = _run(
+        _collect(
+            provider.stream(
+                "gpt-5",
+                [{"role": "user", "content": "hi"}],
+                reasoning_effort="high",
+            )
+        )
+    )
+
+    client = _FakeClient.instances[-1]
+    assert client.session_kwargs.get("reasoning_effort") == "high"
+
+
+def test_stream_omits_reasoning_effort_when_model_unsupported() -> None:
+    _FakeClient.events = [
+        _event("assistant.message_delta", delta_content="ok"),
+    ]
+    provider = CopilotProvider(
+        model="gpt-5",
+        models=["gpt-5", "claude-sonnet-4.5"],
+        reasoning_effort_models=["gpt-5"],
+    )
+
+    _ = _run(
+        _collect(
+            provider.stream(
+                "claude-sonnet-4.5",
+                [{"role": "user", "content": "hi"}],
+                reasoning_effort="high",
+            )
+        )
+    )
+
+    client = _FakeClient.instances[-1]
+    assert "reasoning_effort" not in client.session_kwargs
+
+
+def test_stream_omits_reasoning_effort_when_none() -> None:
+    _FakeClient.events = [
+        _event("assistant.message_delta", delta_content="ok"),
+    ]
+    provider = CopilotProvider(model="gpt-5")
+
+    _ = _run(
+        _collect(
+            provider.stream(
+                "gpt-5",
+                [{"role": "user", "content": "hi"}],
+            )
+        )
+    )
+
+    client = _FakeClient.instances[-1]
+    assert "reasoning_effort" not in client.session_kwargs
+

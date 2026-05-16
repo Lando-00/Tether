@@ -284,6 +284,30 @@ def get_available_models() -> list:
         raise typer.Exit(1)
 
 
+def get_available_model_details() -> list:
+    """Fetch per-model capability metadata from ``/models/details``.
+
+    Returns ``[]`` on connection error so callers can fall back to the
+    legacy plain-string list. Each entry is a ``ModelDetails`` dict:
+    ``{id, provider_kind, source, context_window, supports_thinking,
+    supports_reasoning_effort, reasoning_efforts, is_default}``.
+    """
+    try:
+        response = requests.get(f"{API_BASE_URL}/models/details", timeout=5)
+        response.raise_for_status()
+        return response.json()
+    except requests.RequestException:
+        return []
+
+
+def _model_details_for(model_name: str) -> Optional[dict]:
+    """Look up a single model's :class:`ModelDetails` dict, or ``None``."""
+    for info in get_available_model_details():
+        if info.get("id") == model_name:
+            return info
+    return None
+
+
 def get_available_tools() -> list:
     """Fetches the list of registered tools (name/description/parameters).
 
@@ -494,7 +518,12 @@ def manage_sessions() -> tuple[Optional[str], str]:
 
 
 def select_model(model_name: Optional[str]) -> str:
-    """Guides the user to select a model if one isn't provided."""
+    """Guides the user to select a model if one isn't provided.
+
+    When ``GET /models/details`` is available, render provider / context /
+    capability columns. Falls back to plain names if the metadata endpoint
+    isn't reachable (e.g. older server).
+    """
     if model_name:
         # The new API just returns a list of strings, so we just check for existence
         models = get_available_models()
@@ -510,9 +539,41 @@ def select_model(model_name: Optional[str]) -> str:
         console.print("Please make sure your compiled models are correctly placed and the service is running.")
         raise typer.Exit(1)
 
-    console.print("\nAvailable Models:")
-    for i, name in enumerate(available_models):
-        console.print(f"  [bold cyan][{i+1}][/bold cyan] {name}")
+    details = get_available_model_details()
+    details_by_id = {d["id"]: d for d in details if isinstance(d, dict) and "id" in d}
+
+    if details_by_id:
+        models_table = Table(title="Available Models", border_style="cyan")
+        models_table.add_column("#", style="bold cyan", justify="right")
+        models_table.add_column("Model", style="bold")
+        models_table.add_column("Provider")
+        models_table.add_column("Source")
+        models_table.add_column("Ctx", justify="right")
+        models_table.add_column("Reasoning")
+        models_table.add_column("Default", justify="center")
+        for i, name in enumerate(available_models):
+            info = details_by_id.get(name, {})
+            reasoning = (
+                ",".join(info.get("reasoning_efforts") or [])
+                if info.get("supports_reasoning_effort")
+                else "—"
+            )
+            ctx = info.get("context_window")
+            ctx_str = f"{ctx:,}" if isinstance(ctx, int) else "—"
+            models_table.add_row(
+                str(i + 1),
+                name,
+                info.get("provider_kind", "—"),
+                info.get("source", "—"),
+                ctx_str,
+                reasoning,
+                "★" if info.get("is_default") else "",
+            )
+        console.print(models_table)
+    else:
+        console.print("\nAvailable Models:")
+        for i, name in enumerate(available_models):
+            console.print(f"  [bold cyan][{i+1}][/bold cyan] {name}")
 
     while True:
         try:
@@ -532,6 +593,58 @@ def select_model(model_name: Optional[str]) -> str:
                 )
         except ValueError:
             console.print("[red]Invalid input. Please enter a number.[/red]")
+
+
+def select_reasoning_effort(
+    model_name: str,
+    current: Optional[str] = None,
+) -> Optional[str]:
+    """Prompt the user for a reasoning effort, scoped to the chosen model.
+
+    Returns the new value, or ``None`` when the user clears the override.
+    If the model does not advertise ``supports_reasoning_effort``,
+    prints a notice and returns ``current`` unchanged (no-op).
+    """
+    info = _model_details_for(model_name)
+    if info is None:
+        console.print(
+            f"[yellow]No metadata for model '{model_name}' — cannot check "
+            "reasoning support. Send the request anyway with the previous "
+            "value.[/yellow]"
+        )
+        return current
+    if not info.get("supports_reasoning_effort"):
+        console.print(
+            f"[yellow]Model '{model_name}' does not support "
+            "reasoning_effort. Use [bold]\\models[/bold] to switch to a "
+            "model that does.[/yellow]"
+        )
+        return None
+    accepted = list(info.get("reasoning_efforts") or [])
+    if not accepted:
+        console.print(
+            f"[yellow]Model '{model_name}' advertised reasoning support "
+            "but exposed an empty efforts list.[/yellow]"
+        )
+        return current
+    options = [*accepted, "off"]
+    console.print(
+        f"\nReasoning efforts for [bold]{model_name}[/bold]: "
+        + ", ".join(f"[cyan]{o}[/cyan]" for o in options)
+    )
+    default = current if current in accepted else accepted[0]
+    while True:
+        choice = Prompt.ask(
+            "Choose effort ('off' to clear)",
+            default=default,
+        ).strip().lower()
+        if choice == "off":
+            return None
+        if choice in accepted:
+            return choice
+        console.print(
+            f"[red]Invalid choice. Pick one of: {', '.join(options)}[/red]"
+        )
 
 
 @app.callback(invoke_without_command=True)
@@ -558,6 +671,16 @@ def cli(
         "--show-thinking",
         help="Enable to show the model's thinking process.",
     ),
+    reasoning_effort: Optional[str] = typer.Option(
+        None,
+        "--reasoning-effort",
+        help=(
+            "Initial reasoning effort hint for the chosen model "
+            "(e.g. 'minimal', 'low', 'medium', 'high' for GitHub Copilot SDK "
+            "models). Use the in-chat '\\reasoning' command to change it. "
+            "Server returns 422 if the model does not support the value."
+        ),
+    ),
 ):
     """Run chat by default, or choose a subcommand."""
     global API_BASE_URL
@@ -568,6 +691,7 @@ def cli(
             api_url=API_BASE_URL,
             debug=debug,
             show_thinking=show_thinking,
+            reasoning_effort=reasoning_effort,
         )
 
 
@@ -739,6 +863,15 @@ def main(
         "--show-thinking",
         help="Enable to show the model's thinking process.",
     ),
+    reasoning_effort: Optional[str] = typer.Option(
+        None,
+        "--reasoning-effort",
+        help=(
+            "Initial reasoning effort hint for the chosen model. Use "
+            "'\\reasoning' mid-chat to change. Server returns 422 if "
+            "the model does not advertise support."
+        ),
+    ),
 ):
     """
     Main entry point for the Tether CLI.
@@ -757,6 +890,35 @@ def main(
 
     model_name_arg = model_name
     model_name = select_model(model_name_arg)
+
+    # Sanity-check the startup --reasoning-effort against the chosen
+    # model. We don't error here — the server is the authoritative gate —
+    # but we surface a warning so the user can fix it before the first
+    # 422 turn. Skipped when --reasoning-effort isn't passed.
+    if reasoning_effort is not None:
+        info = _model_details_for(model_name)
+        if info is None:
+            console.print(
+                "[dim]No /models/details available — sending "
+                f"--reasoning-effort={reasoning_effort} anyway; server "
+                "will validate.[/dim]"
+            )
+        elif not info.get("supports_reasoning_effort"):
+            console.print(
+                f"[yellow]Warning:[/yellow] model [bold]{model_name}[/bold] "
+                "does not advertise reasoning_effort. Clearing the value; "
+                "use [bold]\\reasoning[/bold] after switching models."
+            )
+            reasoning_effort = None
+        else:
+            accepted = info.get("reasoning_efforts") or []
+            if reasoning_effort not in accepted:
+                console.print(
+                    f"[yellow]Warning:[/yellow] '{reasoning_effort}' is not "
+                    f"in this model's accepted efforts: {accepted}. "
+                    "Server will return 422 unless you change it via "
+                    "[bold]\\reasoning[/bold]."
+                )
 
     # --- Session Management Loop ---
     session_id = None
@@ -805,8 +967,17 @@ def main(
     )
     info_table.add_row(
         "",
+        "Type [bold cyan]\\reasoning[/bold cyan] to change reasoning effort"
+    )
+    info_table.add_row(
+        "",
         "Type [bold cyan]\\exit[/bold cyan] or [bold cyan]\\quit[/bold cyan] to end"
     )
+    if reasoning_effort is not None:
+        info_table.add_row(
+            f"Reasoning effort: [bold green]{reasoning_effort}[/bold green]",
+            "",
+        )
     console.print(Panel(info_table, title="Chat Info", border_style="dim"))
 
 
@@ -825,7 +996,13 @@ def main(
                 break
             if stripped_prompt == "\\menu":
                 # We need to pass the original arguments to main to restart it correctly
-                main(model_name=model_name, api_url=API_BASE_URL, debug=debug, show_thinking=show_thinking)
+                main(
+                    model_name=model_name,
+                    api_url=API_BASE_URL,
+                    debug=debug,
+                    show_thinking=show_thinking,
+                    reasoning_effort=reasoning_effort,
+                )
                 break # Exit current chat loop to prevent it from continuing after menu
             if stripped_prompt == "\\thinking":
                 show_thinking = not show_thinking
@@ -860,8 +1037,40 @@ def main(
                         f"to [bold green]{new_model}[/bold green]"
                     )
                     model_name = new_model
+                    # Clear stale reasoning_effort if the new model
+                    # doesn't accept the current value. Rubber-duck
+                    # follow-up: a left-over high-effort hint would
+                    # 422 the next turn and force a reset.
+                    if reasoning_effort is not None:
+                        new_info = _model_details_for(new_model)
+                        accepted = (new_info or {}).get("reasoning_efforts") or []
+                        supports = (new_info or {}).get("supports_reasoning_effort", False)
+                        if not supports or reasoning_effort not in accepted:
+                            console.print(
+                                f"[yellow]Cleared reasoning effort '{reasoning_effort}' — "
+                                f"not supported by {new_model}. Use "
+                                "[bold]\\reasoning[/bold] to set a new value.[/yellow]"
+                            )
+                            reasoning_effort = None
                 else:
                     console.print(f"[dim]Keeping current model: {model_name}[/dim]")
+                console.rule()
+                continue
+            if stripped_prompt == "\\reasoning":
+                new_effort = select_reasoning_effort(
+                    model_name, current=reasoning_effort
+                )
+                if new_effort != reasoning_effort:
+                    if new_effort is None:
+                        console.print(
+                            "[dim]Reasoning effort cleared.[/dim]"
+                        )
+                    else:
+                        console.print(
+                            f"🧠 Reasoning effort set to "
+                            f"[bold green]{new_effort}[/bold green]"
+                        )
+                    reasoning_effort = new_effort
                 console.rule()
                 continue
 
@@ -869,13 +1078,16 @@ def main(
             # Accept header opts into v2 NDJSON vocabulary (p5-cutover-b).
             # Default endpoint still emits v0; version=1.0 routes the request
             # through transport_ndjson. Synthesis §11.3 R18; §4 Phase 5 step 54.
+            _post_body = {
+                "session_id": session_id,
+                "prompt": user_prompt,
+                "model_name": model_name,
+            }
+            if reasoning_effort is not None:
+                _post_body["reasoning_effort"] = reasoning_effort
             with requests.post(
                 f"{API_BASE_URL}/chat/stream",
-                json={
-                    "session_id": session_id,
-                    "prompt": user_prompt,
-                    "model_name": model_name,
-                },
+                json=_post_body,
                 headers=_mutating_headers({
                     "Accept": "application/x-ndjson; version=1.0",
                 }),

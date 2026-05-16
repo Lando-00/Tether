@@ -20,11 +20,17 @@ class DummyProvider(ModelProvider):
         tools: Optional[List[Dict[str, Any]]] = None,
         *,
         request_id: Optional[str] = None,
+        reasoning_effort: Optional[str] = None,
     ) -> AsyncGenerator[str, None]:
         """Simulate streaming text chunks based on last user message.
 
         ``request_id`` accepted for interface parity (Phase 7 step 72)
         but not used — DummyProvider has no internal logger.
+
+        ``reasoning_effort`` accepted for ABC parity; DummyProvider does
+        not advertise reasoning support in :meth:`list_model_info` so
+        the orchestrator only forwards a non-``None`` value when the
+        caller explicitly bypasses validation.
         """
         prompt = messages[-1].get('content', '') if messages else ''
         for i in range(3):
@@ -85,6 +91,7 @@ class DummyProvider(ModelProvider):
         request_id: Optional[str] = None,
         max_output_tokens: Optional[int] = None,
         cancel_token: Optional[Any] = None,
+        reasoning_effort: Optional[str] = None,
     ):
         """v2 typed stream — yields :class:`ProviderText` events derived
         from the legacy :meth:`stream` output. DummyProvider never emits

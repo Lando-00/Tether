@@ -1,6 +1,9 @@
 from typing import List
-from fastapi import APIRouter, Request, HTTPException
+
+from fastapi import APIRouter, HTTPException, Request
 from pydantic import BaseModel, Field
+
+from tether.providers.types import ModelDetails
 
 router = APIRouter(prefix="/models", tags=["models"])
 
@@ -15,10 +18,29 @@ class UnloadRequest(BaseModel):
 
 @router.get("", response_model=List[str])
 def list_models(request: Request):
-    """List available models."""
+    """List available model identifiers.
+
+    Returns a plain ``list[str]`` for backward compatibility with existing
+    CLI / clients. Richer per-model metadata (provider kind, source,
+    context window, reasoning capability) lives at ``/models/details``.
+    """
     gen_svc = request.app.state.gen_svc
     models = gen_svc.list_models()
     return models
+
+
+@router.get("/details", response_model=List[ModelDetails])
+def list_model_details(request: Request):
+    """List per-model capability metadata.
+
+    Companion to ``GET /api/v1/models``: callers that need to know which
+    models support reasoning effort or thinking output, what context
+    window to expect, or whether the model is hosted remotely should hit
+    this endpoint. Backward-compatible: existing clients keep using
+    ``GET /models`` (``list[str]``) until they opt into the richer shape.
+    """
+    gen_svc = request.app.state.gen_svc
+    return gen_svc.list_model_info()
 
 
 @router.post("/unload")

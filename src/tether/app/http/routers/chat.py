@@ -1,12 +1,14 @@
 
+import asyncio
+import json
 import re
+from datetime import datetime, timezone
+from typing import Literal, Optional
+
 from fastapi import APIRouter, HTTPException, Request
 from fastapi.responses import StreamingResponse
 from pydantic import BaseModel, Field
-from typing import Literal
-import asyncio
-import json
-from datetime import datetime, timezone
+
 from tether.core.logging import logger
 
 # Compile once at module level for performance.
@@ -75,6 +77,71 @@ class StreamRequest(BaseModel):
             "application/x-ndjson (NDJSON back-compat) responses."
         ),
     )
+    reasoning_effort: Optional[str] = Field(
+        default=None,
+        description=(
+            "Per-request reasoning effort hint for models that advertise "
+            "``supports_reasoning_effort=True`` in ``GET /models/details`` "
+            "(e.g. GitHub Copilot SDK ``gpt-5``). When the chosen model "
+            "does not support reasoning effort, or the supplied value is "
+            "not in the model's accepted ``reasoning_efforts`` list, the "
+            "server responds 422 before any streaming begins. Omit to "
+            "use the provider's default."
+        ),
+        # Conservative pattern: short identifier-like values only. The
+        # authoritative whitelist is enforced via ModelDetails below.
+        pattern=r"^[A-Za-z0-9._-]{1,32}$",
+    )
+
+
+def _validate_reasoning_effort(engine, model_name: str, reasoning_effort: str) -> None:
+    """Reject unsupported ``reasoning_effort`` values BEFORE streaming starts.
+
+    Reads the engine's :class:`ModelDetails` list and confirms (a) the
+    chosen model exists, (b) the model advertises reasoning support, and
+    (c) the requested value is in its ``reasoning_efforts`` whitelist.
+    Raises :class:`HTTPException` 422 otherwise.
+
+    Called only when ``reasoning_effort`` is non-``None`` so the legacy
+    request shape pays no extra cost.
+    """
+    try:
+        details = engine.list_model_info()
+    except Exception as exc:
+        # Provider raised during model introspection — surface as 503 so
+        # the client knows the server hasn't fully come up rather than
+        # silently dropping reasoning_effort to None.
+        raise HTTPException(
+            status_code=503,
+            detail=f"Could not fetch model metadata: {exc}",
+        )
+    for info in details:
+        if info.id != model_name:
+            continue
+        if not info.supports_reasoning_effort:
+            raise HTTPException(
+                status_code=422,
+                detail=(
+                    f"Model '{model_name}' does not support reasoning_effort; "
+                    "omit the field or pick a model with "
+                    "supports_reasoning_effort=true in /models/details."
+                ),
+            )
+        accepted = info.reasoning_efforts or []
+        if reasoning_effort not in accepted:
+            raise HTTPException(
+                status_code=422,
+                detail=(
+                    f"reasoning_effort='{reasoning_effort}' not accepted by "
+                    f"model '{model_name}'. Accepted values: {accepted}."
+                ),
+            )
+        return
+    # Model not in details: don't 422 here — list_models is the source of
+    # truth for model existence and the provider may still accept it.
+    # The provider's own error path will run with reasoning_effort
+    # forwarded.
+    return
 
 
 @router.post("/stream")
@@ -116,11 +183,19 @@ async def stream(request: Request, body: StreamRequest):
     logger.info(
         f"/chat/stream called: session_id={body.session_id}, "
         f"model_name={body.model_name}, mode={body.mode}, "
-        f"sse={use_sse}, ndjson_v0_legacy={use_ndjson_v0_legacy}"
+        f"sse={use_sse}, ndjson_v0_legacy={use_ndjson_v0_legacy}, "
+        f"reasoning_effort={body.reasoning_effort}"
     )
 
     engine = request.app.state.gen_svc
     headers = {"X-Tether-Protocol-Version": "1.0"}
+
+    # Validate reasoning_effort against the chosen model's metadata BEFORE
+    # we begin streaming. Skipped when reasoning_effort is None so the
+    # legacy request shape never pays the provider-introspection cost
+    # (e.g. MLC filesystem scan).
+    if body.reasoning_effort is not None:
+        _validate_reasoning_effort(engine, body.model_name, body.reasoning_effort)
 
     # Eagerly resolve the Orchestrator class to return 501 before streaming
     # begins if the mode is a stub (is_implemented=False). Pydantic's Literal
@@ -166,6 +241,7 @@ async def stream(request: Request, body: StreamRequest):
                         model_name=body.model_name,
                         mode=body.mode,
                         cancel_token=cancel_token,
+                        reasoning_effort=body.reasoning_effort,
                     ):
                         if await request.is_disconnected():
                             logger.info(
@@ -228,6 +304,7 @@ async def stream(request: Request, body: StreamRequest):
                     model_name=body.model_name,
                     mode=body.mode,
                     cancel_event=cancel_event,
+                    reasoning_effort=body.reasoning_effort,
                 ):
                     if await request.is_disconnected():
                         logger.info(
@@ -284,6 +361,7 @@ async def stream(request: Request, body: StreamRequest):
                     model_name=body.model_name,
                     mode=body.mode,
                     cancel_token=cancel_token,
+                    reasoning_effort=body.reasoning_effort,
                 ):
                     if await request.is_disconnected():
                         logger.info(

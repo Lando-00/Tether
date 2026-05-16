@@ -1,8 +1,8 @@
 from abc import ABC, abstractmethod
-from typing import Any, AsyncGenerator, AsyncIterator, Dict, List, Optional, TYPE_CHECKING
+from typing import TYPE_CHECKING, Any, AsyncGenerator, AsyncIterator, Dict, List, Optional
 
 from tether.protocol.parsers.events import ParserEvent
-from tether.providers.types import ProviderCapabilities, ProviderEvent
+from tether.providers.types import ModelDetails, ProviderCapabilities, ProviderEvent
 
 if TYPE_CHECKING:
     from tether.core.types import ToolExecutionContext
@@ -25,6 +25,7 @@ class ModelProvider(ABC):
         tools: Optional[List[Dict[str, Any]]] = None,
         *,
         request_id: Optional[str] = None,
+        reasoning_effort: Optional[str] = None,
     ) -> AsyncGenerator[str | List[Dict[str, Any]], None]:
         """Stream raw text chunks for a given model, history, and tools.
 
@@ -38,6 +39,13 @@ class ModelProvider(ABC):
         contextvars by RequestIdMiddleware). Providers accept it so any
         internal log calls they make can include it for cross-layer
         correlation. Phase 7 step 72.
+
+        ``reasoning_effort`` is the per-request reasoning effort hint for
+        providers/models that support it (e.g. Copilot SDK ``gpt-5``).
+        Providers that ignore this field MUST still accept the kwarg.
+        The orchestrator only forwards a non-``None`` value when the
+        caller explicitly sets it and the model advertises support via
+        :class:`tether.providers.types.ModelDetails`. Synthesis §3.4.
         """
         ...
 
@@ -127,6 +135,7 @@ class ModelProvider(ABC):
         request_id: Optional[str] = None,
         max_output_tokens: Optional[int] = None,
         cancel_token: Optional[Any] = None,
+        reasoning_effort: Optional[str] = None,
     ) -> AsyncIterator[ProviderEvent]:
         """v2 stream method yielding typed :class:`ProviderEvent` values.
 
@@ -135,6 +144,9 @@ class ModelProvider(ABC):
 
         Phase 5 step 52 will migrate the orchestrator to consume this;
         until then the orchestrator uses the legacy :meth:`stream`.
+
+        ``reasoning_effort`` mirrors the legacy :meth:`stream` kwarg;
+        providers that don't support it MUST still accept the parameter.
 
         Synthesis §4 Phase 3 step 39, §6 bug #12 (native MLC tool_calls
         are emitted as :class:`ProviderToolCall` here, not silently
@@ -147,6 +159,73 @@ class ModelProvider(ABC):
         # can ``async for`` over the result without TypeError.
         if False:
             yield  # type: ignore[unreachable]
+
+    # ------------------------------------------------------------------
+    # Model metadata (HTTP /models/details endpoint).
+    # ``list_models`` returns ``list[str]`` for back-compat with the
+    # legacy ``GET /api/v1/models`` endpoint. ``list_model_info`` adds
+    # the richer per-model capability metadata used by clients to
+    # render selection UIs (CLI ``\models`` table, etc.).
+    # ------------------------------------------------------------------
+
+    @property
+    def source(self) -> str:
+        """Provider source class: ``"local"`` or ``"remote"``.
+
+        ``"local"`` is the default for on-device providers (MLC, dummy).
+        Hosted providers (Copilot SDK, future Anthropic, OpenAI, …)
+        override to ``"remote"``. Used by clients to render network/cost
+        hints without inspecting :attr:`kind` strings directly.
+        """
+        return "local"
+
+    def default_model(self) -> Optional[str]:
+        """Return the configured default model name, or ``None``.
+
+        Concrete providers may override to point clients at the
+        canonical first-choice model (e.g. the value the user supplied
+        in ``providers.model.args.model``). When ``None``, callers
+        should not mark any model as default. The ABC's default
+        :meth:`list_model_info` implementation flags the matching
+        ``ModelDetails.is_default``.
+        """
+        return None
+
+    def list_model_info(self) -> List[ModelDetails]:
+        """Return :class:`ModelDetails` metadata for each available model.
+
+        Default implementation synthesises one :class:`ModelDetails` per
+        entry returned by :meth:`list_models`, using :meth:`kind`,
+        :attr:`capabilities`, :meth:`get_context_window`, :attr:`source`,
+        and :meth:`default_model`. ``supports_reasoning_effort`` defaults
+        to ``False`` — providers that accept :class:`reasoning_effort`
+        in :meth:`stream` MUST override this method to advertise the
+        accepted values.
+
+        Serialised on ``GET /api/v1/models/details``; the back-compat
+        ``GET /api/v1/models`` endpoint continues to return
+        ``list[str]``. Synthesis §3.4.
+        """
+        default = self.default_model()
+        models = self.list_models()
+        caps = self.capabilities
+        source = self.source
+        if source not in ("local", "remote"):
+            source = "local"
+        kind = self.kind
+        return [
+            ModelDetails(
+                id=name,
+                provider_kind=kind,
+                source=source,  # type: ignore[arg-type]
+                context_window=self.get_context_window(name),
+                supports_thinking=caps.thinking_channel,
+                supports_reasoning_effort=False,
+                reasoning_efforts=None,
+                is_default=(default is not None and default == name),
+            )
+            for i, name in enumerate(models)
+        ]
 
 
 class StreamParser(ABC):
