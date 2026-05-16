@@ -234,6 +234,20 @@ class ModelDetails(BaseModel):
     server's ``providers.model.args.model``). Clients may pre-select it
     in selection UIs."""
 
+    provider_id: str = "_unwrapped_"
+    """Provider routing key from ``settings.providers.model_registry``
+    (e.g. ``"mlc-local"``, ``"copilot-gpt5"``).
+
+    Phase 12 (ADR-0021): :meth:`Engine.list_model_info` wraps each
+    provider's bare :class:`ModelDetails` via
+    ``info.model_copy(update={"provider_id": pid})`` so callers always
+    see the registry-scoped id. Providers themselves do not know their
+    own registry key; the sentinel ``"_unwrapped_"`` flags rows that
+    bypassed the engine wrap (e.g. direct unit tests of a bare provider).
+    Required with a default sentinel rather than ``Optional[str]`` so the
+    field is always serialisable and clients never see ``null`` for the
+    routing key on the wire."""
+
     model_config = ConfigDict(frozen=True, extra="forbid")
 
 
