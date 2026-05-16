@@ -134,6 +134,17 @@ def test_watchdog_filters_non_hw_providers():
     assert wd.hw_provider_count == 1
 
 
+def test_watchdog_multi_provider_all_non_hw_is_noop():
+    """ADR-0021 P2.A regression: with a multi-provider engine where every
+    entry is a non-HW provider (e.g., CopilotProvider + DummyProvider),
+    the watchdog's HW filter leaves ``_hw_providers`` empty. ``shutdown_all()``
+    is a no-op (no exception). The ``health_summary()`` shape for this
+    case is covered by ``test_watchdog_health_summary_no_hw``."""
+    wd = HardwareWatchdog([_NotAHWProvider(), _NotAHWProvider()])
+    assert wd.hw_provider_count == 0
+    wd.shutdown_all()  # no-op, MUST NOT raise
+
+
 def test_watchdog_no_hw_providers_uses_default_budget():
     """With zero HW providers, the shutdown budget falls back to the
     DEFAULT_SHUTDOWN_BUDGET_SEC constant."""
