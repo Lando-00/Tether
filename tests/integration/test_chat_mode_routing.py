@@ -166,8 +166,16 @@ def _minimal_settings(tmp_path) -> Settings:
         "storage": {"sqlite": {"dsn": f"sqlite:///{db}"}},
         "tools": {
             "registry": [],
-            "enabled": [],
-            "disabled": ["time", "weather", "forecast", "web_search"],
+            "enabled": ["web_search"],
+            "disabled": ["time", "weather", "forecast"],
+        },
+        # ADR-0020 §D6: research mode is opt-in. Explicitly register it
+        # so this test's mode='research' call hits NotebookOrchestrator.
+        "orchestrator": {
+            "registry": {
+                "chat": "tether.protocol.orchestration.chatty.ChattyAgentOrchestrator",
+                "research": "tether.protocol.orchestration.notebook.NotebookOrchestrator",
+            }
         },
     })
 

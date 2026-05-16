@@ -27,8 +27,9 @@ in the dispatch logic per rs-D-FAKE §2.3 / §3.
 
 from __future__ import annotations
 
+import json
 from collections import deque
-from typing import Any, AsyncGenerator, Deque, Dict, List, Optional, Union
+from typing import Any, AsyncGenerator, Deque, Dict, List, Literal, Optional, Union
 
 from tether.core.interfaces import ModelProvider
 from tether.providers.types import ProviderCapabilities
@@ -39,7 +40,7 @@ from tether.providers.types import ProviderCapabilities
 # - list[str] → streamed as N separate chunks (synthesizer streaming tests)
 # Wave 1 deliberately locks the simpler Union-in-deque model; stream() will
 # use isinstance(item, list) rather than a private _ChunkedResponse sentinel.
-CannedResponse = Union[Dict[str, Any], str]
+CannedResponse = Union[Dict[str, Any], str, List[str]]
 
 
 class FakeResearchProvider(ModelProvider):
@@ -63,7 +64,8 @@ class FakeResearchProvider(ModelProvider):
         # Per-phase canned response deques (FIFO).
         self._planner_responses: Deque[CannedResponse] = deque()
         self._extractor_responses: Deque[CannedResponse] = deque()
-        self._synthesizer_responses: Deque[Union[str, List[str]]] = deque()
+        self._synthesizer_responses: Deque[CannedResponse] = deque()
+        self._chunk_size = chunk_size
         self.chunk_size = chunk_size
 
         # Injected exceptions (raised next time the phase is invoked).
@@ -129,22 +131,45 @@ class FakeResearchProvider(ModelProvider):
     ) -> AsyncGenerator[str, None]:
         """Phase-aware canned-response dispatch.
 
-        Wave 2 IMP-D will:
-            1. Detect phase from system prompt in messages.
-            2. Pop next canned response from that phase's queue (or
-               raise the injected exception if set).
-            3. Serialise dict → JSON / yield str verbatim / yield each
-               element of a list[str] as a separate chunk.
-            4. Empty queue raises ``RuntimeError`` (fail loud, not
-               silent — rs-D-FAKE §3.3).
+        1. Detect phase from system prompt in messages.
+        2. Raise and clear the phase's injected exception, if set.
+        3. Pop next canned response from that phase's queue.
+        4. Serialise dict → compact JSON / yield str verbatim / yield each
+           element of a list[str] as a separate chunk.
+        5. Empty queues yield nothing so parser failure paths can be tested.
         """
-        raise NotImplementedError(
-            "Wave 2 IMP-D will implement phase detection + canned dispatch"
-        )
-        # Unreachable, but makes the function an async generator so
-        # callers can ``async for`` over the result without TypeError.
-        if False:  # pragma: no cover
-            yield ""  # type: ignore[unreachable]
+        del model_name, tools, request_id
+
+        phase = self._detect_phase(messages)
+        self.call_log.append((phase, messages))
+
+        exc_attr = f"_{phase}_exc"
+        exc = getattr(self, exc_attr, None)
+        if exc is not None:
+            setattr(self, exc_attr, None)
+            raise exc
+
+        queue_attr = f"_{phase}_responses"
+        queue: Deque[CannedResponse] = getattr(self, queue_attr, deque())
+        if not queue:
+            return
+
+        item = queue.popleft()
+
+        if isinstance(item, dict):
+            text = json.dumps(item, separators=(",", ":"))
+        elif isinstance(item, list):
+            for chunk in item:
+                yield chunk
+            return
+        else:
+            text = item
+
+        if self._chunk_size > 0:
+            for i in range(0, len(text), self._chunk_size):
+                yield text[i : i + self._chunk_size]
+        else:
+            yield text
 
     def list_models(self) -> List[str]:
         """Single fixed model name for test reproducibility."""
@@ -178,7 +203,9 @@ class FakeResearchProvider(ModelProvider):
     # Internal helpers (Wave 2 IMP-D will fill)
     # ------------------------------------------------------------------
 
-    def _detect_phase(self, messages: List[Dict[str, Any]]) -> str:
+    def _detect_phase(
+        self, messages: List[Dict[str, Any]]
+    ) -> Literal["planner", "extractor", "synthesizer", "unknown"]:
         """Return ``'planner' | 'extractor' | 'synthesizer' | 'unknown'``.
 
         Wave 2 IMP-D walks ``messages`` in reverse, stops at the first
@@ -193,7 +220,22 @@ class FakeResearchProvider(ModelProvider):
         Markers chosen to match the prompts in
         :mod:`tether.protocol.orchestration.notebook_prompts`.
         """
-        raise NotImplementedError("Wave 2 IMP-D")
+        system_msgs = [m for m in messages if m.get("role") == "system"]
+        if not system_msgs:
+            return "unknown"
+
+        last_system = (system_msgs[-1].get("content") or "").lower()
+        if "synthesize" in last_system or "synthesizer" in last_system:
+            return "synthesizer"
+        if "extract" in last_system and "fact" in last_system:
+            return "extractor"
+        if (
+            "planner" in last_system
+            or "key_elements" in last_system
+            or "key element" in last_system
+        ):
+            return "planner"
+        return "unknown"
 
 
 __all__ = ["FakeResearchProvider"]

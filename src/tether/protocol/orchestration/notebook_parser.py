@@ -28,13 +28,23 @@ in the layer logic; rs-T-C exercises it against the 20-row corpus.
 from __future__ import annotations
 
 from dataclasses import dataclass, field
+from datetime import datetime, timezone
+import json
 import re
-from typing import Optional
+from typing import Any, Optional
+
+import structlog
 
 from tether.protocol.orchestration.notebook_state import AtomicFact
 
 
 _FENCE_RE = re.compile(r"```(?:[a-zA-Z]+)?\s*\n?(.*?)\n?```", re.DOTALL | re.IGNORECASE)
+_FACT_LINE_RE = re.compile(
+    r"^\s*(?:FACT[:\s\-]+|[-*\u2022]\s+|\d+[.)]\s+|\[\d+\]\s+)(.+?)\s*$",
+    re.IGNORECASE,
+)
+_VALID_CONFIDENCE = {"low", "medium", "high"}
+logger = structlog.get_logger(__name__)
 
 
 @dataclass(frozen=True)
@@ -72,7 +82,24 @@ def parse_plan_output(raw: str, *, max_queries: int = 5) -> list[str]:
         Planner contract; may be shorter if the model under-emits or
         the parser fell through to layer 4 / 5).
     """
-    raise NotImplementedError("Wave 2 IMP-C")
+    raw_length = len(raw or "")
+    try:
+        for layer_fn in (_layer_1_direct_json, _layer_2_strip_fences, _layer_3_balanced_brace_extract):
+            result = layer_fn(raw)
+            if result is not None:
+                queries = result.get("key_elements", [])
+                if isinstance(queries, list):
+                    return [str(q) for q in queries if str(q).strip()][:max_queries]
+
+        bullets = _layer_4_bullet_fallback(raw)
+        if bullets:
+            return [b for b in bullets if b.strip()][:max_queries]
+
+        logger.warning("notebook_parser.plan_total_fail", raw_length=raw_length)
+        return []
+    except Exception:
+        logger.warning("notebook_parser.plan_total_fail", raw_length=raw_length, exc_info=True)
+        return []
 
 
 def parse_extract_output(
@@ -101,7 +128,62 @@ def parse_extract_output(
         ``max_facts_per_extract`` by Wave 2) and follow-up queries.
         Empty on total parser failure.
     """
-    raise NotImplementedError("Wave 2 IMP-C")
+    raw_length = len(raw or "")
+    try:
+        for layer_fn, layer_num in (
+            (_layer_1_direct_json, 1),
+            (_layer_2_strip_fences, 2),
+            (_layer_3_balanced_brace_extract, 3),
+        ):
+            result = layer_fn(raw)
+            if result is not None:
+                facts_raw = result.get("facts", [])
+                followups_raw = result.get("follow_up_queries", [])
+                if not isinstance(followups_raw, list):
+                    followups_raw = []
+                facts = _coerce_facts(facts_raw, source_query)[:max_facts]
+                followups = [q.strip() for q in followups_raw if isinstance(q, str) and q.strip()][
+                    :max_facts
+                ]
+                return ExtractResult(
+                    facts=facts,
+                    follow_up_queries=followups,
+                    parser_layer=layer_num,
+                    raw_length=raw_length,
+                )
+
+        bullets = _layer_4_bullet_fallback(raw)
+        if bullets:
+            facts = [
+                AtomicFact(
+                    text=b,
+                    source_query=source_query,
+                    confidence="low",
+                    created_at=datetime.now(timezone.utc),
+                )
+                for b in bullets[:max_facts]
+            ]
+            return ExtractResult(
+                facts=facts,
+                follow_up_queries=[],
+                parser_layer=4,
+                raw_length=raw_length,
+            )
+
+        logger.warning(
+            "notebook_parser.extract_total_fail",
+            raw_length=raw_length,
+            source_query=source_query,
+        )
+        return ExtractResult(facts=[], follow_up_queries=[], parser_layer=5, raw_length=raw_length)
+    except Exception:
+        logger.warning(
+            "notebook_parser.extract_total_fail",
+            raw_length=raw_length,
+            source_query=source_query,
+            exc_info=True,
+        )
+        return ExtractResult(facts=[], follow_up_queries=[], parser_layer=5, raw_length=raw_length)
 
 
 # ---------------------------------------------------------------------------
@@ -115,7 +197,11 @@ def parse_extract_output(
 
 def _layer_1_direct_json(raw: str) -> Optional[dict]:
     """Try ``json.loads(raw)`` straight up. Returns ``None`` on failure."""
-    raise NotImplementedError("Wave 2 IMP-C")
+    try:
+        result = json.loads((raw or "").strip())
+        return result if isinstance(result, dict) else None
+    except (json.JSONDecodeError, TypeError):
+        return None
 
 
 def _layer_2_strip_fences(raw: str) -> Optional[dict]:
@@ -124,7 +210,14 @@ def _layer_2_strip_fences(raw: str) -> Optional[dict]:
     Returns ``None`` if no fence found or inner content still
     unparseable.
     """
-    raise NotImplementedError("Wave 2 IMP-C")
+    try:
+        match = _FENCE_RE.search(raw or "")
+        if not match:
+            return None
+        result = json.loads(match.group(1).strip())
+        return result if isinstance(result, dict) else None
+    except (json.JSONDecodeError, TypeError):
+        return None
 
 
 def _layer_3_balanced_brace_extract(raw: str) -> Optional[dict]:
@@ -134,7 +227,16 @@ def _layer_3_balanced_brace_extract(raw: str) -> Optional[dict]:
     strings → double-quoted, and unquoted keys (where unambiguous).
     Returns ``None`` if no balanced block found or repair still fails.
     """
-    raise NotImplementedError("Wave 2 IMP-C")
+    try:
+        block = _first_balanced_object(raw or "")
+        if block is None:
+            return None
+        result = _loads_dict(block)
+        if result is not None:
+            return result
+        return _loads_dict(_repair_loose_json(block))
+    except Exception:
+        return None
 
 
 def _layer_4_bullet_fallback(raw: str) -> list[str]:
@@ -146,7 +248,105 @@ def _layer_4_bullet_fallback(raw: str) -> list[str]:
     ``confidence="low"`` in :func:`parse_extract_output`. Returns an
     empty list if no bullet-shaped lines are found.
     """
-    raise NotImplementedError("Wave 2 IMP-C")
+    facts: list[str] = []
+    try:
+        for line in (raw or "").splitlines():
+            match = _FACT_LINE_RE.match(line)
+            if not match:
+                continue
+            candidate = match.group(1).strip().rstrip(",;.")
+            if len(candidate) >= 2 and candidate[0] == candidate[-1] and candidate[0] in {'"', "'"}:
+                candidate = candidate[1:-1].strip()
+            if candidate:
+                facts.append(candidate)
+        return facts
+    except Exception:
+        return []
+
+
+def _coerce_facts(items: Any, source_query: str) -> list[AtomicFact]:
+    """Coerce extractor ``facts`` payload into ``AtomicFact`` instances."""
+    if not isinstance(items, list):
+        return []
+
+    facts: list[AtomicFact] = []
+    for item in items:
+        try:
+            if isinstance(item, str):
+                text = item.strip()
+                confidence = "medium"
+            elif isinstance(item, dict):
+                raw_text = item.get("text") or item.get("fact") or item.get("statement") or ""
+                text = raw_text.strip() if isinstance(raw_text, str) else ""
+                raw_confidence = item.get("confidence", "medium")
+                confidence = raw_confidence.strip().lower() if isinstance(raw_confidence, str) else "medium"
+                if confidence not in _VALID_CONFIDENCE:
+                    confidence = "medium"
+            else:
+                continue
+            if not text:
+                continue
+            facts.append(
+                AtomicFact(
+                    text=text,
+                    source_query=source_query,
+                    confidence=confidence,  # type: ignore[arg-type]
+                    created_at=datetime.now(timezone.utc),
+                )
+            )
+        except Exception:
+            continue
+    return facts
+
+
+def _loads_dict(raw: str) -> Optional[dict]:
+    try:
+        result = json.loads(raw)
+        return result if isinstance(result, dict) else None
+    except (json.JSONDecodeError, TypeError):
+        return None
+
+
+def _first_balanced_object(raw: str) -> Optional[str]:
+    start = raw.find("{")
+    if start < 0:
+        return None
+
+    depth = 0
+    in_string = False
+    escaped = False
+    for index in range(start, len(raw)):
+        char = raw[index]
+        if in_string:
+            if escaped:
+                escaped = False
+            elif char == "\\":
+                escaped = True
+            elif char == '"':
+                in_string = False
+            continue
+
+        if char == '"':
+            in_string = True
+        elif char == "{":
+            depth += 1
+        elif char == "}":
+            depth -= 1
+            if depth == 0:
+                return raw[start : index + 1]
+    return None
+
+
+def _repair_loose_json(raw: str) -> str:
+    repaired = re.sub(r",(\s*[}\]])", r"\1", raw)
+    repaired = re.sub(r"'([^'\\]*(?:\\.[^'\\]*)*)'", _single_quoted_to_double, repaired)
+    repaired = re.sub(r"([{,]\s*)([A-Za-z_][A-Za-z0-9_-]*)(\s*:)", r'\1"\2"\3', repaired)
+    return repaired
+
+
+def _single_quoted_to_double(match: re.Match[str]) -> str:
+    inner = match.group(1).replace('"', '\\"')
+    return f'"{inner}"'
 
 
 __all__ = [

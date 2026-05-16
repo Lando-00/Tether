@@ -41,6 +41,11 @@ def _settings_dict(tmp_db: str) -> dict:
             "enabled": [],
             "disabled": ["time", "weather", "forecast", "web_search"],
         },
+        "orchestrator": {
+            "registry": {
+                "chat": "tether.protocol.orchestration.chatty.ChattyAgentOrchestrator",
+            },
+        },
     }
 
 

@@ -135,7 +135,11 @@ orchestrator:
   default: "chat"
   registry:
     chat: "tether.protocol.orchestration.chatty.ChattyAgentOrchestrator"
-    research: "tether.protocol.orchestration.notebook.NotebookOrchestrator"
+    # Research mode (Hanov-style Plan→Search→Extract→Refine→Synthesize loop)
+    # is OPT-IN. To enable, uncomment the line below AND add web_search to
+    # tools.enabled. See ADR-0020 §D6 boot validation; the engine fails-loud
+    # at boot if research is registered but web_search is not enabled.
+    # research: "tether.protocol.orchestration.notebook.NotebookOrchestrator"
   research:
     # Per-phase model overrides. CAUTION: each override may trigger a 30s
     # MLC cold-load on first call to that phase. Leave null for single-model

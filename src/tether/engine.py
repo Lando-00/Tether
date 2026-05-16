@@ -336,6 +336,34 @@ class Engine:
                     f"{mode!r} -> {registry_dict[mode]!r} is invalid: {e}"
                 ) from e
 
+        if "research" in registry_dict:
+            from tether.core.errors import ConfigError
+
+            enabled_tools = set(settings.tools.enabled)
+            if "web_search" not in enabled_tools:
+                raise ConfigError(
+                    "orchestrator.research requires tools.enabled to include "
+                    "'web_search'; either add it to tools.enabled or remove "
+                    "the 'research' orchestrator registration. (ADR-0020 §D6)"
+                )
+
+            research = settings.orchestrator.research
+            phase_model_overrides = (
+                ("planner_model", research.planner_model),
+                ("extractor_model", research.extractor_model),
+                ("synthesizer_model", research.synthesizer_model),
+            )
+            if any(override is not None for _, override in phase_model_overrides):
+                provider_registry = set(provider.list_models())
+                for phase_name, override in phase_model_overrides:
+                    if override is not None and override not in provider_registry:
+                        raise ConfigError(
+                            f"orchestrator.research.{phase_name}={override!r} "
+                            "is not a registered model in providers.registry. "
+                            f"Available: {sorted(provider_registry)}. "
+                            "(ADR-0020 §D5 / fu-research-multi-model-warm)"
+                        )
+
         # Phase 2b (ADR-0019): construct the confirm-intent classifier from
         # settings. ChattyAgentOrchestrator uses it to flip
         # ToolExecutionContext.user_confirmed_send.

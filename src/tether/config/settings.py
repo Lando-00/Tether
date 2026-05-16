@@ -612,7 +612,8 @@ class OrchestratorSettings(StrictModel):
     registry: Dict[str, str] = Field(
         default_factory=lambda: {
             "chat": "tether.protocol.orchestration.chatty.ChattyAgentOrchestrator",
-            "research": "tether.protocol.orchestration.notebook.NotebookOrchestrator",
+            # Research mode is OPT-IN. To enable, add via config override AND
+            # add web_search to tools.enabled. See ADR-0020 §D6 boot validation.
         },
         description="Mode -> dotted impl path (e.g., 'pkg.module.Class').",
     )

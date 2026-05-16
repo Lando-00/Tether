@@ -181,6 +181,11 @@ def _settings_dict(
             "enabled": [],
             "disabled": ["time", "weather", "forecast", "web_search"],
         },
+        "orchestrator": {
+            "registry": {
+                "chat": "tether.protocol.orchestration.chatty.ChattyAgentOrchestrator",
+            },
+        },
         "connectors": {"registry": connectors_registry or {}},
     }
 

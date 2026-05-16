@@ -61,6 +61,11 @@ def _engine_settings_dict(*, storage_dsn: str, legacy_dsn: str | None) -> dict:
             "enabled": [],
             "disabled": ["time", "weather", "forecast", "web_search"],
         },
+        "orchestrator": {
+            "registry": {
+                "chat": "tether.protocol.orchestration.chatty.ChattyAgentOrchestrator",
+            },
+        },
     }
 
 

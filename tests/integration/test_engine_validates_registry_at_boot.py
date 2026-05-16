@@ -146,6 +146,7 @@ def test_valid_registry_loads_normally(tmp_path):
 
     engine = Engine.from_settings(settings)
     assert engine is not None
-    # Both default modes resolved successfully — no ImportError surfaced.
+    # The default chat mode resolved successfully — no ImportError surfaced.
+    # Research mode is opt-in (ADR-0020 §D6) and not registered by default.
     assert "chat" in engine._orchestrator_registry
-    assert "research" in engine._orchestrator_registry
+    assert "research" not in engine._orchestrator_registry

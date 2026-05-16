@@ -38,6 +38,11 @@ def _settings_dict(tmp_db: str) -> dict:
         },
         "storage": {"sqlite": {"dsn": f"sqlite:///{tmp_db}"}},
         "tools": {"registry": [], "enabled": []},
+        "orchestrator": {
+            "registry": {
+                "chat": "tether.protocol.orchestration.chatty.ChattyAgentOrchestrator",
+            },
+        },
         "limits": {
             "max_tool_loops": 4,
             "tool_timeout_sec": 9,
