@@ -185,9 +185,19 @@ implementation; adding a second impl is a config change + one new class.
 | Seam | Where | What | Status |
 |---|---|---|---|
 | **A — ModelProvider** | `providers/types.py::ModelProvider` | Swap inference backend. Default: `MLCProvider`. Future: `NexaProvider` (NPU), `OllamaProvider` (reserved). | ✅ ABC live; MLC impl + Nexa stub |
-| **B — Orchestrator strategy** | `protocol/orchestration/types.py::Orchestrator` | Swap conversation policy. Default: `ChattyAgentOrchestrator` (ReAct-style chatty loop). Future: Ralph Loop / Notebook of Atomic Facts (small-context strategy). Selected via `mode` field on `StreamRequest` + per-session state. | ✅ ABC live; one impl |
+| **B — Orchestrator strategy** | `protocol/orchestration/types.py::Orchestrator` | Swap conversation policy. Default: `ChattyAgentOrchestrator` (ReAct-style chatty loop). Opt-in: `NotebookOrchestrator` (research-mode Notebook of Atomic Facts). Selected via `mode` field on `StreamRequest` + per-session state. | ✅ ABC live; chat + research impls |
 | **C — Practical context window** | `providers/types.py::get_practical_context_window(model_name, ram_budget_gb)` | Per-provider RAM-aware effective context. Used to clamp history before send. | ❌ DEFERRED — synthesis §12.4 work; ABC method not yet on ModelProvider; tracked as a follow-up. |
 | **D — Per-provider parser** | `protocol/parsers/types.py::Parser` | Per-provider tool-call detection. MLC: `<<function_call>>` marker (`SlidingParser`). Future: provider-native function-call schemas (Ollama JSON mode, NexaSDK OpenAI-compat). System prompt lives under `providers.<id>.args.system_prompt` so parsers and prompts ship together. | ⚠️ Partial — per-turn factory wired in orchestrator; `Provider.create_parser()` ABC method NOT yet on ModelProvider. `system.prompt` still globally bound (synthesis §12.5 #2 requires moving to providers.mlc.args.system_prompt). Tracked as a follow-up. |
+
+### 3a. Research-mode orchestrator
+
+`NotebookOrchestrator` implements [ADR-0020](./adr/0020-notebook-orchestrator-algorithm.md)'s Hanov-style five-phase loop for explicit research requests: **Plan → Explore → Extract → Refine → Synthesize**. It keeps only structured notebook facts between searches, then streams the final synthesized answer as normal `text_delta` events.
+
+Research mode is opt-in: add `research: "tether.protocol.orchestration.notebook.NotebookOrchestrator"` under `orchestrator.registry` and keep `web_search` in `tools.enabled` (the commented block in `src/tether/config/default.yml` shows the exact wiring). `Engine.from_settings` fails fast if research is registered without `web_search`.
+
+Research progress uses four additive v2 wire events from [`src/tether/protocol/wire/events.py`](../src/tether/protocol/wire/events.py), defined in [ADR-0020 Appendix B](./adr/0020-notebook-orchestrator-algorithm.md#appendix-b-pydantic-event-definitions-verbatim): `notebook_phase_start`, `notebook_fact_added`, `notebook_query_added`, and `notebook_limit_reached`. The constructor seam accepts `research_settings` and a testable `clock`, injected by `Engine.from_settings`.
+
+Related decisions: [ADR-0007](./adr/0007-orchestrator-strategy.md) introduced the strategy seam; [ADR-0019](./adr/0019-confirm-intent-classifier-seam.md) remains relevant to chat-mode send confirmation but is not part of research mode's single-tool (`web_search`) v1.
 
 ---
 

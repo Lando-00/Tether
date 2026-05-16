@@ -119,6 +119,32 @@ All routes are under `/api/v1`.
 Request body for `/chat/stream`: `{"session_id": "...", "prompt": "..."}`.
 `model_name` is optional; defaults to the first model in `default.yml`.
 
+### Research mode
+
+Tether ships an opt-in research mode ([ADR-0020](./docs/adr/0020-notebook-orchestrator-algorithm.md)). When enabled, `mode="research"` on `/api/v1/chat/stream` runs a Hanov-style Plan→Search→Extract→Refine→Synthesize loop with structured fact extraction and a final synthesized answer.
+
+Enable it in `src/tether/config/default.yml`:
+
+```yaml
+orchestrator:
+  registry:
+    chat: "tether.protocol.orchestration.chatty.ChattyAgentOrchestrator"
+    research: "tether.protocol.orchestration.notebook.NotebookOrchestrator"
+tools:
+  enabled:
+    - web_search  # required by research mode
+```
+
+Set `BRAVE_API_KEY`; `web_search` uses the Brave Search API.
+
+```bash
+curl -X POST http://localhost:8000/api/v1/chat/stream \
+  -H "Content-Type: application/json" \
+  -d '{"session_id":"s","prompt":"Latest research on...", "model_name":"qwen3-4b", "mode":"research"}'
+```
+
+Research mode is single-tool for v1 (`web_search` only). Multi-tool research is a future seam.
+
 ## Where to go next
 
 | You want…                         | Read…                                             |
