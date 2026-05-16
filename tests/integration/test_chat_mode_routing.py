@@ -95,23 +95,31 @@ def test_explicit_mode_chat(client):
     assert resp.status_code == 200
 
 
-def test_research_mode_returns_501_ndjson(client):
-    """mode='research' → 501 Not Implemented (before streaming begins).
+def test_research_mode_returns_200_ndjson_with_notebook_events(client):
+    """mode='research' → 200 with NDJSON streaming Notebook* progress events.
 
-    NotebookOrchestrator.is_implemented=False so the router short-circuits
-    before returning a StreamingResponse. The 501 body mentions the doc path.
+    NotebookOrchestrator.is_implemented=True (ADR-0020) — the route streams
+    the Hanov 5-phase loop. With an empty tools dict the Explore phase
+    silently skips iterations (R23: tool errors don't break the loop),
+    leaving an empty notebook; the Synthesizer still runs and produces
+    the empty-notebook disclaimer per SYNTHESIZER_SYSTEM_PROMPT rule 4.
     """
     resp = _post(client, mode="research", session_id="test-research-ndjson")
-    assert resp.status_code == 501
-    detail = resp.json().get("detail", "")
-    assert "docs/research/06_context_strategies.md" in detail
+    assert resp.status_code == 200
+    # NDJSON is the v2 default for non-SSE Accept headers
+    assert "application/x-ndjson" in resp.headers.get("content-type", "")
+    # The stream contains at least the Notebook* progress events for the
+    # plan phase + MessageStart/MessageStop bracketing the synthesizer.
+    body_text = resp.text
+    assert "notebook_phase_start" in body_text or "NotebookPhaseStart" in body_text
+    assert "message_start" in body_text or "MessageStart" in body_text
+    assert "message_stop" in body_text or "MessageStop" in body_text
 
 
-def test_research_mode_returns_501_sse(client):
-    """mode='research' + Accept: text/event-stream → 501 (not a streamed error).
+def test_research_mode_returns_200_sse_with_notebook_events(client):
+    """mode='research' + Accept: text/event-stream → 200 with SSE events.
 
-    The 501 is returned before any streaming body begins, regardless of
-    which wire format the client requested.
+    Same algorithm as the NDJSON path; only the wire serialization differs.
     """
     resp = _post(
         client,
@@ -119,9 +127,10 @@ def test_research_mode_returns_501_sse(client):
         accept="text/event-stream",
         session_id="test-research-sse",
     )
-    assert resp.status_code == 501
-    detail = resp.json().get("detail", "")
-    assert "docs/research/06_context_strategies.md" in detail
+    assert resp.status_code == 200
+    assert "text/event-stream" in resp.headers.get("content-type", "")
+    body_text = resp.text
+    assert "data:" in body_text  # SSE-style event lines
 
 
 def test_unknown_mode_returns_422(client):
@@ -181,26 +190,38 @@ def _minimal_settings(tmp_path) -> Settings:
 
 
 @pytest.mark.anyio
-async def test_engine_stream_research_mode_raises_not_implemented(tmp_path):
-    """Engine.stream(mode='research') must dispatch to NotebookOrchestrator
-    and surface its NotImplementedError.
+async def test_engine_stream_research_mode_yields_notebook_events(tmp_path):
+    """Engine.chat(mode='research') dispatches to NotebookOrchestrator
+    and yields the Hanov 5-phase event sequence as typed WireEvent objects.
 
-    This is the library-path contract: callers cannot bypass mode dispatch
-    via the v0 NDJSON path. Engine.stream routes through Engine.chat which
-    uses the registry, so mode='research' hits NotebookOrchestrator.run()
-    which raises NotImplementedError. Briefing §2 Seam B item 4.
+    NotebookOrchestrator.is_implemented=True (ADR-0020 §D5) — the orchestrator
+    runs the full Plan → Explore → Extract → Refine → Synthesize loop.
+    With the minimal settings (web_search enabled but no tool implementations
+    registered), the Explore phase silently skips iterations (R23) and the
+    Synthesizer produces the empty-notebook disclaimer.
+
+    This asserts the library-path contract: callers using engine.chat() get
+    typed WireEvent objects (engine.stream() yields wire-serialized bytes).
     """
     settings = _minimal_settings(tmp_path)
     engine = Engine.from_settings(settings)
 
-    with pytest.raises(NotImplementedError):
-        async for _ in engine.stream(
-            session_id="s",
-            prompt="p",
-            model_name="dummy",
-            mode="research",
-        ):
-            pass
+    events: list = []
+    async for event in engine.chat(
+        session_id="s",
+        prompt="p",
+        model_name="dummy",
+        mode="research",
+    ):
+        events.append(event)
+
+    # Verify the stream is non-empty and contains the canonical Notebook
+    # progress shape: plan phase + MessageStart + MessageStop.
+    assert events, "research mode should yield events, not fall through silently"
+    event_types = {type(e).__name__ for e in events}
+    assert "NotebookPhaseStart" in event_types
+    assert "MessageStart" in event_types
+    assert "MessageStop" in event_types
 
 
 @pytest.fixture

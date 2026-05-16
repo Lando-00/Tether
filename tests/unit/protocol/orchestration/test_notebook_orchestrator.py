@@ -1,8 +1,4 @@
-"""Tests for the NotebookOrchestrator stub.
-
-Briefing §2 Seam B item 4: stub raises NotImplementedError; full impl
-tracked in docs/research/06_context_strategies.md.
-"""
+"""Tests for the NotebookOrchestrator implementation."""
 from __future__ import annotations
 
 import pytest
@@ -46,7 +42,7 @@ def _build_stub() -> NotebookOrchestrator:
 
 
 def test_construct_does_not_raise():
-    """NotebookOrchestrator instantiation works (only run() raises)."""
+    """NotebookOrchestrator instantiation works."""
     _ = _build_stub()
 
 
@@ -55,21 +51,9 @@ def anyio_backend():
     return "asyncio"
 
 
-@pytest.mark.anyio
-async def test_run_raises_not_implemented():
-    """NotebookOrchestrator.run() raises NotImplementedError with the
-    expected docs reference."""
-    orch = _build_stub()
-
-    with pytest.raises(NotImplementedError) as excinfo:
-        async for _ in orch.run(
-            session_id="s",
-            prompt="p",
-            model_name="m",
-        ):
-            pass
-
-    assert "docs/research/06_context_strategies.md" in str(excinfo.value)
+def test_research_mode_is_implemented():
+    """HTTP router uses this flag to allow research-mode requests."""
+    assert NotebookOrchestrator.is_implemented is True
 
 
 def test_constructor_args_stored():
