@@ -1,3 +1,5 @@
+from typing import Any, Dict, Optional
+
 from fastapi import APIRouter, Request
 
 router = APIRouter(tags=["health"])
@@ -41,35 +43,27 @@ async def _connector_health_block(svc) -> list:
 
 @router.get("/readyz")
 async def readyz(request: Request):
-    """Readiness probe: verifies store and provider are functional.
+    """Readiness probe: verifies store and provider(s) are functional.
 
     Phase 3 step 37 (synthesis §6 row 2 / B6 §1.2 #4 / §4 Phase 3): the
-    provider check is now driven by ``HardwareWatchdog.health_summary()``,
+    HW-provider health check is driven by ``HardwareWatchdog.health_summary()``,
     which aggregates ``HardwareLifecycle.hw_health()`` across providers.
 
-    Behavior:
-      - Store: read history for a sentinel session (exercises DB connectivity).
-      - Provider (HW path): when ``engine.hw_watchdog`` is present (always
-        true for engines built via ``Engine.from_settings``), aggregate health
-        across HW providers. ``error`` → ready=false. ``healthy`` /
-        ``degraded`` → ready=true (cold-cache MLC providers report
-        ``degraded`` until a model is loaded; that's normal).
-      - Provider (fallback): no watchdog (engine constructed directly without
-        ``from_settings``) → fall back to ``list_models()``.
-      - Connectors (Phase 4.5 step 47e): when ``engine.connector_registry``
-        is present, append a ``connectors`` array with each connector's
-        ``{id, state, detail}`` snapshot. Connector failures do NOT flip
-        ``ready`` — connectors in UNCONFIGURED / LOGGED_OUT / ERROR are an
-        expected steady state until the user runs the login flow (connector
-        spec §3.3).
-      - Connector start failures (P0-F / Tribunal P0-07 / A2-F2): when a
-        connector that was READY at config time raised from ``start()``
-        during ``Engine.__aenter__``, the failing id is included in the
-        ``connector_start_failures`` array and ``ready`` is set to false
-        so process supervisors can take action. The response remains 200.
+    ADR-0021 P2.A: response is additive. New top-level keys:
 
-    A streaming probe is still avoided: MLC engines may take 5–60s on cold
-    cache. Health is reported by counting cached entries, not loading.
+      - ``providers``: ``{pid: {healthy, kind, source, error}}`` from
+        ``engine.list_provider_health()``. Includes BOTH healthy entries
+        and ids in ``_provider_start_failures``.
+      - ``default_provider_id``: the engine's current default.
+
+    Legacy keys preserved verbatim:
+
+      - ``ready`` — overall flag; now also requires ≥1 healthy provider.
+      - ``store`` — DB connectivity.
+      - ``provider`` — True iff ≥1 healthy provider (supervisors that
+        key on this bool keep working).
+      - ``hw_health`` — HW watchdog summary (or absent when no watchdog).
+      - ``connectors`` / ``connector_start_failures`` — connector layer.
     """
     svc = request.app.state.gen_svc
     try:
@@ -78,20 +72,33 @@ async def readyz(request: Request):
         return {"ready": False, "store": False, "provider": None, "error": str(e)}
 
     connectors_block = await _connector_health_block(svc)
-
-    # P0-F / Tribunal P0-07 (A2-F2): if any connector that was READY at
-    # config time failed to start, Engine.__aenter__ will have already
-    # removed it from the registry and recorded its id here. Surface as
-    # ready=false on /readyz so process supervisors can take action.
     connector_start_failures = list(
         getattr(svc, "_connector_start_failures", []) or []
     )
+
+    # ADR-0021 P2.A: per-provider health block. ``list_provider_health``
+    # is sync, cheap, and never raises (defensive in the engine).
+    # Engines built via the legacy singular shim expose a single
+    # ``{"default": {...}}`` entry, so single-provider deployments stay
+    # visually consistent with their CLI tables.
+    providers_block: Dict[str, Dict[str, Any]] = {}
+    default_provider_id: Optional[str] = None
+    if hasattr(svc, "list_provider_health"):
+        try:
+            providers_block = svc.list_provider_health()
+        except Exception:  # noqa: BLE001 - defensive
+            providers_block = {}
+        default_provider_id = getattr(svc, "default_provider_id", None)
+
+    any_healthy_provider = any(
+        p.get("healthy") for p in providers_block.values()
+    ) if providers_block else True  # back-compat: legacy engines (no helper)
 
     try:
         if getattr(svc, "hw_watchdog", None) is not None:
             health = await svc.hw_watchdog.health_summary()
             if health["overall"] == "error":
-                return {
+                body: Dict[str, Any] = {
                     "ready": False,
                     "store": True,
                     "provider": False,
@@ -100,18 +107,32 @@ async def readyz(request: Request):
                     "connectors": connectors_block,
                     "connector_start_failures": connector_start_failures,
                 }
-            return {
-                "ready": not connector_start_failures,
+                if providers_block:
+                    body["providers"] = providers_block
+                if default_provider_id is not None:
+                    body["default_provider_id"] = default_provider_id
+                return body
+            ready = (
+                any_healthy_provider
+                and not connector_start_failures
+            )
+            body = {
+                "ready": ready,
                 "store": True,
-                "provider": True,
+                "provider": any_healthy_provider,
                 "hw_health": health,
                 "connectors": connectors_block,
                 "connector_start_failures": connector_start_failures,
             }
+            if providers_block:
+                body["providers"] = providers_block
+            if default_provider_id is not None:
+                body["default_provider_id"] = default_provider_id
+            return body
 
         models = svc.provider.list_models()
         if not models:
-            return {
+            body = {
                 "ready": False,
                 "store": True,
                 "provider": False,
@@ -119,13 +140,28 @@ async def readyz(request: Request):
                 "connectors": connectors_block,
                 "connector_start_failures": connector_start_failures,
             }
-        return {
-            "ready": not connector_start_failures,
+            if providers_block:
+                body["providers"] = providers_block
+            if default_provider_id is not None:
+                body["default_provider_id"] = default_provider_id
+            return body
+        body = {
+            "ready": (
+                (any_healthy_provider if providers_block else True)
+                and not connector_start_failures
+            ),
             "store": True,
-            "provider": True,
+            "provider": (
+                any_healthy_provider if providers_block else True
+            ),
             "models_available": len(models),
             "connectors": connectors_block,
             "connector_start_failures": connector_start_failures,
         }
+        if providers_block:
+            body["providers"] = providers_block
+        if default_provider_id is not None:
+            body["default_provider_id"] = default_provider_id
+        return body
     except Exception as e:
         return {"ready": False, "store": True, "provider": False, "error": str(e)}
