@@ -32,6 +32,7 @@ from tether.protocol.orchestration.tool_runner import ToolRunner
 from tether.runtime.watchdog_mode import WatchdogMode
 
 if TYPE_CHECKING:
+    from tether.config.settings import ResearchSettings
     from tether.context.inbox_store import InboundInbox
     from tether.core.connector_registry import ConnectorRegistry
     from tether.protocol.intent.classifier import ConfirmIntentClassifier
@@ -63,6 +64,7 @@ class Engine:
         inbox: Optional["InboundInbox"] = None,
         orchestrator_registry: Optional[Dict[str, str]] = None,
         orchestrator_default_mode: str = "chat",
+        research_settings: Optional["ResearchSettings"] = None,
     ):
         """Build an Engine from already-constructed components.
 
@@ -152,6 +154,11 @@ class Engine:
             "research": "tether.protocol.orchestration.notebook.NotebookOrchestrator",
         }
         self._orchestrator_default_mode = orchestrator_default_mode
+        # ADR-0020 R3: research-mode-specific settings, threaded into the
+        # NotebookOrchestrator constructor via inspect.signature in
+        # :meth:`chat`. Optional so direct constructors (tests + library
+        # callers) don't have to know about research mode.
+        self._research_settings: Optional["ResearchSettings"] = research_settings
         # Phase 7 step 74: whether to store raw args_json in tool_audit.
         # Default False (privacy-preserving). Set by Engine.from_settings
         # from settings.security.audit_log.store_args. Synthesis B5 step 7.
@@ -348,6 +355,7 @@ class Engine:
             inbox=inbox,
             orchestrator_registry=registry_dict,
             orchestrator_default_mode=settings.orchestrator.default,
+            research_settings=settings.orchestrator.research,
         )
         # Phase 7 step 74: wire audit_log.store_args so the orchestrator
         # knows whether to populate args_json in tool_audit rows.
@@ -431,13 +439,18 @@ class Engine:
         # two requests interleave (rubber-duck review by gpt-5.5).
         per_turn_parser = self._parser_factory()
 
-        # Phase 7 step 74: pass audit_store_args to orchestrators that
-        # support it. inspect.signature check avoids breaking stub
-        # orchestrators (e.g., NotebookOrchestrator) that don't yet
-        # have the kwarg in their __init__. Synthesis B5 step 7.
+        # Phase 7 step 74 + ADR-0020 R3: build a superset of kwargs and
+        # filter through inspect.signature. This lets orchestrators have
+        # lean constructors (e.g. NotebookOrchestrator omits system_prompt,
+        # hw_watchdog) without breaking the engine's single call site.
+        # Research-mode-specific kwargs (research_settings, clock) are
+        # injected only when the resolved class declares them. Synthesis
+        # B5 step 7; ADR-0020 §D5.
         import inspect as _inspect
+        from datetime import date as _date
         _orch_sig = _inspect.signature(orchestrator_cls.__init__)
-        _orch_kwargs: Dict[str, Any] = dict(
+        _orch_params = _orch_sig.parameters
+        _full_kwargs: Dict[str, Any] = dict(
             provider=self.provider,
             parser=per_turn_parser,
             store=self.store,
@@ -446,11 +459,17 @@ class Engine:
             config=self.orchestrator_config,
             tool_runner=self.tool_runner,
             hw_watchdog=self.hw_watchdog,
+            audit_store_args=self._audit_store_args,
+            confirm_intent_classifier=self._confirm_intent_classifier,
+            # ADR-0020 R3: NotebookOrchestrator uses `tool_registry` (alias
+            # of `tools`) and accepts `research_settings` + `clock`.
+            tool_registry=self.tools,
+            research_settings=self._research_settings,
+            clock=lambda: _date.today(),
         )
-        if "audit_store_args" in _orch_sig.parameters:
-            _orch_kwargs["audit_store_args"] = self._audit_store_args
-        if "confirm_intent_classifier" in _orch_sig.parameters:
-            _orch_kwargs["confirm_intent_classifier"] = self._confirm_intent_classifier
+        _orch_kwargs: Dict[str, Any] = {
+            k: v for k, v in _full_kwargs.items() if k in _orch_params
+        }
 
         orch = orchestrator_cls(**_orch_kwargs)
         async for wire_event in orch.run(

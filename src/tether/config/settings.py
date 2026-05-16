@@ -537,6 +537,60 @@ class ConnectorsSettings(StrictModel):
     registry: dict[str, ConnectorSpec] = Field(default_factory=dict)
 
 
+class ResearchSettings(StrictModel):
+    """``orchestrator.research:`` section — NotebookOrchestrator config.
+
+    Per ADR-0020 D5 / rs-D-synthesis.md §D9. All ``*_model`` fields
+    default to ``None`` meaning "use the model from the
+    ``/chat/stream`` request body". Setting any of them overrides
+    per-phase (a v2 capability — Wave 2 IMP-E rejects per-phase model
+    overrides on first call to keep cold-load surface bounded).
+
+    ``max_*`` bounds are enforced by the orchestrator before each loop
+    iteration via :meth:`NotebookState.should_continue`.
+    """
+
+    planner_model: Optional[str] = Field(
+        default=None,
+        description=(
+            "Override the model used for the Plan phase. Defaults to the "
+            "model on the request body."
+        ),
+    )
+    extractor_model: Optional[str] = Field(
+        default=None,
+        description=(
+            "Override the model used for the Extract phase. Defaults to "
+            "the model on the request body."
+        ),
+    )
+    synthesizer_model: Optional[str] = Field(
+        default=None,
+        description=(
+            "Override the model used for the Synthesize phase. Defaults "
+            "to the model on the request body."
+        ),
+    )
+    max_facts: int = Field(
+        default=40,
+        ge=1,
+        le=200,
+        description="Max atomic facts collected before the loop stops early.",
+    )
+    max_iterations: int = Field(
+        default=20,
+        ge=1,
+        le=100,
+        description="Max explore→extract→refine iterations before the loop stops early.",
+    )
+    max_facts_per_extract: int = Field(
+        default=10,
+        ge=1,
+        le=50,
+        description="Cap on facts emitted by a single Extract call (parametric in the prompt).",
+    )
+
+
 class OrchestratorSettings(StrictModel):
     """``orchestrator:`` section — strategy registry.
 
@@ -544,6 +598,9 @@ class OrchestratorSettings(StrictModel):
     names (e.g., "chat", "research") to dotted impl paths. Engine.chat
     resolves the requested mode at call time via
     ``protocol.orchestration.registry.resolve_orchestrator_class``.
+
+    ``research`` mounts NotebookOrchestrator-specific knobs (ADR-0020
+    D5); see :class:`ResearchSettings`.
 
     Briefing §2 Seam B item 4; §5 anti-pattern (no auto-routing).
     """
@@ -559,6 +616,7 @@ class OrchestratorSettings(StrictModel):
         },
         description="Mode -> dotted impl path (e.g., 'pkg.module.Class').",
     )
+    research: ResearchSettings = Field(default_factory=ResearchSettings)
 
 
 class InboxSettings(StrictModel):

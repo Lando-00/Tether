@@ -426,7 +426,7 @@
     },
     "OrchestratorSettings": {
       "additionalProperties": false,
-      "description": "``orchestrator:`` section — strategy registry.\n\nMirrors the ``tools.registry`` pattern. The registry maps mode\nnames (e.g., \"chat\", \"research\") to dotted impl paths. Engine.chat\nresolves the requested mode at call time via\n``protocol.orchestration.registry.resolve_orchestrator_class``.\n\nBriefing §2 Seam B item 4; §5 anti-pattern (no auto-routing).",
+      "description": "``orchestrator:`` section — strategy registry.\n\nMirrors the ``tools.registry`` pattern. The registry maps mode\nnames (e.g., \"chat\", \"research\") to dotted impl paths. Engine.chat\nresolves the requested mode at call time via\n``protocol.orchestration.registry.resolve_orchestrator_class``.\n\n``research`` mounts NotebookOrchestrator-specific knobs (ADR-0020\nD5); see :class:`ResearchSettings`.\n\nBriefing §2 Seam B item 4; §5 anti-pattern (no auto-routing).",
       "properties": {
         "default": {
           "default": "chat",
@@ -441,6 +441,9 @@
           "description": "Mode -> dotted impl path (e.g., 'pkg.module.Class').",
           "title": "Registry",
           "type": "object"
+        },
+        "research": {
+          "$ref": "#/$defs/ResearchSettings"
         }
       },
       "title": "OrchestratorSettings",
@@ -514,6 +517,77 @@
         "session_store"
       ],
       "title": "ProvidersSettings",
+      "type": "object"
+    },
+    "ResearchSettings": {
+      "additionalProperties": false,
+      "description": "``orchestrator.research:`` section — NotebookOrchestrator config.\n\nPer ADR-0020 D5 / rs-D-synthesis.md §D9. All ``*_model`` fields\ndefault to ``None`` meaning \"use the model from the\n``/chat/stream`` request body\". Setting any of them overrides\nper-phase (a v2 capability — Wave 2 IMP-E rejects per-phase model\noverrides on first call to keep cold-load surface bounded).\n\n``max_*`` bounds are enforced by the orchestrator before each loop\niteration via :meth:`NotebookState.should_continue`.",
+      "properties": {
+        "extractor_model": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "Override the model used for the Extract phase. Defaults to the model on the request body.",
+          "title": "Extractor Model"
+        },
+        "max_facts": {
+          "default": 40,
+          "description": "Max atomic facts collected before the loop stops early.",
+          "maximum": 200,
+          "minimum": 1,
+          "title": "Max Facts",
+          "type": "integer"
+        },
+        "max_facts_per_extract": {
+          "default": 10,
+          "description": "Cap on facts emitted by a single Extract call (parametric in the prompt).",
+          "maximum": 50,
+          "minimum": 1,
+          "title": "Max Facts Per Extract",
+          "type": "integer"
+        },
+        "max_iterations": {
+          "default": 20,
+          "description": "Max explore→extract→refine iterations before the loop stops early.",
+          "maximum": 100,
+          "minimum": 1,
+          "title": "Max Iterations",
+          "type": "integer"
+        },
+        "planner_model": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "Override the model used for the Plan phase. Defaults to the model on the request body.",
+          "title": "Planner Model"
+        },
+        "synthesizer_model": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "Override the model used for the Synthesize phase. Defaults to the model on the request body.",
+          "title": "Synthesizer Model"
+        }
+      },
+      "title": "ResearchSettings",
       "type": "object"
     },
     "SecuritySettings": {

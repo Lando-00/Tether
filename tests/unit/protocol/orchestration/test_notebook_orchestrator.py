@@ -7,6 +7,7 @@ from __future__ import annotations
 
 import pytest
 
+from tether.config.settings import ResearchSettings
 from tether.protocol.orchestration.notebook import NotebookOrchestrator
 
 
@@ -26,17 +27,21 @@ class _FakeRunner:
     pass
 
 
+class _FakeToolRegistry:
+    pass
+
+
 def _build_stub() -> NotebookOrchestrator:
     """Build a NotebookOrchestrator with stub deps. Constructor doesn't
     actually use them; run() raises before touching anything."""
     return NotebookOrchestrator(
         provider=_FakeProvider(),
-        parser=_FakeParser(),
         store=_FakeStore(),
-        tools={},
-        system_prompt="",
-        config=object(),
+        tool_registry=_FakeToolRegistry(),
         tool_runner=_FakeRunner(),
+        parser=_FakeParser(),
+        config=object(),
+        research_settings=ResearchSettings(),
     )
 
 
@@ -73,8 +78,8 @@ def test_constructor_args_stored():
     assert orch.provider is not None
     assert orch.parser is not None
     assert orch.store is not None
-    assert orch.tools == {}
-    assert orch.system_prompt == ""
+    assert orch.tool_registry is not None
     assert orch.config is not None
     assert orch.tool_runner is not None
-    assert orch.hw_watchdog is None
+    assert isinstance(orch.research_settings, ResearchSettings)
+    assert orch.clock() is not None

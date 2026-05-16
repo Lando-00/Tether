@@ -19,7 +19,6 @@ from typing import Annotated, Any, Dict, List, Literal, Optional, Union
 
 from pydantic import BaseModel, ConfigDict, Field
 
-
 PROTOCOL_VERSION = "1.0"
 
 
@@ -165,6 +164,108 @@ class HwReset(_Base):
     model_name: str
 
 
+# --- NotebookOrchestrator events -------------------------------------------
+# Phase 9 (ADR-0020): research-mode wire events. All four are emitted
+# BEFORE :class:`MessageStart`. They inherit :class:`_Base`, so they
+# carry the same envelope (``session_id``, ``turn_id``, ``seq``, ``ts``,
+# ``protocol_version``) as the existing v2 events. Sourced verbatim from
+# ``files/investigations/rs-D-events.md`` §1.3.
+
+
+class NotebookPhaseStart(_Base):
+    """Emitted once per phase transition in the Notebook loop.
+
+    ``phase`` values:
+
+    ``plan``
+        LLM has decomposed the user question into Key Elements / initial
+        sub-queries. Emitted once, before the first Explore phase.
+    ``explore``
+        A sub-query has been dequeued and the tool call is about to run.
+        Emitted once per loop iteration (once per sub-query consumed).
+    ``extract``
+        Tool result received; LLM is now extracting atomic facts from the
+        raw result into the Notebook. Emitted once per loop iteration,
+        after the explore tool result lands.
+    ``refine``
+        At least one new follow-up query was enqueued from the extract
+        step. Emitted at most once per loop iteration (skipped if no new
+        queries were produced by this iteration).
+    ``synthesize``
+        Notebook is considered complete; LLM will now synthesize the final
+        answer. Followed immediately by ``MessageStart``.
+
+    ``iteration`` is 0-indexed loop counter. It is 0 for ``plan`` and
+    ``synthesize`` (which happen exactly once), and matches the dequeue
+    ordinal for ``explore``/``extract``/``refine``.
+    """
+
+    type: Literal["notebook_phase_start"] = "notebook_phase_start"
+    phase: Literal["plan", "explore", "extract", "refine", "synthesize"]
+    iteration: int = Field(
+        default=0, ge=0, description="0-indexed loop iteration counter"
+    )
+
+
+class NotebookFactAdded(_Base):
+    """One atomic fact extracted into the Notebook.
+
+    Emitted once per fact string written during the ``extract`` phase.
+    ``source_query`` is the sub-query whose tool result produced this fact.
+    ``total_facts`` is the running total **after** this fact is added —
+    so the first fact gives ``total_facts=1``.
+    """
+
+    type: Literal["notebook_fact_added"] = "notebook_fact_added"
+    fact_text: str = Field(
+        description="The atomic fact string (e.g. 'Apple CEO is Tim Cook')"
+    )
+    source_query: str = Field(
+        description="The sub-query whose tool result produced this fact"
+    )
+    total_facts: int = Field(
+        ge=1, description="Running total of Notebook facts after this addition"
+    )
+
+
+class NotebookQueryAdded(_Base):
+    """One sub-query enqueued for future exploration.
+
+    Emitted when the planner (``plan`` phase) or the extractor
+    (``refine`` phase) adds a new query to the work queue.
+    ``queue_depth`` is the queue length **after** the enqueue.
+    """
+
+    type: Literal["notebook_query_added"] = "notebook_query_added"
+    query: str = Field(description="The sub-query string enqueued")
+    queue_depth: int = Field(ge=1, description="Queue depth after this enqueue")
+
+
+class NotebookLimitReached(_Base):
+    """The Notebook loop hit a configured bound and stopped early.
+
+    ``limit_kind`` values:
+
+    ``max_facts``
+        ``len(notebook) >= max_facts`` was reached before the queue
+        emptied. ``count`` is the final fact count.
+    ``max_iterations``
+        The loop iteration counter reached ``max_iterations`` before the
+        queue emptied. ``count`` is the number of iterations completed.
+
+    This event is always followed by
+    ``NotebookPhaseStart(phase="synthesize")`` so synthesis still runs
+    on the partial Notebook.
+    """
+
+    type: Literal["notebook_limit_reached"] = "notebook_limit_reached"
+    limit_kind: Literal["max_facts", "max_iterations"]
+    count: int = Field(
+        ge=0,
+        description="Final fact count (max_facts) or iteration count (max_iterations)",
+    )
+
+
 WireEvent = Annotated[
     Union[
         MessageStart,
@@ -176,6 +277,11 @@ WireEvent = Annotated[
         Error,
         LoopLimitReached,
         HwReset,
+        # --- Phase 9: NotebookOrchestrator events ---
+        NotebookPhaseStart,
+        NotebookFactAdded,
+        NotebookQueryAdded,
+        NotebookLimitReached,
     ],
     Field(discriminator="type"),
 ]
@@ -194,5 +300,9 @@ __all__ = [
     "Error",
     "LoopLimitReached",
     "HwReset",
+    "NotebookPhaseStart",
+    "NotebookFactAdded",
+    "NotebookQueryAdded",
+    "NotebookLimitReached",
     "WireEvent",
 ]

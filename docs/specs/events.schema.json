@@ -269,6 +269,253 @@
       "title": "MessageStop",
       "type": "object"
     },
+    "NotebookFactAdded": {
+      "additionalProperties": false,
+      "description": "One atomic fact extracted into the Notebook.\n\nEmitted once per fact string written during the ``extract`` phase.\n``source_query`` is the sub-query whose tool result produced this fact.\n``total_facts`` is the running total **after** this fact is added —\nso the first fact gives ``total_facts=1``.",
+      "properties": {
+        "fact_text": {
+          "description": "The atomic fact string (e.g. 'Apple CEO is Tim Cook')",
+          "title": "Fact Text",
+          "type": "string"
+        },
+        "protocol_version": {
+          "default": "1.0",
+          "title": "Protocol Version",
+          "type": "string"
+        },
+        "seq": {
+          "description": "Per-turn monotonically-increasing sequence number",
+          "minimum": 0,
+          "title": "Seq",
+          "type": "integer"
+        },
+        "session_id": {
+          "title": "Session Id",
+          "type": "string"
+        },
+        "source_query": {
+          "description": "The sub-query whose tool result produced this fact",
+          "title": "Source Query",
+          "type": "string"
+        },
+        "total_facts": {
+          "description": "Running total of Notebook facts after this addition",
+          "minimum": 1,
+          "title": "Total Facts",
+          "type": "integer"
+        },
+        "ts": {
+          "description": "Server-side emission timestamp (UTC)",
+          "format": "date-time",
+          "title": "Ts",
+          "type": "string"
+        },
+        "turn_id": {
+          "title": "Turn Id",
+          "type": "string"
+        },
+        "type": {
+          "const": "notebook_fact_added",
+          "default": "notebook_fact_added",
+          "title": "Type",
+          "type": "string"
+        }
+      },
+      "required": [
+        "session_id",
+        "turn_id",
+        "seq",
+        "ts",
+        "fact_text",
+        "source_query",
+        "total_facts"
+      ],
+      "title": "NotebookFactAdded",
+      "type": "object"
+    },
+    "NotebookLimitReached": {
+      "additionalProperties": false,
+      "description": "The Notebook loop hit a configured bound and stopped early.\n\n``limit_kind`` values:\n\n``max_facts``\n    ``len(notebook) >= max_facts`` was reached before the queue\n    emptied. ``count`` is the final fact count.\n``max_iterations``\n    The loop iteration counter reached ``max_iterations`` before the\n    queue emptied. ``count`` is the number of iterations completed.\n\nThis event is always followed by\n``NotebookPhaseStart(phase=\"synthesize\")`` so synthesis still runs\non the partial Notebook.",
+      "properties": {
+        "count": {
+          "description": "Final fact count (max_facts) or iteration count (max_iterations)",
+          "minimum": 0,
+          "title": "Count",
+          "type": "integer"
+        },
+        "limit_kind": {
+          "enum": [
+            "max_facts",
+            "max_iterations"
+          ],
+          "title": "Limit Kind",
+          "type": "string"
+        },
+        "protocol_version": {
+          "default": "1.0",
+          "title": "Protocol Version",
+          "type": "string"
+        },
+        "seq": {
+          "description": "Per-turn monotonically-increasing sequence number",
+          "minimum": 0,
+          "title": "Seq",
+          "type": "integer"
+        },
+        "session_id": {
+          "title": "Session Id",
+          "type": "string"
+        },
+        "ts": {
+          "description": "Server-side emission timestamp (UTC)",
+          "format": "date-time",
+          "title": "Ts",
+          "type": "string"
+        },
+        "turn_id": {
+          "title": "Turn Id",
+          "type": "string"
+        },
+        "type": {
+          "const": "notebook_limit_reached",
+          "default": "notebook_limit_reached",
+          "title": "Type",
+          "type": "string"
+        }
+      },
+      "required": [
+        "session_id",
+        "turn_id",
+        "seq",
+        "ts",
+        "limit_kind",
+        "count"
+      ],
+      "title": "NotebookLimitReached",
+      "type": "object"
+    },
+    "NotebookPhaseStart": {
+      "additionalProperties": false,
+      "description": "Emitted once per phase transition in the Notebook loop.\n\n``phase`` values:\n\n``plan``\n    LLM has decomposed the user question into Key Elements / initial\n    sub-queries. Emitted once, before the first Explore phase.\n``explore``\n    A sub-query has been dequeued and the tool call is about to run.\n    Emitted once per loop iteration (once per sub-query consumed).\n``extract``\n    Tool result received; LLM is now extracting atomic facts from the\n    raw result into the Notebook. Emitted once per loop iteration,\n    after the explore tool result lands.\n``refine``\n    At least one new follow-up query was enqueued from the extract\n    step. Emitted at most once per loop iteration (skipped if no new\n    queries were produced by this iteration).\n``synthesize``\n    Notebook is considered complete; LLM will now synthesize the final\n    answer. Followed immediately by ``MessageStart``.\n\n``iteration`` is 0-indexed loop counter. It is 0 for ``plan`` and\n``synthesize`` (which happen exactly once), and matches the dequeue\nordinal for ``explore``/``extract``/``refine``.",
+      "properties": {
+        "iteration": {
+          "default": 0,
+          "description": "0-indexed loop iteration counter",
+          "minimum": 0,
+          "title": "Iteration",
+          "type": "integer"
+        },
+        "phase": {
+          "enum": [
+            "plan",
+            "explore",
+            "extract",
+            "refine",
+            "synthesize"
+          ],
+          "title": "Phase",
+          "type": "string"
+        },
+        "protocol_version": {
+          "default": "1.0",
+          "title": "Protocol Version",
+          "type": "string"
+        },
+        "seq": {
+          "description": "Per-turn monotonically-increasing sequence number",
+          "minimum": 0,
+          "title": "Seq",
+          "type": "integer"
+        },
+        "session_id": {
+          "title": "Session Id",
+          "type": "string"
+        },
+        "ts": {
+          "description": "Server-side emission timestamp (UTC)",
+          "format": "date-time",
+          "title": "Ts",
+          "type": "string"
+        },
+        "turn_id": {
+          "title": "Turn Id",
+          "type": "string"
+        },
+        "type": {
+          "const": "notebook_phase_start",
+          "default": "notebook_phase_start",
+          "title": "Type",
+          "type": "string"
+        }
+      },
+      "required": [
+        "session_id",
+        "turn_id",
+        "seq",
+        "ts",
+        "phase"
+      ],
+      "title": "NotebookPhaseStart",
+      "type": "object"
+    },
+    "NotebookQueryAdded": {
+      "additionalProperties": false,
+      "description": "One sub-query enqueued for future exploration.\n\nEmitted when the planner (``plan`` phase) or the extractor\n(``refine`` phase) adds a new query to the work queue.\n``queue_depth`` is the queue length **after** the enqueue.",
+      "properties": {
+        "protocol_version": {
+          "default": "1.0",
+          "title": "Protocol Version",
+          "type": "string"
+        },
+        "query": {
+          "description": "The sub-query string enqueued",
+          "title": "Query",
+          "type": "string"
+        },
+        "queue_depth": {
+          "description": "Queue depth after this enqueue",
+          "minimum": 1,
+          "title": "Queue Depth",
+          "type": "integer"
+        },
+        "seq": {
+          "description": "Per-turn monotonically-increasing sequence number",
+          "minimum": 0,
+          "title": "Seq",
+          "type": "integer"
+        },
+        "session_id": {
+          "title": "Session Id",
+          "type": "string"
+        },
+        "ts": {
+          "description": "Server-side emission timestamp (UTC)",
+          "format": "date-time",
+          "title": "Ts",
+          "type": "string"
+        },
+        "turn_id": {
+          "title": "Turn Id",
+          "type": "string"
+        },
+        "type": {
+          "const": "notebook_query_added",
+          "default": "notebook_query_added",
+          "title": "Type",
+          "type": "string"
+        }
+      },
+      "required": [
+        "session_id",
+        "turn_id",
+        "seq",
+        "ts",
+        "query",
+        "queue_depth"
+      ],
+      "title": "NotebookQueryAdded",
+      "type": "object"
+    },
     "TextDelta": {
       "additionalProperties": false,
       "description": "Assistant text token (incremental).",
@@ -576,6 +823,10 @@
       "loop_limit_reached": "#/$defs/LoopLimitReached",
       "message_start": "#/$defs/MessageStart",
       "message_stop": "#/$defs/MessageStop",
+      "notebook_fact_added": "#/$defs/NotebookFactAdded",
+      "notebook_limit_reached": "#/$defs/NotebookLimitReached",
+      "notebook_phase_start": "#/$defs/NotebookPhaseStart",
+      "notebook_query_added": "#/$defs/NotebookQueryAdded",
       "text_delta": "#/$defs/TextDelta",
       "thinking_delta": "#/$defs/ThinkingDelta",
       "tool_call": "#/$defs/ToolCall",
@@ -610,6 +861,18 @@
     },
     {
       "$ref": "#/$defs/HwReset"
+    },
+    {
+      "$ref": "#/$defs/NotebookPhaseStart"
+    },
+    {
+      "$ref": "#/$defs/NotebookFactAdded"
+    },
+    {
+      "$ref": "#/$defs/NotebookQueryAdded"
+    },
+    {
+      "$ref": "#/$defs/NotebookLimitReached"
     }
   ]
 }

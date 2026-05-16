@@ -17,59 +17,63 @@ Briefing §2 Seam B item 4.
 """
 from __future__ import annotations
 
-from typing import AsyncIterator, Dict, Optional, TYPE_CHECKING
+from collections.abc import Callable
+from datetime import date
+from typing import AsyncIterator, ClassVar, Optional, TYPE_CHECKING
 
 from tether.core.interfaces import (
     ModelProvider,
     Orchestrator,
     SessionStore,
     StreamParser,
-    Tool,
 )
 
 if TYPE_CHECKING:
-    from tether.core.types import OrchestratorConfig
+    from tether.config.settings import ResearchSettings
+    from tether.core.tool_registry import ToolRegistry
+    from tether.core.types import OrchestratorConfig as ChatSettings
     from tether.protocol.orchestration.cancel import CancelToken
     from tether.protocol.orchestration.tool_runner import ToolRunner
     from tether.protocol.wire.events import WireEvent
-    from tether.runtime.hw_watchdog import HardwareWatchdog
 
 
 class NotebookOrchestrator(Orchestrator):
     """Stub for research-mode orchestration.
 
-    Constructor matches ChattyAgentOrchestrator's so future wiring can
-    swap impls without changing the call site. run() raises
-    NotImplementedError until the research-mode work in
-    docs/research/06_context_strategies.md is implemented.
+    Constructor is pinned by ADR-0020 §D5 so Engine.chat() can thread
+    research settings via inspect.signature. run() raises NotImplementedError
+    until the research-mode work in docs/research/06_context_strategies.md
+    is implemented.
     """
 
     # Stub — not yet implemented. The HTTP router checks is_implemented
     # before streaming to return 501 early. Briefing §2 Seam B item 4.
-    is_implemented: bool = False
+    is_implemented: ClassVar[bool] = False
 
     def __init__(
         self,
         *,
+        # Inherited ABC kwargs (engine.py threads via inspect.signature):
         provider: "ModelProvider",
-        parser: "StreamParser",
         store: "SessionStore",
-        tools: Dict[str, "Tool"],
-        system_prompt: str,
-        config: "OrchestratorConfig",
+        tool_registry: "ToolRegistry",
         tool_runner: "ToolRunner",
-        hw_watchdog: Optional["HardwareWatchdog"] = None,
-    ):
+        parser: "StreamParser",
+        config: "ChatSettings",
+        # Notebook-specific (engine.py adds these when mode="research"):
+        research_settings: "ResearchSettings",
+        clock: Callable[[], date] = lambda: date.today(),
+    ) -> None:
         # Save constructor args so a future impl can use them. No
         # processing happens until run() is called (and run() raises).
         self.provider = provider
-        self.parser = parser
         self.store = store
-        self.tools = tools
-        self.system_prompt = system_prompt
-        self.config = config
+        self.tool_registry = tool_registry
         self.tool_runner = tool_runner
-        self.hw_watchdog = hw_watchdog
+        self.parser = parser
+        self.config = config
+        self.research_settings = research_settings
+        self.clock = clock
 
     async def run(
         self,

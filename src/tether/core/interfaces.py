@@ -429,10 +429,14 @@ class Orchestrator(ABC):
         """Run one turn. Yields typed WireEvent objects.
 
         Implementations MUST:
-          - emit MessageStart first
+          - emit MessageStart before any TextDelta / ToolCall / ToolResult
           - emit MessageStop last (exactly one)
           - honor cancel_token at chunk boundaries (granularity is
             implementation choice)
+
+        Orchestrator-specific pre-message progress events (for example,
+        NotebookPhaseStart / NotebookFactAdded; see ADR-0020) MAY precede
+        MessageStart so clients can render progress before synthesis text.
         """
         ...
         # Unreachable, but makes abstract async generators type-check

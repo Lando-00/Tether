@@ -127,6 +127,26 @@ inbox:
   retention_days: 30
   max_payload_bytes: 64000
   max_summary_chars: 512
+# Phase 9 (ADR-0020): orchestrator strategy registry + NotebookOrchestrator
+# (research-mode) configuration. Defaults shown explicitly so users browsing
+# this file can see the wired-in tunables without cross-referencing
+# settings.py. NotebookOrchestrator itself is implemented in Wave 2 IMP-E.
+orchestrator:
+  default: "chat"
+  registry:
+    chat: "tether.protocol.orchestration.chatty.ChattyAgentOrchestrator"
+    research: "tether.protocol.orchestration.notebook.NotebookOrchestrator"
+  research:
+    # Per-phase model overrides. CAUTION: each override may trigger a 30s
+    # MLC cold-load on first call to that phase. Leave null for single-model
+    # ops (recommended). Tracked: fu-research-multi-model-warm.
+    planner_model: null
+    extractor_model: null
+    synthesizer_model: null
+    # Loop bounds enforced by NotebookState.should_continue().
+    max_facts: 40              # Stop collecting once notebook hits this size.
+    max_iterations: 20         # Stop looping after N explore→extract→refine cycles.
+    max_facts_per_extract: 10  # Cap on facts emitted by a single Extract call.
 # Phase 2b (ADR-0019): confirm-intent classifier for *_confirm_send tools.
 intent:
   classifier_impl: "tether.protocol.intent.regex_classifier.RegexConfirmIntentClassifier"
