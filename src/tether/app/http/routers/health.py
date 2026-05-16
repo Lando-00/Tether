@@ -56,25 +56,20 @@ async def readyz(request: Request):
         and ids in ``_provider_start_failures``.
       - ``default_provider_id``: the engine's current default.
 
-    Legacy keys preserved verbatim:
+    Legacy keys preserved verbatim on every response path (rubber-duck
+    follow-up: error paths previously dropped these, breaking the
+    additive guarantee for supervisors that key on schema shape):
 
       - ``ready`` — overall flag; now also requires ≥1 healthy provider.
       - ``store`` — DB connectivity.
       - ``provider`` — True iff ≥1 healthy provider (supervisors that
-        key on this bool keep working).
+        key on this bool keep working). NOT forced ``False`` on
+        ``hw_health=error``; the registry-health signal is independent
+        of HW health.
       - ``hw_health`` — HW watchdog summary (or absent when no watchdog).
       - ``connectors`` / ``connector_start_failures`` — connector layer.
     """
     svc = request.app.state.gen_svc
-    try:
-        _ = await svc.store.get_history("_readiness")
-    except Exception as e:
-        return {"ready": False, "store": False, "provider": None, "error": str(e)}
-
-    connectors_block = await _connector_health_block(svc)
-    connector_start_failures = list(
-        getattr(svc, "_connector_start_failures", []) or []
-    )
 
     # ADR-0021 P2.A: per-provider health block. ``list_provider_health``
     # is sync, cheap, and never raises (defensive in the engine).
@@ -90,78 +85,87 @@ async def readyz(request: Request):
             providers_block = {}
         default_provider_id = getattr(svc, "default_provider_id", None)
 
-    any_healthy_provider = any(
-        p.get("healthy") for p in providers_block.values()
-    ) if providers_block else True  # back-compat: legacy engines (no helper)
+    any_healthy_provider = (
+        any(p.get("healthy") for p in providers_block.values())
+        if providers_block
+        else True  # back-compat: legacy engines (no helper)
+    )
+
+    # Build a base body that EVERY exit path mutates. Rubber-duck
+    # follow-up: legacy error paths returned truncated dicts that
+    # dropped hw_health / connectors / providers / default_provider_id,
+    # violating the additive-schema guarantee. Constructing the base
+    # eagerly + having every branch mutate it keeps the wire shape
+    # consistent regardless of which failure fired.
+    body: Dict[str, Any] = {
+        "ready": False,
+        "store": False,
+        "provider": any_healthy_provider,
+        "connectors": [],
+        "connector_start_failures": [],
+    }
+    if providers_block:
+        body["providers"] = providers_block
+    if default_provider_id is not None:
+        body["default_provider_id"] = default_provider_id
+
+    # Store probe.
+    try:
+        _ = await svc.store.get_history("_readiness")
+    except Exception as e:
+        body["ready"] = False
+        body["store"] = False
+        body["error"] = str(e)
+        return body
+    body["store"] = True
+
+    # Connectors (best-effort; never 500s readyz).
+    connectors_block = await _connector_health_block(svc)
+    connector_start_failures = list(
+        getattr(svc, "_connector_start_failures", []) or []
+    )
+    body["connectors"] = connectors_block
+    body["connector_start_failures"] = connector_start_failures
 
     try:
         if getattr(svc, "hw_watchdog", None) is not None:
             health = await svc.hw_watchdog.health_summary()
+            body["hw_health"] = health
             if health["overall"] == "error":
-                body: Dict[str, Any] = {
-                    "ready": False,
-                    "store": True,
-                    "provider": False,
-                    "error": "hw_health: error",
-                    "hw_health": health,
-                    "connectors": connectors_block,
-                    "connector_start_failures": connector_start_failures,
-                }
-                if providers_block:
-                    body["providers"] = providers_block
-                if default_provider_id is not None:
-                    body["default_provider_id"] = default_provider_id
+                # HW error gates ``ready=False`` even when the registry
+                # has healthy remote providers, because the supervisor
+                # contract for the HW slice is unconditional. The
+                # ``provider`` bool keeps tracking registry health
+                # (rubber-duck follow-up: do not lie about registry
+                # state just because HW is degraded).
+                body["ready"] = False
+                body["provider"] = any_healthy_provider
+                body["error"] = "hw_health: error"
                 return body
-            ready = (
+            body["ready"] = (
                 any_healthy_provider
                 and not connector_start_failures
             )
-            body = {
-                "ready": ready,
-                "store": True,
-                "provider": any_healthy_provider,
-                "hw_health": health,
-                "connectors": connectors_block,
-                "connector_start_failures": connector_start_failures,
-            }
-            if providers_block:
-                body["providers"] = providers_block
-            if default_provider_id is not None:
-                body["default_provider_id"] = default_provider_id
+            body["provider"] = any_healthy_provider
             return body
 
         models = svc.provider.list_models()
         if not models:
-            body = {
-                "ready": False,
-                "store": True,
-                "provider": False,
-                "error": "no models available",
-                "connectors": connectors_block,
-                "connector_start_failures": connector_start_failures,
-            }
-            if providers_block:
-                body["providers"] = providers_block
-            if default_provider_id is not None:
-                body["default_provider_id"] = default_provider_id
+            body["ready"] = False
+            body["provider"] = False
+            body["error"] = "no models available"
             return body
-        body = {
-            "ready": (
-                (any_healthy_provider if providers_block else True)
-                and not connector_start_failures
-            ),
-            "store": True,
-            "provider": (
-                any_healthy_provider if providers_block else True
-            ),
-            "models_available": len(models),
-            "connectors": connectors_block,
-            "connector_start_failures": connector_start_failures,
-        }
-        if providers_block:
-            body["providers"] = providers_block
-        if default_provider_id is not None:
-            body["default_provider_id"] = default_provider_id
+        body["ready"] = (
+            (any_healthy_provider if providers_block else True)
+            and not connector_start_failures
+        )
+        body["provider"] = (
+            any_healthy_provider if providers_block else True
+        )
+        body["models_available"] = len(models)
         return body
     except Exception as e:
-        return {"ready": False, "store": True, "provider": False, "error": str(e)}
+        body["ready"] = False
+        body["provider"] = False
+        body["error"] = str(e)
+        return body

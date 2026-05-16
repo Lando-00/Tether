@@ -316,8 +316,14 @@ def test_unhealthy_provider_id_returns_503():
         )
         assert resp.status_code == 503
         body = resp.json()
+        # Code-review follow-up: server no longer leaks raw exception text
+        # (which could contain paths / tokens from provider __init__).
+        # The generic message still names the failing provider_id and
+        # points operators at the /readyz health map.
         assert "broken" in body["detail"]
-        assert "AuthError: missing token" in body["detail"]
+        assert "AuthError" not in body["detail"]
+        assert "missing token" not in body["detail"]
+        assert "/api/v1/readyz" in body["detail"]
         assert engine.captured_chat_provider_ids == []
 
 

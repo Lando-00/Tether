@@ -230,16 +230,26 @@ def test_readyz_with_dummy_provider():
 
 
 def test_readyz_store_failure():
-    """Store throws → ready=false, store=false, provider=None.
-    Same shape regardless of watchdog presence."""
+    """Store throws → ready=false, store=false.
+
+    Rubber-duck / code-review follow-up (ADR-0021): error paths must
+    preserve the additive schema (legacy + new keys). The ``provider``
+    bool tracks registry health (here a healthy DummyProvider → True);
+    ``ready`` is gated by the store failure independently.
+    """
     client = TestClient(_make_app(_DummyProvider(), _BrokenStore()))
     resp = client.get("/api/v1/readyz")
     assert resp.status_code == 200
     body = resp.json()
     assert body["ready"] is False
     assert body["store"] is False
-    assert body["provider"] is None
+    # Registry health is independent of store. Engine built via the
+    # singular shim exposes one healthy provider.
+    assert body["provider"] is True
     assert "db connection failed" in body["error"]
+    # Additive-schema guarantee: legacy + new keys present on error path.
+    assert "connectors" in body
+    assert "connector_start_failures" in body
 
 
 def test_readyz_with_fake_hw_provider_healthy():
@@ -270,14 +280,23 @@ def test_readyz_with_fake_hw_provider_degraded_is_ready():
 
 
 def test_readyz_with_fake_hw_provider_error():
-    """Provider reporting ``error`` makes /readyz return ready=false."""
+    """Provider reporting ``error`` makes /readyz return ready=false.
+
+    Rubber-duck follow-up (ADR-0021): the ``provider`` bool now tracks
+    registry health, not HW health. A HW provider that constructed
+    cleanly is in ``self.providers`` (so registry-healthy) but its
+    ``hw_health`` reports ``error``. ``ready`` is False because HW is
+    broken; ``provider`` is True because the registry entry exists.
+    Operators reading the legacy bool see "registry has a provider";
+    operators reading ``hw_health`` see "but the HW slice is bad".
+    """
     provider = _FakeHWProvider(HwHealth(status="error", details={"reason": "all engines crashed"}))
     client = TestClient(_make_app(provider, _MinimalStore()))
     resp = client.get("/api/v1/readyz")
     body = resp.json()
     assert body["ready"] is False
     assert body["store"] is True
-    assert body["provider"] is False
+    assert body["provider"] is True
     assert body["error"] == "hw_health: error"
     assert body["hw_health"]["overall"] == "error"
 

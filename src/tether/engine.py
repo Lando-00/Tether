@@ -145,17 +145,20 @@ class Engine:
                     "Engine: default_provider_id required when "
                     "providers= is passed"
                 )
-            # NOTE: ADR-0021 ambiguity — chose strict membership check
-            # at construct time because ``from_settings`` already falls
-            # back to a healthy id before reaching here.
-            if (
-                default_provider_id not in providers
-                and default_provider_id not in (provider_start_failures or {})
-            ):
+            # ADR-0021: default_provider_id MUST be a healthy provider.
+            # Construction-time validation is strict because direct
+            # constructors (tests, library callers) MUST pre-resolve the
+            # fallback themselves. ``from_settings`` already falls back to
+            # the first healthy id before reaching this constructor, so
+            # this branch only catches programmer errors (e.g. tests that
+            # forget the dependency between providers + default_provider_id).
+            if default_provider_id not in providers:
                 raise ValueError(
                     f"Engine: default_provider_id "
                     f"{default_provider_id!r} not in providers "
-                    f"(known: {sorted(providers)})"
+                    f"(known: {sorted(providers)}). The default must be a "
+                    "healthy provider; if its construction failed, fall "
+                    "back to a healthy id before constructing the Engine."
                 )
             self.providers: Dict[str, ModelProvider] = dict(providers)
             self.default_provider_id: str = default_provider_id

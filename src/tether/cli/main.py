@@ -300,10 +300,21 @@ def get_available_model_details() -> list:
         return []
 
 
-def _model_details_for(model_name: str) -> Optional[dict]:
-    """Look up a single model's :class:`ModelDetails` dict, or ``None``."""
+def _model_details_for(
+    model_name: str, *, provider_id: Optional[str] = None
+) -> Optional[dict]:
+    """Look up a single model's :class:`ModelDetails` dict, or ``None``.
+
+    When ``provider_id`` is given (and is not the wrap sentinel), require
+    a row that matches BOTH ``id`` and ``provider_id``. ADR-0021 P2 follow-up:
+    duplicate model names across providers are valid; the legacy "first
+    matching id" lookup silently picked the wrong row when reasoning
+    capabilities differed across providers.
+    """
     for info in get_available_model_details():
-        if info.get("id") == model_name:
+        if info.get("id") != model_name:
+            continue
+        if provider_id is None or info.get("provider_id") == provider_id:
             return info
     return None
 
@@ -803,14 +814,19 @@ def select_model(
 def select_reasoning_effort(
     model_name: str,
     current: Optional[str] = None,
+    *,
+    provider_id: Optional[str] = None,
 ) -> Optional[str]:
     """Prompt the user for a reasoning effort, scoped to the chosen model.
 
     Returns the new value, or ``None`` when the user clears the override.
     If the model does not advertise ``supports_reasoning_effort``,
     prints a notice and returns ``current`` unchanged (no-op).
+
+    ``provider_id`` scopes the lookup so duplicate model names across
+    providers resolve to the right reasoning whitelist (ADR-0021 P2 follow-up).
     """
-    info = _model_details_for(model_name)
+    info = _model_details_for(model_name, provider_id=provider_id)
     if info is None:
         console.print(
             f"[yellow]No metadata for model '{model_name}' — cannot check "
@@ -1122,7 +1138,7 @@ def main(
     # but we surface a warning so the user can fix it before the first
     # 422 turn. Skipped when --reasoning-effort isn't passed.
     if reasoning_effort is not None:
-        info = _model_details_for(model_name)
+        info = _model_details_for(model_name, provider_id=provider_id)
         if info is None:
             console.print(
                 "[dim]No /models/details available — sending "
@@ -1269,19 +1285,31 @@ def main(
                 continue
             if stripped_prompt == "\\models":
                 new_model, new_pid = select_model(None)
-                if new_model and new_model != model_name:
-                    console.print(
-                        f"🔄 Switching from [yellow]{model_name}[/yellow] "
-                        f"to [bold green]{new_model}[/bold green]"
-                    )
+                # ADR-0021 follow-up: switch when EITHER model_name or
+                # provider_id changed. The previous gating only checked
+                # model_name, so picking the same-name model from a
+                # different provider silently dropped the new provider_id.
+                if new_model and (new_model != model_name or new_pid != provider_id):
+                    if new_model != model_name:
+                        console.print(
+                            f"🔄 Switching from [yellow]{model_name}[/yellow] "
+                            f"to [bold green]{new_model}[/bold green]"
+                        )
+                    if new_pid != provider_id:
+                        from_label = provider_id or "default"
+                        to_label = new_pid or "default"
+                        console.print(
+                            f"🔀 Provider: [yellow]{from_label}[/yellow] → "
+                            f"[bold green]{to_label}[/bold green]"
+                        )
                     model_name = new_model
                     provider_id = new_pid
-                    # Clear stale reasoning_effort if the new model
-                    # doesn't accept the current value. Rubber-duck
+                    # Clear stale reasoning_effort if the new (provider, model)
+                    # pair doesn't accept the current value. Rubber-duck
                     # follow-up: a left-over high-effort hint would
                     # 422 the next turn and force a reset.
                     if reasoning_effort is not None:
-                        new_info = _model_details_for(new_model)
+                        new_info = _model_details_for(new_model, provider_id=new_pid)
                         accepted = (new_info or {}).get("reasoning_efforts") or []
                         supports = (new_info or {}).get("supports_reasoning_effort", False)
                         if not supports or reasoning_effort not in accepted:
@@ -1297,7 +1325,9 @@ def main(
                 continue
             if stripped_prompt == "\\reasoning":
                 new_effort = select_reasoning_effort(
-                    model_name, current=reasoning_effort
+                    model_name,
+                    current=reasoning_effort,
+                    provider_id=provider_id,
                 )
                 if new_effort != reasoning_effort:
                     if new_effort is None:

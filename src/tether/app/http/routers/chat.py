@@ -233,9 +233,23 @@ async def stream(request: Request, body: StreamRequest):
         if pid not in _providers:
             _failures = getattr(engine, "_provider_start_failures", {})
             if pid in _failures:
+                # Code-review follow-up: the raw failure text in
+                # _provider_start_failures may include filesystem paths,
+                # tokens, or other internal state from the provider's
+                # __init__ exception. Log the full message server-side
+                # for forensics, but return a generic detail to clients.
+                logger.error(
+                    "/chat/stream provider unhealthy: "
+                    f"session_id={body.session_id}, provider_id={pid}, "
+                    f"failure={_failures[pid]}"
+                )
                 raise HTTPException(
                     status_code=503,
-                    detail=f"Provider '{pid}' unhealthy: {_failures[pid]}",
+                    detail=(
+                        f"Provider '{pid}' is currently unavailable. "
+                        "Check the server log for details, or query "
+                        "/api/v1/readyz for the per-provider health map."
+                    ),
                 )
             raise HTTPException(
                 status_code=422,
