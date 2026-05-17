@@ -114,7 +114,7 @@ pluggy==1.6.0
     # via pytest
 prompt-toolkit==3.0.52
     # via tether (pyproject.toml)
-protobuf==6.33.6
+protobuf==7.34.1
     # via
     #   googleapis-common-protos
     #   opentelemetry-proto
