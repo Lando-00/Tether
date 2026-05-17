@@ -192,7 +192,7 @@ typing-inspection==0.4.2
     #   pydantic-settings
 urllib3==2.7.0
     # via requests
-uvicorn[standard]==0.37.0
+uvicorn[standard]==0.47.0
     # via tether (pyproject.toml)
 watchfiles==1.1.1
     # via uvicorn

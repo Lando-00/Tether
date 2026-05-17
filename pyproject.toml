@@ -34,7 +34,7 @@ dependencies = [
 ]
 
 [project.optional-dependencies]
-server = ["fastapi>=0.117.0,<0.118.0", "uvicorn[standard]>=0.37.0,<0.38.0"]
+server = ["fastapi>=0.117.0,<0.118.0", "uvicorn[standard]>=0.37.0,<0.48.0"]
 cli = ["typer", "rich", "prompt-toolkit"]
 brave = []     # httpx is in core; reserved for future Brave-specific dependencies.
 ollama = []    # Reserved for future provider support; no implementation in this refactor.
