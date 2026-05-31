@@ -19,6 +19,8 @@ import logging
 from typing import Any, Dict, List, Optional
 import httpx
 
+from tether.core.redact import redact_text
+
 
 logger = logging.getLogger(__name__)
 
@@ -271,7 +273,7 @@ class BraveSearchClient:
 
                 else:
                     # Other 4xx errors - do not retry
-                    logger.error(f"Client error ({response.status_code}): {response.text[:100]}")
+                    logger.error(f"Client error ({response.status_code}): {redact_text(response.text[:100])}")
                     response.raise_for_status()
             
             except (httpx.TimeoutException, asyncio.TimeoutError) as e:

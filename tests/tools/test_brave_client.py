@@ -452,3 +452,42 @@ class TestBraveSearchClientLogging:
                 for call in mock_logger.info.call_args_list + mock_logger.debug.call_args_list:
                     call_str = str(call)
                     assert "super_secret_key_12345" not in call_str
+
+
+class TestBraveSearchClientRedaction:
+    """Test secret redaction in error logs (Phase 9.5 W1-B)."""
+
+    @pytest.mark.asyncio
+    async def test_4xx_error_body_redacted_in_log(self, caplog):
+        """Verify that 4xx error bodies are passed through redact_text before logging.
+
+        Phase 9.5 W1-B: fu-brave-client-error-body-redaction.
+        """
+        import logging as _logging
+
+        client = BraveSearchClient(api_key="test_key", max_retries=0)
+        await client.aopen()
+
+        # Body contains an env-style secret matching _TOKEN_PATTERNS in core/redact.py
+        secret_body = "Bad request: BRAVE_API_KEY=secret_abc12345xyz is invalid"
+
+        mock_response = MagicMock()
+        mock_response.status_code = 400
+        mock_response.text = secret_body
+        mock_response.raise_for_status.side_effect = httpx.HTTPStatusError(
+            "Bad Request",
+            request=MagicMock(),
+            response=mock_response,
+        )
+
+        with patch.object(httpx.AsyncClient, 'get', new_callable=AsyncMock) as mock_get:
+            mock_get.return_value = mock_response
+
+            with caplog.at_level(_logging.ERROR, logger='tether.tools.brave_client'):
+                with pytest.raises(httpx.HTTPStatusError):
+                    await client.search(q="test")
+
+        # 1. Redaction marker appears in captured log output
+        assert "***REDACTED***" in caplog.text
+        # 2. The raw secret value does NOT appear
+        assert "secret_abc12345xyz" not in caplog.text
