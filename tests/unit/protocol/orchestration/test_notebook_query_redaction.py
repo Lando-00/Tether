@@ -54,6 +54,31 @@ def anyio_backend():
     return "asyncio"
 
 
+@pytest.fixture(autouse=True)
+def _reset_structlog_defaults():
+    """Reset structlog defaults AND replace cached module loggers.
+
+    Required because :func:`tether.core.logging.configure_logging` —
+    called by integration-test fixtures earlier in the suite — sets
+    ``cache_logger_on_first_use=True`` with a stdlib-bridge factory.
+    Once cached, BoundLoggers keep using stdlib regardless of
+    ``capture_logs()`` swapping processors → ``capture_logs`` returns
+    empty.
+
+    Workaround: reset structlog defaults (clears global config back to
+    PrintLoggerFactory, cache_logger_on_first_use=False) AND re-create
+    the module-level lazy proxies in notebook + core.logging so they
+    pick up the new default config on next ``logger.info`` call.
+
+    Tracked: ``fu-notebook-tests-structlog-isolation``.
+    """
+    import tether.protocol.orchestration.notebook as _notebook_mod
+    import tether.core.logging as _logging_mod
+    structlog.reset_defaults()
+    _notebook_mod.logger = structlog.get_logger(_notebook_mod.__name__)
+    _logging_mod.logger = structlog.get_logger("tether")
+
+
 def _provider(question_query: str) -> FakeResearchProvider:
     provider = FakeResearchProvider()
     provider.set_planner_response({"key_elements": [question_query]})

@@ -111,6 +111,20 @@ def anyio_backend():
     return "asyncio"
 
 
+@pytest.fixture(autouse=True)
+def _reset_structlog_defaults():
+    """Reset structlog defaults AND replace cached module loggers.
+
+    See ``test_notebook_query_redaction.py`` for the full rationale.
+    Tracked: ``fu-notebook-tests-structlog-isolation``.
+    """
+    import tether.protocol.orchestration.notebook as _notebook_mod
+    import tether.core.logging as _logging_mod
+    structlog.reset_defaults()
+    _notebook_mod.logger = structlog.get_logger(_notebook_mod.__name__)
+    _logging_mod.logger = structlog.get_logger("tether")
+
+
 # ---------------------------------------------------------------------------
 # Test 1 — explore tool error continues the loop
 # ---------------------------------------------------------------------------
