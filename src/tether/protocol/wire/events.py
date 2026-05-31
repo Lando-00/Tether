@@ -226,7 +226,8 @@ class NotebookFactAdded(_Base):
 
     type: Literal["notebook_fact_added"] = "notebook_fact_added"
     fact_text: str = Field(
-        description="The atomic fact string (e.g. 'Apple CEO is Tim Cook')"
+        max_length=4096,
+        description="The atomic fact string (e.g. 'Apple CEO is Tim Cook')",
     )
     source_query: str = Field(
         description="The sub-query whose tool result produced this fact"
@@ -245,7 +246,7 @@ class NotebookQueryAdded(_Base):
     """
 
     type: Literal["notebook_query_added"] = "notebook_query_added"
-    query: str = Field(description="The sub-query string enqueued")
+    query: str = Field(max_length=512, description="The sub-query string enqueued")
     queue_depth: int = Field(ge=1, description="Queue depth after this enqueue")
 
 

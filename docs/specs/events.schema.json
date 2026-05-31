@@ -275,6 +275,7 @@
       "properties": {
         "fact_text": {
           "description": "The atomic fact string (e.g. 'Apple CEO is Tim Cook')",
+          "maxLength": 4096,
           "title": "Fact Text",
           "type": "string"
         },
@@ -469,6 +470,7 @@
         },
         "query": {
           "description": "The sub-query string enqueued",
+          "maxLength": 512,
           "title": "Query",
           "type": "string"
         },

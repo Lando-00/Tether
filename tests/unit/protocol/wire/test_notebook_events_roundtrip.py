@@ -136,3 +136,50 @@ def test_wire_event_union_accepts_notebook_limit_reached():
 
     assert isinstance(parsed, NotebookLimitReached)
     assert parsed == event
+
+
+# --- Field length bounds (Phase 9.5 Wave 1A: fu-research-event-field-bounds) ---
+
+
+def test_notebook_fact_text_rejects_over_4096():
+    with pytest.raises(ValidationError) as exc_info:
+        NotebookFactAdded(
+            **_base(fact_text="x" * 4097, source_query="query", total_facts=1)
+        )
+
+    assert "String should have at most 4096 characters" in str(exc_info.value)
+
+
+def test_notebook_fact_text_accepts_4096_exactly():
+    event = NotebookFactAdded(
+        **_base(fact_text="x" * 4096, source_query="query", total_facts=1)
+    )
+
+    assert len(event.fact_text) == 4096
+
+
+def test_notebook_fact_text_accepts_under_limit():
+    event = NotebookFactAdded(
+        **_base(fact_text="short fact", source_query="query", total_facts=1)
+    )
+
+    assert event.fact_text == "short fact"
+
+
+def test_notebook_query_rejects_over_512():
+    with pytest.raises(ValidationError) as exc_info:
+        NotebookQueryAdded(**_base(query="q" * 513, queue_depth=1))
+
+    assert "String should have at most 512 characters" in str(exc_info.value)
+
+
+def test_notebook_query_accepts_512_exactly():
+    event = NotebookQueryAdded(**_base(query="q" * 512, queue_depth=1))
+
+    assert len(event.query) == 512
+
+
+def test_notebook_query_accepts_under_limit():
+    event = NotebookQueryAdded(**_base(query="search terms", queue_depth=1))
+
+    assert event.query == "search terms"
