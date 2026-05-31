@@ -59,6 +59,15 @@ if TYPE_CHECKING:
 
 logger = structlog.get_logger(__name__)
 _WEB_SEARCH_COUNT = 5
+# Mirror Pydantic max_length constraints on NotebookQueryAdded.query
+# and NotebookFactAdded.fact_text (see protocol/wire/events.py). We
+# truncate at the yield sites so a real LLM emitting an overlong fact
+# or query degrades gracefully (event carries truncated text) instead
+# of raising ValidationError mid-stream — which would propagate past
+# the outer except (only catches CancelledError) and leave the
+# consumer hung without a MessageStop.
+_MAX_QUERY_LENGTH = 512
+_MAX_FACT_LENGTH = 4096
 
 
 def _query_log_fields(query: str) -> dict[str, Any]:
@@ -195,7 +204,7 @@ class NotebookOrchestrator(Orchestrator):
                     notebook_state.processed_queries.add(_normalize_query(query))
                     yield NotebookQueryAdded(
                         **_envelope(),
-                        query=query,
+                        query=query[:_MAX_QUERY_LENGTH],
                         queue_depth=len(notebook_state.queue),
                     )
 
@@ -333,7 +342,7 @@ class NotebookOrchestrator(Orchestrator):
                     if notebook_state.try_add_fact(fact):
                         yield NotebookFactAdded(
                             **_envelope(),
-                            fact_text=fact.text,
+                            fact_text=fact.text[:_MAX_FACT_LENGTH],
                             source_query=fact.source_query,
                             total_facts=len(notebook_state.facts),
                         )
@@ -366,7 +375,7 @@ class NotebookOrchestrator(Orchestrator):
                         notebook_state.queue.append(follow_up)
                         yield NotebookQueryAdded(
                             **_envelope(),
-                            query=follow_up,
+                            query=follow_up[:_MAX_QUERY_LENGTH],
                             queue_depth=len(notebook_state.queue),
                         )
                     logger.info(

@@ -58,9 +58,16 @@ class _StubToolRunner:
 class _SlowSynthProvider(FakeResearchProvider):
     """Synth-phase generator yields one chunk then sleeps far past the grace.
 
-    Without bounded ``aclose()``, the orchestrator's cleanup would await
-    ``asyncio.sleep(10)`` indefinitely (until OS kills the process or GC
-    eventually closes the abandoned generator).
+    The ``await asyncio.sleep(10)`` is cancellable, so when the orchestrator
+    calls ``astream.aclose()`` the sent ``GeneratorExit`` interrupts the
+    sleep cleanly and aclose returns quickly. This is the CANCELLABLE-cleanup
+    path — the only path the current implementation can bound.
+
+    For the UNCANCELLABLE-cleanup path (real MLC native engine teardown,
+    blocked socket flush), see :class:`_UncancellableSynthProvider` and the
+    skipped ``test_synth_cancel_with_uncancellable_cleanup_KNOWN_GAP`` test;
+    closing that gap requires the architectural change tracked as
+    ``fu-research-synth-cancel-child-task``.
     """
 
     async def stream(  # type: ignore[override]
@@ -79,9 +86,47 @@ class _SlowSynthProvider(FakeResearchProvider):
                 yield chunk
             return
         yield "first chunk "
-        # Block far past the cancellation grace.
+        # Block far past the cancellation grace; sleep is cancellable.
         await asyncio.sleep(10)
         yield "should never arrive"
+
+
+class _UncancellableSynthProvider(FakeResearchProvider):
+    """Synth-phase generator with cleanup that the bound CANNOT preempt.
+
+    Used by the (skipped) test below to document the M3 limitation. Putting
+    ``asyncio.shield(asyncio.sleep(...))`` in the gen's finally simulates
+    a provider whose teardown ignores ``GeneratorExit`` for the shielded
+    duration. With the current bounded-aclose implementation, MessageStop
+    emission is delayed until the shielded sleep completes — violating
+    the strict grace contract.
+
+    Mark the strengthened test as ``skip`` pending
+    ``fu-research-synth-cancel-child-task`` (which drives ``__anext__`` in
+    a cancellable child task that can be abandoned with grace).
+    """
+
+    async def stream(  # type: ignore[override]
+        self,
+        model_name: str,
+        messages: List[Dict[str, Any]],
+        tools: Optional[List[Dict[str, Any]]] = None,
+        *,
+        request_id: Optional[str] = None,
+    ) -> AsyncGenerator[str, None]:
+        phase = self._detect_phase(messages)
+        if phase != "synthesizer":
+            async for chunk in super().stream(
+                model_name, messages, tools=tools, request_id=request_id
+            ):
+                yield chunk
+            return
+        try:
+            yield "first chunk "
+            await asyncio.sleep(10)
+            yield "should never arrive"
+        finally:
+            await asyncio.shield(asyncio.sleep(_TOOL_CANCEL_GRACE_SEC * 4))
 
 
 class _AcloseRaisingSynthProvider(FakeResearchProvider):
@@ -279,6 +324,86 @@ async def test_synth_aclose_exception_does_not_escape(monkeypatch):
     stops = [e for e in events if isinstance(e, MessageStop)]
     assert len(stops) == 1, f"expected 1 MessageStop, got {stops!r}"
     assert stops[0].stop_reason == "cancelled"
+
+
+# ---------------------------------------------------------------------------
+# Wave 4 reconcile: documented M3 limitation — uncancellable provider
+# cleanup is NOT bounded by the current aclose() wrapper. The implementation
+# fix lives behind ``fu-research-synth-cancel-child-task`` (drive __anext__
+# in a cancellable child task, mirroring explore's tool_task pattern).
+#
+# This test stays as ``skip`` to make the gap visible in the suite without
+# breaking CI. Remove the skip marker (and the helper provider) when the
+# follow-up lands.
+# ---------------------------------------------------------------------------
+
+
+@pytest.mark.skip(
+    reason=(
+        "Known limitation: aclose() bound only holds when provider cleanup "
+        "is cancellable. Real MLC native teardown / blocked socket flush can "
+        "exceed _TOOL_CANCEL_GRACE_SEC. Tracked: fu-research-synth-cancel-child-task. "
+        "Empirically verified to FAIL when un-skipped against current impl."
+    )
+)
+@pytest.mark.anyio
+async def test_synth_cancel_with_uncancellable_cleanup_KNOWN_GAP():
+    """Document the M3 gap: shielded cleanup defeats the bounded aclose().
+
+    Pre-conditions: provider gen has ``await asyncio.shield(asyncio.sleep(...))``
+    in its finally clause, simulating a real MLC engine teardown that cannot
+    be interrupted by ``GeneratorExit`` for the shielded duration.
+
+    Expected (post-fix) behavior: MessageStop emits within
+    ``_TOOL_CANCEL_GRACE_SEC + GRACE_SLACK_SEC`` because the orchestrator
+    abandons the synth task via a cancellable child-task wrapper instead of
+    awaiting ``astream.aclose()``.
+
+    Current behavior: MessageStop is delayed until the shielded cleanup
+    completes (~1.0s with current ``_TOOL_CANCEL_GRACE_SEC * 4`` shield).
+    The outer ``wait_for`` in the test below times out, exposing the gap.
+    """
+    orch = _orch(_UncancellableSynthProvider())
+
+    events: list[object] = []
+    first_chunk_seen = asyncio.Event()
+
+    async def _consume() -> None:
+        async for event in orch.run(
+            session_id="s-synth-cancel-shielded",
+            prompt="What is X?",
+            model_name="dummy",
+        ):
+            events.append(event)
+            if isinstance(event, TextDelta):
+                first_chunk_seen.set()
+
+    consumer = asyncio.create_task(_consume())
+    try:
+        await asyncio.wait_for(first_chunk_seen.wait(), timeout=2.0)
+    except asyncio.TimeoutError:
+        consumer.cancel()
+        raise
+
+    loop = asyncio.get_running_loop()
+    cancel_started = loop.time()
+    consumer.cancel()
+
+    try:
+        await asyncio.wait_for(
+            asyncio.shield(_wait_for_done(consumer)),
+            timeout=_TOOL_CANCEL_GRACE_SEC + GRACE_SLACK_SEC,
+        )
+    except asyncio.TimeoutError:
+        if not consumer.done():
+            consumer.cancel()
+        raise
+
+    elapsed = loop.time() - cancel_started
+    assert elapsed <= _TOOL_CANCEL_GRACE_SEC + GRACE_SLACK_SEC, (
+        f"cancelled synth took {elapsed:.3f}s; bound must hold under "
+        f"uncancellable cleanup too — fix via child-task pattern."
+    )
 
 
 class _CooperativeCancelToken:

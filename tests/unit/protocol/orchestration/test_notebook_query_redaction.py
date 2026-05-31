@@ -195,3 +195,112 @@ async def test_secret_in_query_not_leaked_to_logs():
                             f"secret leaked into list element of log "
                             f"field {key!r}: {item!r}"
                         )
+
+
+# ---------------------------------------------------------------------------
+# Wave 4 reconcile: L1 — verify the WARNING-path redaction
+# (notebook.py explore_tool_error log site is the ACTUAL site W2's
+# query-redaction fix targeted; the existing tests above only exercise
+# the success-path INFO log. This test exercises the warning path.)
+# ---------------------------------------------------------------------------
+
+
+class _ErrorReturningToolRunner:
+    """Tool runner that returns ``{"error": ...}`` instead of raising.
+
+    Hits the ``notebook.explore_tool_error`` WARNING with ``error_type="tool_error"``
+    (the dict-shaped error path at notebook.py:253-258), which is one of the
+    redaction sites W2 patched. Different code path from the exception-raising
+    path used in ``test_notebook_run_branches.py`` — both must be redacted.
+    """
+
+    def __init__(self) -> None:
+        self.calls: list[tuple[str, dict[str, Any]]] = []
+
+    async def run(self, name: str, args: dict[str, Any]) -> dict[str, Any]:
+        self.calls.append((name, args))
+        return {"error": "rate_limited", "retry_after": 60}
+
+
+def _orch_with_error_tool(
+    provider: FakeResearchProvider,
+) -> NotebookOrchestrator:
+    return NotebookOrchestrator(
+        provider=provider,
+        store=_FakeStore(),
+        tool_registry=_FakeToolRegistry(),
+        tool_runner=_ErrorReturningToolRunner(),  # type: ignore[arg-type]
+        parser=SlidingParser(),
+        config=OrchestratorConfig(
+            max_tool_loops=3,
+            auto_reload_on_fatal_error=False,
+            save_thinking=False,
+            include_thinking_in_history=False,
+        ),
+        research_settings=ResearchSettings(
+            max_facts=5,
+            max_iterations=1,
+            max_facts_per_extract=3,
+        ),
+        clock=lambda: date(2026, 5, 31),
+    )
+
+
+@pytest.mark.anyio
+async def test_secret_in_warning_log_redacted():
+    """The WARNING-path redaction at notebook.explore_tool_error must apply.
+
+    Pre-W2: the warning log included ``query=<raw query>``; a secret in the
+    query would leak. Post-W2: the warning logs ``query_sha256`` + ``query_length``
+    only. This test exercises the dict-shaped ``{"error": ...}`` tool-result
+    path (different from the exception-raising path); both should be redacted.
+
+    Citation: nho-rev-RECONCILE.md §A3; nho-rev-xhigh Findings L1;
+    nho-rev-gpt55 §4 LOW.
+    """
+    secret = "BRAVE_API_KEY=warningPathSecretXYZ12345"
+    query_text = f"Investigate {secret} in production logs"
+    provider = FakeResearchProvider()
+    provider.set_planner_response({"key_elements": [query_text]})
+    # Even though the tool returns error, the orchestrator may still try
+    # to extract on the next iteration — but with max_iterations=1 the loop
+    # exits cleanly. Provide a defensive empty extractor response.
+    provider.set_extractor_responses(
+        [{"facts": [], "follow_up_queries": []}]
+    )
+    provider.set_synthesizer_response("No data.")
+    orch = _orch_with_error_tool(provider)
+
+    with capture_logs() as logs:
+        await _drain(orch)
+
+    # The explore_tool_error WARNING must have fired exactly once (one
+    # query, one tool call, one error response).
+    warnings = [
+        rec
+        for rec in logs
+        if rec.get("log_level") == "warning"
+        and rec.get("event") == "notebook.explore_tool_error"
+    ]
+    assert warnings, (
+        f"expected at least one notebook.explore_tool_error WARNING; "
+        f"all logs: {[r.get('event') for r in logs]}"
+    )
+
+    expected_sha = hashlib.sha256(query_text.encode("utf-8")).hexdigest()[:8]
+    for rec in warnings:
+        # Must NOT carry raw query
+        assert "query" not in rec, (
+            f"WARNING log must not carry raw 'query' field, got: {rec}"
+        )
+        # MUST carry the redacted identifiers
+        assert rec.get("query_sha256") == expected_sha, (
+            f"expected query_sha256={expected_sha!r}, got: {rec.get('query_sha256')!r}"
+        )
+        assert rec.get("query_length") == len(query_text)
+        # No field may contain the secret substring
+        for key, value in rec.items():
+            if isinstance(value, str):
+                assert secret not in value, (
+                    f"secret leaked into WARNING log field {key!r}: {value!r}"
+                )
