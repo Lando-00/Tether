@@ -6,6 +6,7 @@ research loop with an ephemeral in-memory notebook.
 from __future__ import annotations
 
 import asyncio
+import hashlib
 import uuid
 from collections.abc import Callable
 from datetime import date, datetime, timezone
@@ -58,6 +59,28 @@ if TYPE_CHECKING:
 
 logger = structlog.get_logger(__name__)
 _WEB_SEARCH_COUNT = 5
+
+
+def _query_log_fields(query: str) -> dict[str, Any]:
+    """Return safe log fields for a sub-query — sha256[:8] + length, no raw text.
+
+    INFO/WARNING-level structured logs in :mod:`notebook` use this helper instead
+    of embedding the raw sub-query, because:
+
+    * Sub-queries are user-controlled (or follow-ups derived from snippets that
+      may carry user-controlled content) and can contain secrets a careless user
+      pasted into chat (API keys, tokens, etc.).
+    * The wire events (``NotebookQueryAdded``) still carry the verbatim query so
+      the UI can render it; the size cap on that field is the defense there.
+    * DEBUG logs intentionally keep the raw query for local-dev troubleshooting
+      (DEBUG is not shipped to remote sinks in production).
+    """
+    return {
+        "query_sha256": hashlib.sha256(
+            query.encode("utf-8", errors="replace")
+        ).hexdigest()[:8],
+        "query_length": len(query),
+    }
 
 
 class NotebookOrchestrator(Orchestrator):
@@ -194,6 +217,7 @@ class NotebookOrchestrator(Orchestrator):
                     "notebook.phase_start",
                     phase="explore",
                     iteration=iteration,
+                    **_query_log_fields(query),
                 )
 
                 tool_task = asyncio.create_task(
@@ -202,9 +226,62 @@ class NotebookOrchestrator(Orchestrator):
                         {"query": query, "count": _WEB_SEARCH_COUNT},
                     )
                 )
-                while not tool_task.done():
-                    if _is_cancelled():
-                        cancelled = True
+                try:
+                    while not tool_task.done():
+                        if _is_cancelled():
+                            cancelled = True
+                            break
+                        await asyncio.wait({tool_task}, timeout=0.01)
+                    if cancelled:
+                        # Cooperative cancel: the ``finally`` block below
+                        # cancels + grace-waits the tool task. We break out
+                        # of the outer ``while not cancelled`` loop after
+                        # the finally runs.
+                        break
+
+                    try:
+                        search_result = await tool_task
+                    except Exception as exc:
+                        logger.warning(
+                            "notebook.explore_tool_error",
+                            iteration=iteration,
+                            error_type=type(exc).__name__,
+                            exc_info=True,
+                            **_query_log_fields(query),
+                        )
+                        continue
+
+                    if not isinstance(search_result, dict) or search_result.get("error"):
+                        logger.warning(
+                            "notebook.explore_tool_error",
+                            iteration=iteration,
+                            error_type="tool_error",
+                            **_query_log_fields(query),
+                        )
+                        continue
+                    logger.info(
+                        "notebook.phase_complete",
+                        phase="explore",
+                        iteration=iteration,
+                        results=len(search_result.get("results", [])),
+                    )
+                finally:
+                    # Phase 9.5 fu-research-external-cancel-pattern
+                    # (mirrors chatty.py:1292-1322 F3 pattern).
+                    #
+                    # External ``asyncio.CancelledError`` propagating from
+                    # ``asyncio.wait({tool_task}, timeout=0.01)`` would
+                    # otherwise unwind without cancelling ``tool_task``,
+                    # leaking the in-flight web_search call. This finally
+                    # runs on:
+                    #   1. Normal completion (tool_task done → no-op).
+                    #   2. Cooperative cancel (_is_cancelled() True →
+                    #      cancel + grace-wait here, then break above).
+                    #   3. External CancelledError (tool_task still
+                    #      pending → cancel + grace-wait, then re-raise).
+                    #   4. ``continue`` from the error paths above
+                    #      (tool_task already done → no-op).
+                    if not tool_task.done():
                         tool_task.cancel()
                         try:
                             await asyncio.wait_for(
@@ -212,38 +289,11 @@ class NotebookOrchestrator(Orchestrator):
                                 timeout=_TOOL_CANCEL_GRACE_SEC,
                             )
                         except (asyncio.TimeoutError, asyncio.CancelledError):
+                            # Tool either over-ran the grace or honored
+                            # the cancel. Either way, we're done with it.
+                            # Don't add ``Exception`` to the tuple —
+                            # let real bugs surface to the logger.
                             pass
-                        break
-                    await asyncio.wait({tool_task}, timeout=0.01)
-                if cancelled:
-                    break
-
-                try:
-                    search_result = await tool_task
-                except Exception as exc:
-                    logger.warning(
-                        "notebook.explore_tool_error",
-                        iteration=iteration,
-                        query=query,
-                        error_type=type(exc).__name__,
-                        exc_info=True,
-                    )
-                    continue
-
-                if not isinstance(search_result, dict) or search_result.get("error"):
-                    logger.warning(
-                        "notebook.explore_tool_error",
-                        iteration=iteration,
-                        query=query,
-                        error_type="tool_error",
-                    )
-                    continue
-                logger.info(
-                    "notebook.phase_complete",
-                    phase="explore",
-                    iteration=iteration,
-                    results=len(search_result.get("results", [])),
-                )
 
                 if _is_cancelled():
                     cancelled = True
@@ -352,16 +402,41 @@ class NotebookOrchestrator(Orchestrator):
                 iteration=0,
             )
             yield await _emit_message_start()
-            async for chunk in self._synthesize_stream(
+            astream = self._synthesize_stream(
                 model_name=synthesizer_model,
                 question=prompt,
                 facts=notebook_state.facts,
                 today_iso=today_iso,
-            ):
-                if _is_cancelled():
-                    cancelled = True
-                    break
-                yield TextDelta(**_envelope(), text=chunk)
+            )
+            try:
+                async for chunk in astream:
+                    if _is_cancelled():
+                        cancelled = True
+                        break
+                    yield TextDelta(**_envelope(), text=chunk)
+            finally:
+                # Phase 9.5 fu-research-synth-cancel-grace
+                # (mirrors chatty.py:601-612).
+                #
+                # Bound the synth iterator's ``aclose()`` so an unresponsive
+                # provider (or one that re-suspends inside its own ``finally``)
+                # can't keep the request alive past the cancellation grace.
+                # On a normally-exhausted generator ``aclose()`` is a no-op.
+                try:
+                    await asyncio.wait_for(
+                        astream.aclose(),
+                        timeout=_TOOL_CANCEL_GRACE_SEC,
+                    )
+                except (asyncio.TimeoutError, asyncio.CancelledError):
+                    # Either the provider over-ran the grace or an outer
+                    # cancel arrived during cleanup. Don't shadow the
+                    # in-flight exception (if any) — finally completes
+                    # cleanly and the original exception keeps propagating.
+                    pass
+                except Exception:
+                    # Don't shadow real bugs in provider cleanup paths.
+                    # Log and continue so MessageStop still emits below.
+                    logger.exception("notebook.synth_aclose_error")
 
             yield MessageStop(
                 **_envelope(),
