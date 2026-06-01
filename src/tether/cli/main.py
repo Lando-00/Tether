@@ -9,6 +9,7 @@ import json
 # without a flag, useful for development).
 import os as _os
 import time
+from enum import Enum
 from pathlib import Path
 from typing import Optional
 
@@ -28,6 +29,51 @@ API_BASE_URL = _os.environ.get("TETHER_API_URL", "http://127.0.0.1:8080/api/v1")
 
 # CSRF header name must match Settings.security.csrf_token.header_name.
 _CSRF_HEADER = "X-Tether-CSRF"
+
+
+class ChatMode(str, Enum):
+    """Available server-side orchestrator modes."""
+
+    chat = "chat"
+    research = "research"
+
+
+def _chat_payload(
+    *,
+    session_id: str,
+    prompt: str,
+    model_name: str,
+    mode: ChatMode,
+) -> dict[str, str]:
+    """Build the `/chat/stream` request body."""
+    return {
+        "session_id": session_id,
+        "prompt": prompt,
+        "model_name": model_name,
+        "mode": mode.value,
+    }
+
+
+def _parse_chat_mode(value: str) -> ChatMode:
+    """Parse a chat mode entered interactively."""
+    normalized = value.strip().lower()
+    for mode in ChatMode:
+        if normalized == mode.value:
+            return mode
+    allowed = ", ".join(mode.value for mode in ChatMode)
+    raise ValueError(f"mode must be one of: {allowed}")
+
+
+def _mode_label(mode: ChatMode) -> str:
+    if mode is ChatMode.research:
+        return "[bold magenta]research[/bold magenta]"
+    return "[bold green]chat[/bold green]"
+
+
+def _mode_hint(mode: ChatMode) -> str:
+    if mode is ChatMode.research:
+        return "Research mode uses web_search + BRAVE_API_KEY"
+    return "Chat mode uses the normal tool-calling orchestrator"
 
 
 def _read_csrf_token() -> Optional[str]:
@@ -558,6 +604,12 @@ def cli(
         "--show-thinking",
         help="Enable to show the model's thinking process.",
     ),
+    mode: ChatMode = typer.Option(
+        ChatMode.chat,
+        "--mode",
+        help="Orchestrator mode to use: chat or research.",
+        case_sensitive=False,
+    ),
 ):
     """Run chat by default, or choose a subcommand."""
     global API_BASE_URL
@@ -568,6 +620,7 @@ def cli(
             api_url=API_BASE_URL,
             debug=debug,
             show_thinking=show_thinking,
+            mode=mode,
         )
 
 
@@ -739,6 +792,12 @@ def main(
         "--show-thinking",
         help="Enable to show the model's thinking process.",
     ),
+    mode: ChatMode = typer.Option(
+        ChatMode.chat,
+        "--mode",
+        help="Orchestrator mode to use: chat or research.",
+        case_sensitive=False,
+    ),
 ):
     """
     Main entry point for the Tether CLI.
@@ -782,7 +841,11 @@ def main(
         elif action == "quit":
             raise typer.Exit()
 
-    console.print(f"🤖 Starting chat with [bold green]{model_name}[/bold green]...")
+    current_mode = mode
+    console.print(
+        f"🤖 Starting chat with [bold green]{model_name}[/bold green] "
+        f"in {_mode_label(current_mode)} mode..."
+    )
 
     info_table = Table.grid(padding=1, expand=True)
     info_table.add_column()
@@ -794,6 +857,10 @@ def main(
     info_table.add_row(
         f"Show thinking: {'[bold green]enabled[/bold green]' if show_thinking else '[dim]disabled[/dim]'}",
         "Type [bold cyan]\\thinking[/bold cyan] to toggle thinking"
+    )
+    info_table.add_row(
+        f"Mode: {_mode_label(current_mode)}",
+        "Type [bold cyan]\\mode[/bold cyan] to switch chat/research"
     )
     info_table.add_row(
         "",
@@ -825,7 +892,13 @@ def main(
                 break
             if stripped_prompt == "\\menu":
                 # We need to pass the original arguments to main to restart it correctly
-                main(model_name=model_name, api_url=API_BASE_URL, debug=debug, show_thinking=show_thinking)
+                main(
+                    model_name=model_name,
+                    api_url=API_BASE_URL,
+                    debug=debug,
+                    show_thinking=show_thinking,
+                    mode=current_mode,
+                )
                 break # Exit current chat loop to prevent it from continuing after menu
             if stripped_prompt == "\\thinking":
                 show_thinking = not show_thinking
@@ -833,6 +906,33 @@ def main(
                 console.print(f"Show thinking is now {thinking_status}.")
                 console.rule()
                 continue # Go to next prompt
+            if stripped_prompt in {"\\chat", "\\research", "\\mode"} or stripped_prompt.startswith("\\mode "):
+                try:
+                    if stripped_prompt == "\\chat":
+                        new_mode = ChatMode.chat
+                    elif stripped_prompt == "\\research":
+                        new_mode = ChatMode.research
+                    else:
+                        parts = stripped_prompt.split(maxsplit=1)
+                        new_mode = (
+                            ChatMode.research
+                            if len(parts) == 1 and current_mode is ChatMode.chat
+                            else ChatMode.chat
+                            if len(parts) == 1
+                            else _parse_chat_mode(parts[1])
+                        )
+                except ValueError as exc:
+                    console.print(f"[bold red]Error:[/bold red] {exc}")
+                    console.rule()
+                    continue
+                if new_mode is current_mode:
+                    console.print(f"[dim]Already in {_mode_label(current_mode)} mode.[/dim]")
+                else:
+                    current_mode = new_mode
+                    console.print(f"Mode switched to {_mode_label(current_mode)}.")
+                    console.print(f"[dim]{_mode_hint(current_mode)}[/dim]")
+                console.rule()
+                continue
             if stripped_prompt == "\\tools":
                 tools_info = get_available_tools()
                 if not tools_info:
@@ -871,11 +971,12 @@ def main(
             # through transport_ndjson. Synthesis §11.3 R18; §4 Phase 5 step 54.
             with requests.post(
                 f"{API_BASE_URL}/chat/stream",
-                json={
-                    "session_id": session_id,
-                    "prompt": user_prompt,
-                    "model_name": model_name,
-                },
+                json=_chat_payload(
+                    session_id=session_id,
+                    prompt=user_prompt,
+                    model_name=model_name,
+                    mode=current_mode,
+                ),
                 headers=_mutating_headers({
                     "Accept": "application/x-ndjson; version=1.0",
                 }),
@@ -999,6 +1100,57 @@ def main(
                         elif evt_type == "hw_reset":
                             model = event.get("model_name", "")
                             console.print(Panel(f"Hardware reset: model '{model}' was reset", border_style="dim"))
+
+                        elif evt_type == "notebook_phase_start":
+                            phase = event.get("phase", "?")
+                            iteration = event.get("iteration", 0)
+                            iter_suffix = f" #{iteration}" if iteration else ""
+                            console.print(f"[dim]Research: {phase}{iter_suffix}[/dim]")
+
+                        elif evt_type == "notebook_phase_progress":
+                            phase = event.get("phase", "?")
+                            elapsed_ms = int(event.get("elapsed_ms") or 0)
+                            console.print(
+                                f"[dim]Research: {phase} still running "
+                                f"({elapsed_ms / 1000:.0f}s)...[/dim]"
+                            )
+
+                        elif evt_type == "notebook_fact_added":
+                            if debug:
+                                fact = str(event.get("fact_text", ""))
+                                total = event.get("total_facts", "?")
+                                console.print(
+                                    f"[dim]Notebook fact {total}: {fact[:120]}[/dim]"
+                                )
+
+                        elif evt_type == "notebook_query_added":
+                            if debug:
+                                query = str(event.get("query", ""))
+                                depth = event.get("queue_depth", "?")
+                                console.print(
+                                    f"[dim]Research query queued ({depth}): {query}[/dim]"
+                                )
+
+                        elif evt_type == "notebook_limit_reached":
+                            kind = event.get("limit_kind", "limit")
+                            count = event.get("count", "?")
+                            console.print(
+                                Panel(
+                                    f"Research stopped at {kind}={count}; synthesizing partial notebook.",
+                                    border_style="yellow",
+                                )
+                            )
+
+                        elif evt_type == "notebook_no_facts":
+                            queries = event.get("queries_attempted", 0)
+                            iterations = event.get("iterations", 0)
+                            console.print(
+                                Panel(
+                                    "Research gathered no facts "
+                                    f"({queries} queries, {iterations} iterations); synthesizing anyway.",
+                                    border_style="yellow",
+                                )
+                            )
 
                         elif evt_type == "message_stop":
                             stop_reason = event.get("stop_reason", "complete")

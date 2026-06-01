@@ -86,6 +86,7 @@ tether-cli                               # default: connects to http://127.0.0.1
 tether-cli --api-url http://host:port/api/v1   # custom server URL
 tether-cli -m Qwen3-4B-q4f16_1-MLC       # skip the model picker
 tether-cli --debug                       # show NDJSON event stream
+tether-cli --mode research               # start in research-mode orchestrator
 ```
 
 Inside the chat loop, slash commands:
@@ -94,6 +95,8 @@ Inside the chat loop, slash commands:
 |-------------|--------|
 | `\tools`    | List registered tools (from `GET /api/v1/tools`) |
 | `\models`   | Switch model mid-chat (no restart needed) |
+| `\mode`     | Toggle chat/research orchestrator mode |
+| `\chat` · `\research` | Switch directly to a specific orchestrator mode |
 | `\menu`     | Back to session management (new / resume / delete) |
 | `\thinking` | Toggle the `thinking_delta` (model's `<think>` block) rendering |
 | `\exit` · `\quit` | End the chat |
