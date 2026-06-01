@@ -10,7 +10,7 @@ import hashlib
 import uuid
 from collections.abc import Callable
 from datetime import date, datetime, timezone
-from typing import Any, AsyncIterator, ClassVar, Optional, TYPE_CHECKING
+from typing import Any, AsyncGenerator, AsyncIterator, ClassVar, Optional, TYPE_CHECKING
 
 import structlog
 
@@ -86,6 +86,124 @@ _MAX_FACT_LENGTH = 4096
 # Tests monkeypatch this module constant to a much smaller value
 # (e.g. 0.01 s) to keep the suite fast.
 _HEARTBEAT_INTERVAL_SEC = 2.0
+
+
+# Phase 9.7 W4 (nho-fu-w4-synth-abandon /
+# fu-research-synth-cancel-child-task): module-level strong-ref bag for
+# asyncgen cleanup tasks the orchestrator has abandoned after exceeding
+# ``_TOOL_CANCEL_GRACE_SEC``.
+#
+# Abandonment is a process-level resource event, not orchestrator-instance
+# state — keeping the bag at module scope lets the synth loop AND
+# ``_collect_stream_text`` share the same helper without plumbing ``self``
+# through, and makes it natural to drain in tests via
+# ``notebook._abandoned_cleanup_tasks``.
+#
+# The bag is bounded in normal operation: each request appends at most one
+# pending ``__anext__`` task plus one ``aclose`` task, and the done-callback
+# discards the entry as soon as the task finishes. The bag growing
+# unboundedly would require an adversarial provider whose cleanup never
+# completes; that is a provider bug, not an orchestrator bug.
+_abandoned_cleanup_tasks: "set[asyncio.Task[Any]]" = set()
+
+
+def _abandon_cleanup_task(task: "asyncio.Task[Any]", *, kind: str) -> None:
+    """Promote ``task`` to an abandoned cleanup: keep a strong ref, attach
+    a logging done-callback, and stop blocking the request on it.
+
+    Used when an asyncgen's ``aclose()`` (or in-flight ``__anext__()``)
+    exceeds ``_TOOL_CANCEL_GRACE_SEC``. The task is left running so its
+    eventual cleanup completes naturally; the request returns MessageStop
+    within the grace contract. The contract Tether claims is user-visible
+    latency, not resource lifetime.
+
+    The done-callback intentionally does NOT log a stack trace — only
+    ``error_type`` — to match the redaction discipline used elsewhere in
+    this module (cf. ``_query_log_fields``).
+    """
+    _abandoned_cleanup_tasks.add(task)
+
+    def _on_done(t: "asyncio.Task[Any]") -> None:
+        _abandoned_cleanup_tasks.discard(t)
+        if t.cancelled():
+            logger.info("notebook.abandoned_cleanup.cancelled", kind=kind)
+            return
+        exc = t.exception()
+        if exc is None or isinstance(
+            exc, (StopAsyncIteration, asyncio.CancelledError)
+        ):
+            return
+        logger.warning(
+            "notebook.abandoned_cleanup.exception",
+            kind=kind,
+            error_type=type(exc).__name__,
+        )
+
+    task.add_done_callback(_on_done)
+
+
+async def _bounded_aclose(
+    astream: "AsyncGenerator[Any, None]",
+    *,
+    pending_chunk: "Optional[asyncio.Task[Any]]",
+    kind: str,
+) -> None:
+    """Best-effort: close ``astream`` within ``_TOOL_CANCEL_GRACE_SEC``.
+
+    The caller MUST already have cancelled ``pending_chunk`` (the Task
+    driving the current ``astream.__anext__()``) and waited up to
+    ``_TOOL_CANCEL_GRACE_SEC`` for it.
+
+    **Ordering guard.** If ``pending_chunk`` is still ``not done()`` after
+    its grace, the asyncgen is still being advanced and calling
+    ``astream.aclose()`` would raise
+    ``RuntimeError("aclose(): asynchronous generator is already running")``.
+    In that case we abandon ``pending_chunk`` and skip ``aclose()``
+    entirely — Python's GC-time asyncgen finalizer closes it eventually.
+    Calling aclose on a running asyncgen is strictly worse: it raises
+    synchronously and propagates past the ``finally:`` block.
+
+    **Aclose bound.** ``astream.aclose()`` runs inside a task wrapped in
+    ``asyncio.shield`` so that ``wait_for`` does NOT cancel it on timeout —
+    we want the cleanup to keep running in the background after
+    abandonment so the provider's cleanup completes naturally. On
+    timeout (or outer cancel), the in-flight ``aclose_task`` is
+    abandoned via ``_abandon_cleanup_task`` and this helper returns
+    promptly. MessageStop latency is the contract; resource cleanup
+    is best-effort.
+    """
+    if pending_chunk is not None and not pending_chunk.done():
+        _abandon_cleanup_task(pending_chunk, kind=f"{kind}.pending_anext")
+        return
+
+    aclose_task = asyncio.create_task(
+        astream.aclose(), name=f"asyncgen-aclose:{kind}"
+    )
+    try:
+        await asyncio.wait_for(
+            asyncio.shield(aclose_task),
+            timeout=_TOOL_CANCEL_GRACE_SEC,
+        )
+    except asyncio.TimeoutError:
+        if not aclose_task.done():
+            _abandon_cleanup_task(aclose_task, kind=f"{kind}.aclose")
+    except asyncio.CancelledError:
+        # Outer CancelledError arrived during cleanup. Abandon aclose
+        # so this helper completes promptly, then re-raise so the
+        # outer ``except CancelledError:`` block (orch.run, line ~771)
+        # still runs and emits MessageStop(cancelled).
+        if not aclose_task.done():
+            _abandon_cleanup_task(aclose_task, kind=f"{kind}.aclose")
+        raise
+    except Exception:
+        # Provider raised something other than CancelledError on the
+        # aclose path. Don't shadow real bugs in provider cleanup; log
+        # via the existing structured event and continue. (The task-
+        # wrapped path normally surfaces this via the done_callback's
+        # ``notebook.abandoned_cleanup.exception`` event, but a
+        # synchronous raise from ``astream.aclose()`` -> coroutine
+        # creation can still land here — keep the branch.)
+        logger.exception("notebook.bounded_aclose_error", kind=kind)
 
 
 def _query_log_fields(query: str) -> dict[str, Any]:
@@ -727,10 +845,27 @@ class NotebookOrchestrator(Orchestrator):
                     if thinking_tail and self.config.save_thinking:
                         yield ThinkingDelta(**_envelope(), text=thinking_tail)
             finally:
-                # Phase 9.6 I-4: cancel the in-flight __anext__ task first,
-                # bounded by the cancel grace, so an external CancelledError
-                # arriving during an idle wait can't leak the task. Mirrors
-                # the explore-phase tool_task pattern at lines 446-458.
+                # Phase 9.7 W4 (nho-fu-w4-synth-abandon /
+                # fu-research-synth-cancel-child-task): cancel the
+                # in-flight __anext__ task first (bounded by the cancel
+                # grace), then hand cleanup to ``_bounded_aclose``. The
+                # helper enforces two invariants:
+                #
+                # 1. If ``pending_chunk`` is still ``not done()`` after
+                #    its grace (uncooperative ``__anext__``), it does
+                #    NOT call ``astream.aclose()`` — that would raise
+                #    ``RuntimeError("aclose(): asynchronous generator
+                #    is already running")``. Instead it abandons the
+                #    pending task and skips aclose.
+                # 2. ``astream.aclose()`` itself runs inside an
+                #    abandonable task, so a provider whose cleanup
+                #    catches ``CancelledError`` and re-awaits a shielded
+                #    inner (e.g. native engine teardown) cannot pin the
+                #    request past the grace.
+                #
+                # The contract is user-visible latency, not resource
+                # lifetime — the abandoned tasks keep running so the
+                # provider's cleanup completes naturally.
                 if pending_chunk is not None and not pending_chunk.done():
                     pending_chunk.cancel()
                     try:
@@ -741,28 +876,9 @@ class NotebookOrchestrator(Orchestrator):
                         pass
                     except StopAsyncIteration:
                         pass
-                # Phase 9.5 fu-research-synth-cancel-grace
-                # (mirrors chatty.py:601-612).
-                #
-                # Bound the synth iterator's ``aclose()`` so an unresponsive
-                # provider (or one that re-suspends inside its own ``finally``)
-                # can't keep the request alive past the cancellation grace.
-                # On a normally-exhausted generator ``aclose()`` is a no-op.
-                try:
-                    await asyncio.wait_for(
-                        astream.aclose(),
-                        timeout=_TOOL_CANCEL_GRACE_SEC,
-                    )
-                except (asyncio.TimeoutError, asyncio.CancelledError):
-                    # Either the provider over-ran the grace or an outer
-                    # cancel arrived during cleanup. Don't shadow the
-                    # in-flight exception (if any) — finally completes
-                    # cleanly and the original exception keeps propagating.
-                    pass
-                except Exception:
-                    # Don't shadow real bugs in provider cleanup paths.
-                    # Log and continue so MessageStop still emits below.
-                    logger.exception("notebook.synth_aclose_error")
+                await _bounded_aclose(
+                    astream, pending_chunk=pending_chunk, kind="synth"
+                )
 
             yield MessageStop(
                 **_envelope(),
@@ -984,13 +1100,11 @@ class NotebookOrchestrator(Orchestrator):
                     elapsed_ms = int((loop.time() - started) * 1000)
                     yield ("heartbeat", elapsed_ms)
         finally:
-            # Bounded cleanup mirrors the synth-cancel pattern below and
-            # chatty.py F3 (lines 1292-1322): cancel any in-flight
-            # __anext__() task and wait for it within the grace, then
-            # bound astream.aclose() the same way. Without these bounds
-            # an external CancelledError could leak the in-flight
-            # provider call and an unresponsive aclose() could keep the
-            # request alive past the cancellation grace.
+            # Phase 9.7 W4: bounded cleanup matches the synth-loop path —
+            # cancel the in-flight ``__anext__`` task (within grace), then
+            # call ``_bounded_aclose`` which handles the uncooperative-
+            # cleanup + ordering invariants (see helper docstring and the
+            # synth-loop finally block for the full rationale).
             if pending is not None and not pending.done():
                 pending.cancel()
                 try:
@@ -1002,15 +1116,9 @@ class NotebookOrchestrator(Orchestrator):
                 except StopAsyncIteration:
                     # Provider exhausted right as we cancelled ? benign.
                     pass
-            try:
-                await asyncio.wait_for(
-                    astream.aclose(),
-                    timeout=_TOOL_CANCEL_GRACE_SEC,
-                )
-            except (asyncio.TimeoutError, asyncio.CancelledError):
-                pass
-            except Exception:
-                logger.exception("notebook.collect_stream_aclose_error")
+            await _bounded_aclose(
+                astream, pending_chunk=pending, kind="collect_stream"
+            )
 
         yield ("text", "".join(chunks))
 

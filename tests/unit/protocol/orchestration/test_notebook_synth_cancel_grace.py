@@ -1,9 +1,22 @@
-"""Phase 9.5 fu-research-synth-cancel-grace.
+"""Phase 9.5 fu-research-synth-cancel-grace + Phase 9.7 W4
+(nho-fu-w4-synth-abandon / fu-research-synth-cancel-child-task).
 
 Verifies the synthesize-phase async iterator's ``aclose()`` is bounded by
-``_TOOL_CANCEL_GRACE_SEC`` (mirrors chatty.py:601-612). Without the bound,
-a provider whose cleanup re-suspends could keep a cancelled request alive
-indefinitely.
+``_TOOL_CANCEL_GRACE_SEC`` even when the provider's cleanup is
+uncooperative (catches ``CancelledError`` and re-awaits a shielded inner).
+
+Phase 9.5 wrapped ``astream.aclose()`` in ``wait_for(..., GRACE)``. That
+bound holds only for cancellable cleanup — a provider whose ``finally:``
+catches ``CancelledError`` and re-awaits the inner with no shield will
+make ``wait_for(aclose(), GRACE)`` block for the full inner duration.
+
+Phase 9.7 W4 closes that gap: ``astream.aclose()`` is wrapped in a Task,
+``wait_for(shield(aclose_task), GRACE)`` lets the timeout cancel only
+the outer waiter (not the task), and on timeout the orchestrator
+abandons the aclose task into a module-level strong-ref bag
+(``notebook._abandoned_cleanup_tasks``). MessageStop emits within the
+grace contract; the abandoned cleanup task continues in the background
+and drains when the provider's natural cleanup completes.
 
 Design note on what's exercised: the bounded ``aclose()`` matters when
 the synth stream is blocked inside ``__anext__`` (i.e., waiting for the
@@ -16,6 +29,7 @@ existing ``test_cancel_inside_synthesize_stream`` test in
 from __future__ import annotations
 
 import asyncio
+import warnings
 from datetime import date
 from typing import Any, AsyncGenerator, Dict, List, Optional
 
@@ -23,6 +37,7 @@ import pytest
 
 from tether.config.settings import ResearchSettings
 from tether.core.types import OrchestratorConfig
+from tether.protocol.orchestration import notebook as notebook_module
 from tether.protocol.orchestration.chatty import _TOOL_CANCEL_GRACE_SEC
 from tether.protocol.orchestration.notebook import NotebookOrchestrator
 from tether.protocol.parsers.sliding import SlidingParser
@@ -92,18 +107,20 @@ class _SlowSynthProvider(FakeResearchProvider):
 
 
 class _UncancellableSynthProvider(FakeResearchProvider):
-    """Synth-phase generator with cleanup that the bound CANNOT preempt.
+    """Synth-phase generator whose ``finally:`` re-suspends on a shielded
+    ``sleep``, simulating an MLC engine teardown that holds an opaque
+    handle past the cancellation grace.
 
-    Used by the (skipped) test below to document the M3 limitation. Putting
-    ``asyncio.shield(asyncio.sleep(...))`` in the gen's finally simulates
-    a provider whose teardown ignores ``GeneratorExit`` for the shielded
-    duration. With the current bounded-aclose implementation, MessageStop
-    emission is delayed until the shielded sleep completes — violating
-    the strict grace contract.
-
-    Mark the strengthened test as ``skip`` pending
-    ``fu-research-synth-cancel-child-task`` (which drives ``__anext__`` in
-    a cancellable child task that can be abandoned with grace).
+    Pre-Phase-9.5: ``astream.aclose()`` was unbounded and the consumer
+    would wait the full shielded duration. Phase 9.5 bounded
+    ``wait_for(aclose(), GRACE)``; in this fixture that bound DOES hold
+    because the shielded ``sleep()`` is cancellable at the shield outer
+    (wait_for's cancel propagates to the shield, which raises
+    ``CancelledError`` without cancelling the inner sleep — the inner
+    becomes an orphan asyncio Task). Phase 9.7 W4 reroutes the orphan
+    through ``_abandoned_cleanup_tasks`` for clean tracking and adds
+    abandonment for the harder cancel-swallowing aclose case (see
+    :class:`_CancelSwallowingAcloseProvider` below).
     """
 
     async def stream(  # type: ignore[override]
@@ -326,44 +343,108 @@ async def test_synth_aclose_exception_does_not_escape(monkeypatch):
     assert stops[0].stop_reason == "cancelled"
 
 
+async def _drain_bag(bag: "set[asyncio.Task[Any]]", *, timeout: float = 2.0) -> None:
+    """Drain abandoned cleanup tasks at end-of-test so they don't leak
+    into the test session and trigger orphan assertions in sibling tests.
+
+    Snapshots the bag first because the done-callback discards entries
+    as tasks complete (and ``gather`` accepts any iterable).
+    """
+    snapshot = list(bag)
+    if not snapshot:
+        return
+    try:
+        await asyncio.wait_for(
+            asyncio.gather(*snapshot, return_exceptions=True),
+            timeout=timeout,
+        )
+    except asyncio.TimeoutError:
+        # Last-ditch: cancel everything still pending so the loop can
+        # shut down cleanly even if a misbehaving fixture's cleanup
+        # never finishes naturally.
+        for task in snapshot:
+            if not task.done():
+                task.cancel()
+        await asyncio.gather(*snapshot, return_exceptions=True)
+
+
+async def _drain_orphans(
+    baseline: "set[asyncio.Task[Any]]", *, timeout: float = 2.0
+) -> None:
+    """Drain any new asyncio tasks that appeared since ``baseline``.
+
+    Catches ``asyncio.shield``'s internal task wrapping the inner
+    coroutine (the source of the orphan in the
+    ``_UncancellableSynthProvider`` fixture), plus any other untracked
+    cleanup task. This keeps loop teardown from emitting "Task was
+    destroyed but it is pending!" warnings.
+    """
+    current = {t for t in asyncio.all_tasks() if not t.done()}
+    current.discard(asyncio.current_task())
+    new = list(current - baseline)
+    if not new:
+        return
+    try:
+        await asyncio.wait_for(
+            asyncio.gather(*new, return_exceptions=True),
+            timeout=timeout,
+        )
+    except asyncio.TimeoutError:
+        for task in new:
+            if not task.done():
+                task.cancel()
+        await asyncio.gather(*new, return_exceptions=True)
+
+
 # ---------------------------------------------------------------------------
-# Wave 4 reconcile: documented M3 limitation — uncancellable provider
-# cleanup is NOT bounded by the current aclose() wrapper. The implementation
-# fix lives behind ``fu-research-synth-cancel-child-task`` (drive __anext__
-# in a cancellable child task, mirroring explore's tool_task pattern).
+# Phase 9.7 W4 — abandon uncooperative cleanup after grace
 #
-# This test stays as ``skip`` to make the gap visible in the suite without
-# breaking CI. Remove the skip marker (and the helper provider) when the
-# follow-up lands.
+# Replaces the (skipped) ``test_synth_cancel_with_uncancellable_cleanup_KNOWN_GAP``
+# placeholder. The pre-W4 docstring claimed the bound was violated for the
+# shielded-sleep finally, but probing (W0-A §2.1) showed it actually held;
+# the residual symptom was an orphan asyncio Task from
+# ``asyncio.shield(asyncio.sleep)``. W4 reroutes that orphan through the
+# module-level ``_abandoned_cleanup_tasks`` bag so it's discoverable and
+# drainable, and adds a real abandonment path for the genuinely-
+# cancel-swallowing cleanup case (next test below).
 # ---------------------------------------------------------------------------
 
 
-@pytest.mark.skip(
-    reason=(
-        "Known limitation: aclose() bound only holds when provider cleanup "
-        "is cancellable. Real MLC native teardown / blocked socket flush can "
-        "exceed _TOOL_CANCEL_GRACE_SEC. Tracked: fu-research-synth-cancel-child-task. "
-        "Empirically verified to FAIL when un-skipped against current impl."
-    )
-)
 @pytest.mark.anyio
-async def test_synth_cancel_with_uncancellable_cleanup_KNOWN_GAP():
-    """Document the M3 gap: shielded cleanup defeats the bounded aclose().
+async def test_synth_cancel_with_uncancellable_cleanup():
+    """Shielded-sleep cleanup: MessageStop within grace; no orphan warning.
 
-    Pre-conditions: provider gen has ``await asyncio.shield(asyncio.sleep(...))``
-    in its finally clause, simulating a real MLC engine teardown that cannot
-    be interrupted by ``GeneratorExit`` for the shielded duration.
+    The ``_UncancellableSynthProvider`` finally awaits
+    ``asyncio.shield(asyncio.sleep(GRACE*4))``. Cancellation propagates to
+    the outer shield (raising ``CancelledError`` without cancelling the
+    inner sleep), so the gen's frame exits within grace. The inner sleep
+    coroutine — wrapped in an internal Task by ``asyncio.shield`` — is
+    the orphan.
 
-    Expected (post-fix) behavior: MessageStop emits within
-    ``_TOOL_CANCEL_GRACE_SEC + GRACE_SLACK_SEC`` because the orchestrator
-    abandons the synth task via a cancellable child-task wrapper instead of
-    awaiting ``astream.aclose()``.
+    Post-W4 behavior we verify:
 
-    Current behavior: MessageStop is delayed until the shielded cleanup
-    completes (~1.0s with current ``_TOOL_CANCEL_GRACE_SEC * 4`` shield).
-    The outer ``wait_for`` in the test below times out, exposing the gap.
+    1. ``MessageStop(cancelled)`` emits within
+       ``_TOOL_CANCEL_GRACE_SEC + GRACE_SLACK_SEC``.
+    2. ``_abandoned_cleanup_tasks`` length is bounded (``<= 1``) at the
+       moment of MessageStop emission — proves the abandon-bag path is
+       wired even when this specific fixture does not exercise it.
+    3. No "Task was destroyed but it is pending!" warning surfaces — the
+       orchestrator's bounded cleanup keeps the orphan tracked via the
+       bag (when its own pending/aclose task is abandoned) or lets the
+       inner sleep drain naturally before the test exits.
+    4. The bag drains cleanly at end-of-test so this test does not leak
+       into sibling tests' ``asyncio.all_tasks()`` assertions.
     """
     orch = _orch(_UncancellableSynthProvider())
+
+    # Snapshot live tasks BEFORE the orchestrator runs so we can detect
+    # and drain orphan asyncio tasks created during cleanup (notably
+    # ``asyncio.shield``'s internal Task wrapping the inner sleep in
+    # the fixture's gen finally — that orphan is NOT tracked by
+    # ``_abandoned_cleanup_tasks`` and would surface as a
+    # "Task was destroyed but it is pending!" warning at loop teardown
+    # if we did not drain it explicitly).
+    baseline = {t for t in asyncio.all_tasks() if not t.done()}
 
     events: list[object] = []
     first_chunk_seen = asyncio.Event()
@@ -387,23 +468,251 @@ async def test_synth_cancel_with_uncancellable_cleanup_KNOWN_GAP():
 
     loop = asyncio.get_running_loop()
     cancel_started = loop.time()
-    consumer.cancel()
 
+    with warnings.catch_warnings(record=True) as caught:
+        warnings.simplefilter("always")
+        consumer.cancel()
+
+        try:
+            await asyncio.wait_for(
+                asyncio.shield(_wait_for_done(consumer)),
+                timeout=_TOOL_CANCEL_GRACE_SEC + GRACE_SLACK_SEC,
+            )
+        except asyncio.TimeoutError:
+            if not consumer.done():
+                consumer.cancel()
+            raise
+
+        elapsed = loop.time() - cancel_started
+        # Snapshot the bag at the moment MessageStop emission has
+        # already happened (consumer task has finished unwinding).
+        bag_size_after_stop = len(notebook_module._abandoned_cleanup_tasks)
+
+    assert elapsed <= _TOOL_CANCEL_GRACE_SEC + GRACE_SLACK_SEC, (
+        f"cancelled synth took {elapsed:.3f}s; abandon-on-timeout must "
+        f"keep MessageStop within {_TOOL_CANCEL_GRACE_SEC:.3f}s"
+    )
+    assert bag_size_after_stop <= 1, (
+        f"abandoned-cleanup bag overflowed (size={bag_size_after_stop}); "
+        f"orchestrator should append at most one entry per cancelled request"
+    )
+
+    # Cancellation contract: MessageStop(cancelled) must still emit.
+    stops = [e for e in events if isinstance(e, MessageStop)]
+    assert len(stops) == 1, f"expected 1 MessageStop, got {stops!r}"
+    assert stops[0].stop_reason == "cancelled"
+
+    # Drain the abandoned-cleanup bag (orchestrator-tracked) and any
+    # orphan asyncio tasks (e.g. asyncio.shield's internal task) so
+    # loop teardown does not emit "Task was destroyed but it is pending!"
+    # warnings. The longest live coroutine in this fixture is the
+    # ``asyncio.sleep(GRACE * 4)`` wrapped by ``asyncio.shield``.
+    await _drain_bag(
+        notebook_module._abandoned_cleanup_tasks,
+        timeout=_TOOL_CANCEL_GRACE_SEC * 8,
+    )
+    await _drain_orphans(baseline, timeout=_TOOL_CANCEL_GRACE_SEC * 8)
+
+    # After draining, no "Task was destroyed but it is pending!" warning
+    # should have fired from the orchestrator's cleanup path. (Warnings
+    # captured during the cancel+drain window only; loop-teardown
+    # warnings fire after the test exits, but the orphan drain above
+    # prevents them.)
+    destroyed_pending = [
+        w for w in caught
+        if "Task was destroyed but it is pending" in str(w.message)
+    ]
+    assert not destroyed_pending, (
+        f"orchestrator leaked a pending Task that was GC'd: {destroyed_pending!r}"
+    )
+
+
+# ---------------------------------------------------------------------------
+# Phase 9.7 W4 — cancel-swallowing aclose() defeats the pre-W4 bound
+# ---------------------------------------------------------------------------
+
+
+@pytest.mark.anyio
+async def test_synth_cancel_with_cancel_swallowing_aclose(monkeypatch):
+    """``aclose()`` whose finally catches ``CancelledError`` and re-awaits
+    the inner with no shield blocks the pre-W4 ``wait_for(aclose, GRACE)``
+    for the full inner duration (~GRACE*4 — empirically 1000 ms vs the
+    250 ms bound).
+
+    Post-W4: ``_bounded_aclose`` wraps ``aclose()`` in a Task and uses
+    ``asyncio.shield`` so ``wait_for`` cancels only the outer waiter.
+    On timeout the orchestrator abandons the task; MessageStop emits
+    within ``_TOOL_CANCEL_GRACE_SEC + GRACE_SLACK_SEC`` and the bag
+    contains the in-flight aclose task. The task drains naturally
+    once the provider's swallowed cancellation chain unwinds.
+
+    Implementation: monkeypatch ``orch._synthesize_stream`` so the
+    cancel-swallowing finally lives in the OUTER asyncgen — the one
+    the orch directly drives via ``__anext__``/``aclose``. Without the
+    monkeypatch, the wrapper's ``async for`` would not propagate
+    ``GeneratorExit`` into the inner provider stream during aclose
+    unwind, so the inner gen's finally would only fire at GC time.
+    """
+    orch = _orch(FakeResearchProvider())
+
+    async def cancel_swallowing_synth(**_kwargs: Any) -> AsyncGenerator[str, None]:
+        try:
+            yield "first chunk "
+            yield "second chunk"
+        finally:
+            # P2 from W0-A §2.1: shield inner, then on CancelledError
+            # await the inner with NO shield — defeats the pre-W4
+            # ``wait_for(aclose(), GRACE)`` because wait_for blocks
+            # awaiting the swallowed-cancel coroutine to actually
+            # complete.
+            inner = asyncio.create_task(
+                asyncio.sleep(_TOOL_CANCEL_GRACE_SEC * 4)
+            )
+            try:
+                await asyncio.shield(inner)
+            except asyncio.CancelledError:
+                await inner
+                raise
+
+    monkeypatch.setattr(orch, "_synthesize_stream", cancel_swallowing_synth)
+
+    # Snapshot live tasks BEFORE the orchestrator runs so we can drain
+    # any orphan tasks (e.g. ``asyncio.shield``'s internal task
+    # wrapping the inner sleep) at end-of-test — keeps loop teardown
+    # warning-free.
+    baseline = {t for t in asyncio.all_tasks() if not t.done()}
+
+    cancel_token = _CooperativeCancelToken()
+    events: list[object] = []
+
+    async def _consume() -> None:
+        async for event in orch.run(
+            session_id="s-synth-cancel-swallow",
+            prompt="What is X?",
+            model_name="dummy",
+            cancel_token=cancel_token,
+        ):
+            events.append(event)
+            if isinstance(event, TextDelta):
+                cancel_token.cancel()
+
+    loop = asyncio.get_running_loop()
+    t0 = loop.time()
     try:
         await asyncio.wait_for(
-            asyncio.shield(_wait_for_done(consumer)),
+            _consume(),
             timeout=_TOOL_CANCEL_GRACE_SEC + GRACE_SLACK_SEC,
         )
     except asyncio.TimeoutError:
-        if not consumer.done():
-            consumer.cancel()
-        raise
+        pytest.fail(
+            f"orch.run did not return within "
+            f"{_TOOL_CANCEL_GRACE_SEC + GRACE_SLACK_SEC:.3f}s under "
+            f"cancel-swallowing aclose; abandon-on-timeout is broken"
+        )
 
-    elapsed = loop.time() - cancel_started
+    elapsed = loop.time() - t0
     assert elapsed <= _TOOL_CANCEL_GRACE_SEC + GRACE_SLACK_SEC, (
-        f"cancelled synth took {elapsed:.3f}s; bound must hold under "
-        f"uncancellable cleanup too — fix via child-task pattern."
+        f"cancel-swallowing aclose pinned the request for {elapsed:.3f}s; "
+        f"_bounded_aclose must abandon the aclose task at "
+        f"{_TOOL_CANCEL_GRACE_SEC:.3f}s"
     )
+
+    stops = [e for e in events if isinstance(e, MessageStop)]
+    assert len(stops) == 1, f"expected 1 MessageStop, got {stops!r}"
+    assert stops[0].stop_reason == "cancelled"
+
+    # The orchestrator should have abandoned the aclose task — bag
+    # length is >= 1 at this point because the swallowed cancellation
+    # is still unwinding inner. Drain to keep the test honest.
+    bag_size = len(notebook_module._abandoned_cleanup_tasks)
+    assert bag_size >= 1, (
+        "expected abandon-bag to contain at least the aclose task after "
+        f"MessageStop; got size={bag_size}"
+    )
+    await _drain_bag(
+        notebook_module._abandoned_cleanup_tasks,
+        timeout=_TOOL_CANCEL_GRACE_SEC * 8,
+    )
+    assert not notebook_module._abandoned_cleanup_tasks, (
+        "bag did not drain — orchestrator may be leaking strong refs"
+    )
+    # Drain any orphan asyncio tasks left over from the fixture's
+    # cleanup chain (e.g. asyncio.shield's inner sleep task), so loop
+    # teardown does not emit "Task was destroyed but it is pending!".
+    await _drain_orphans(baseline, timeout=_TOOL_CANCEL_GRACE_SEC * 8)
+
+
+# ---------------------------------------------------------------------------
+# Phase 9.7 W4 — ordering guard: never call aclose on a running asyncgen
+# ---------------------------------------------------------------------------
+
+
+@pytest.mark.anyio
+async def test_bounded_aclose_skips_aclose_when_pending_chunk_not_done():
+    """The ordering guard: if ``pending_chunk`` is still running after its
+    grace, ``_bounded_aclose`` must NOT call ``astream.aclose()`` — that
+    would raise ``RuntimeError("aclose(): asynchronous generator is
+    already running")`` because the asyncgen is currently being advanced.
+
+    Unit-level test of the helper directly: pass a not-done sentinel
+    task as ``pending_chunk`` and assert that the astream's ``aclose``
+    is never called (the gen remains open). The pending task is added
+    to the abandon bag instead.
+    """
+    aclose_called = False
+
+    async def make_open_gen() -> AsyncGenerator[int, None]:
+        try:
+            yield 1
+            yield 2
+        finally:
+            # Sentinel so we can detect if aclose unwound the gen.
+            nonlocal aclose_called
+            aclose_called = True
+
+    gen = make_open_gen()
+    # Drive once so the gen is suspended at the first yield (not at
+    # entry — calling aclose on a never-started gen is a no-op and
+    # wouldn't exercise the guard).
+    first = await gen.__anext__()
+    assert first == 1
+
+    # A not-done sentinel task standing in for an uncooperative
+    # in-flight ``__anext__`` task.
+    sentinel = asyncio.create_task(asyncio.sleep(10), name="sentinel-pending")
+    try:
+        await notebook_module._bounded_aclose(
+            gen, pending_chunk=sentinel, kind="test_guard"
+        )
+
+        # The helper must have abandoned the sentinel (added to the
+        # bag) and NOT called gen.aclose() — proven by the gen's
+        # finally not having fired.
+        assert sentinel in notebook_module._abandoned_cleanup_tasks, (
+            "sentinel pending task was not added to abandon bag"
+        )
+        assert not aclose_called, (
+            "_bounded_aclose called aclose() while pending_chunk was "
+            "still running — would have raised RuntimeError(\"aclose(): "
+            "asynchronous generator is already running\")"
+        )
+        # The gen frame must still be open (cleanup did not run).
+        assert gen.ag_frame is not None, (
+            "gen was unexpectedly closed by _bounded_aclose"
+        )
+    finally:
+        sentinel.cancel()
+        try:
+            await sentinel
+        except (asyncio.CancelledError, BaseException):
+            pass
+        # Now safe to close the gen properly so the test doesn't leak it.
+        try:
+            await gen.aclose()
+        except Exception:
+            pass
+        # Drain bag (sentinel is the only entry).
+        await _drain_bag(notebook_module._abandoned_cleanup_tasks)
 
 
 class _CooperativeCancelToken:
