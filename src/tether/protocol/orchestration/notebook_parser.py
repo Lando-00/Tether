@@ -43,6 +43,10 @@ _FACT_LINE_RE = re.compile(
     r"^\s*(?:FACT[:\s\-]+|[-*\u2022]\s+|\d+[.)]\s+|\[\d+\]\s+)(.+?)\s*$",
     re.IGNORECASE,
 )
+_SNIPPET_META_RE = re.compile(
+    r"^\s*the\s+snippet\s+(?:says|mentions|talks\s+about|indicates|states)\b",
+    re.IGNORECASE,
+)
 _VALID_CONFIDENCE = {"low", "medium", "high"}
 
 # Narrowly anchored extraction-process vocabulary. Each entry is a
@@ -84,7 +88,10 @@ def _is_reasoning_leak(text: str) -> bool:
     if not text:
         return False
     needle = text.strip().lower()
-    return any(needle.startswith(prefix) for prefix in _REASONING_LEAK_PREFIXES)
+    return (
+        any(needle.startswith(prefix) for prefix in _REASONING_LEAK_PREFIXES)
+        or _SNIPPET_META_RE.match(text) is not None
+    )
 
 
 @dataclass(frozen=True)

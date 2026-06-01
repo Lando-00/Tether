@@ -54,6 +54,29 @@ def _normalize_query(q: str) -> str:
     return q.strip().lower()
 
 
+_CONTRAST_TERMS = (
+    " but ",
+    " however ",
+    " whereas ",
+    " while ",
+    " although ",
+    " though ",
+    " except ",
+    " instead ",
+)
+
+
+def _has_contrast_scope(text: str) -> bool:
+    """True when a fact contains contrast/scope language that changes meaning.
+
+    Containment dedup is intentionally conservative around contrast terms:
+    "X grew in Europe" and "X grew in Europe but fell in Asia" are related
+    but not duplicates. Keep both.
+    """
+    padded = f" {text.strip().lower()} "
+    return any(term in padded for term in _CONTRAST_TERMS)
+
+
 @dataclass
 class NotebookState:
     """Live state of an in-flight research-mode turn.
@@ -129,6 +152,8 @@ class NotebookState:
                 if len(existing_key) < 20:
                     continue
                 if key in existing_key or existing_key in key:
+                    if _has_contrast_scope(fact.text) or _has_contrast_scope(existing.text):
+                        continue
                     if len(key) > len(existing_key):
                         self.facts[i] = fact
                         return True

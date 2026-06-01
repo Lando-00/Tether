@@ -106,6 +106,31 @@ def test_strip_bare_leading_close_marker_split_chunks():
     assert "</think>" not in text
 
 
+def test_strip_bare_leading_close_marker_long_prefix():
+    """A realistic hidden preamble before a bare close must not leak.
+
+    GPT-5.5 review caught that the first implementation flushed after the
+    7-char overlap window, which leaked long hidden reasoning plus the close
+    marker into TextDelta. The leading window is now bounded separately, so
+    common Qwen-style hidden preambles are held until the first close marker.
+    """
+    hidden = "this is long hidden reasoning before close "
+    text, thinking, _ = _drive([hidden, "</think>", "visible"])
+    assert text == "visible"
+    assert thinking == hidden
+    assert "</think>" not in text
+
+
+def test_strip_nested_think_blocks_do_not_leak_tail_text():
+    """Nested think markers should remain hidden until the outer close."""
+    text, thinking, _ = _drive(
+        ["<think>outer <think>inner</think> still hidden</think>visible"]
+    )
+    assert text == "visible"
+    assert thinking == "outer inner still hidden"
+    assert "</think>" not in text
+
+
 def test_strip_unclosed_think_to_eos_never_leaks_to_text():
     """An unclosed ``<think>`` block at end-of-stream must NOT leak into
     text; residual flows to ``thinking_part`` so the caller can drop

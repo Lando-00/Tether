@@ -38,6 +38,8 @@ LIVE_LEAKED_FACTS: list[str] = [
     "The third snippet says the Adreno GPU has 4.6 TFLOPS.",
     "This snippet indicates that the NPU is not yet exposed to userland.",
     "Confidence is medium because only one source mentions it.",
+    "The snippet mentions AnythingLLM runs LLMs on NPU.",
+    "The snippet says LM Studio can run LLMs on CPU.",
 ]
 
 
@@ -95,6 +97,14 @@ def test_is_reasoning_leak_case_insensitive() -> None:
 def test_is_reasoning_leak_tolerates_leading_whitespace() -> None:
     assert _is_reasoning_leak("   the third snippet mentions NPU.") is True
     assert _is_reasoning_leak("\t\nThis snippet says X.") is True
+
+
+def test_is_reasoning_leak_drops_the_snippet_meta_verbs_only() -> None:
+    assert _is_reasoning_leak("The snippet mentions AnythingLLM runs LLMs.") is True
+    assert _is_reasoning_leak("The snippet talks about LM Studio.") is True
+    assert _is_reasoning_leak("The snippet says NPU support is planned.") is True
+    # Prompt-injection regression guard: "contains" can be a valid data fact.
+    assert _is_reasoning_leak('The snippet contains: {"key":"value"}') is False
 
 
 def test_is_reasoning_leak_empty_and_none() -> None:

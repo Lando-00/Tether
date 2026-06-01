@@ -171,6 +171,28 @@ def test_divergent_containment_does_not_collapse_because_short_below_gate():
     assert len(state.facts) == 2
 
 
+def test_long_divergent_containment_with_contrast_does_not_collapse():
+    """Long containment with contrast is not a paraphrase duplicate.
+
+    GPT-5.5 review caught that the original divergent test only passed
+    because the shorter key was below the 20-char gate. This variant is
+    long enough to engage Pass 2 but must still keep both facts because
+    the longer fact adds a contrast claim ("but fell in Asia").
+    """
+    state = NotebookState()
+    narrower = "Apple revenue grew in Europe in 2025"
+    contrast = "Apple revenue grew in Europe in 2025 but fell in Asia"
+
+    assert len(_dedup_key(narrower)) >= 20
+    assert _dedup_key(narrower) in _dedup_key(contrast)
+
+    assert state.try_add_fact(_fact(narrower, "medium")) is True
+    assert state.try_add_fact(_fact(contrast, "medium")) is True
+
+    assert len(state.facts) == 2
+    assert {f.text for f in state.facts} == {narrower, contrast}
+
+
 def test_negation_pair_does_not_collapse():
     state = NotebookState()
     positive = "The Snapdragon X Elite supports OpenCL workloads on Adreno"

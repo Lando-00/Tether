@@ -130,8 +130,11 @@ class _ThinkStripper:
       is detected.
     * Leading state handles the "bare-leading ``</think>``" case: Qwen
       sometimes starts mid-thinking because the chat template injects
-      ``<think>`` out-of-band. If ``</think>`` appears before any
-      ``<think>``, treat preceding buffered content as thinking.
+      ``<think>`` out-of-band. Hold a bounded leading buffer so hidden
+      reasoning that precedes the first close marker cannot leak just
+      because it is longer than the marker-overlap window.
+    * Nested think blocks are treated conservatively with a depth counter.
+      Hidden text is not released until the matching outer close marker.
     * On unclosed ``<think>`` at end-of-stream, :meth:`finalize` returns
       the residual as thinking (never as text). The caller decides
       whether to surface it as a :class:`ThinkingDelta` based on
@@ -141,11 +144,16 @@ class _ThinkStripper:
     THINK_OPEN = "<think>"
     THINK_CLOSE = "</think>"
     _OVERLAP = max(len(THINK_OPEN), len(THINK_CLOSE)) - 1
+    # Long enough for realistic hidden preambles before a bare-leading
+    # ``</think>`` while still bounding no-think streams so they don't
+    # buffer unboundedly before first visible text.
+    _LEADING_THINK_MAX_CHARS = 512
 
     def __init__(self) -> None:
         self._mode: str = "leading"
         self._buf: str = ""
         self._unclosed_think_count: int = 0
+        self._think_depth: int = 0
 
     def feed(self, chunk: str) -> tuple[str, str]:
         """Consume one chunk; return ``(text_part, thinking_part)``.
@@ -182,22 +190,25 @@ class _ThinkStripper:
                     text_out.append(self._buf[:first_pos])
                     self._buf = self._buf[first_pos + len(self.THINK_OPEN):]
                     self._mode = "think"
+                    self._think_depth = 1
                     continue
                 if marker_kind == "close":
                     think_out.append(self._buf[:first_pos])
                     self._buf = self._buf[first_pos + len(self.THINK_CLOSE):]
                     self._mode = "text"
+                    self._think_depth = 0
                     continue
 
-                # No marker yet. Hold up to OVERLAP chars in case a
-                # marker is split across this and the next chunk; flush
-                # the rest as text and transition out of leading mode
-                # (we've definitively passed any leading marker position).
-                if len(self._buf) > self._OVERLAP:
-                    emit = self._buf[: -self._OVERLAP]
+                # No marker yet. Stay in the ambiguous leading state until
+                # either a marker arrives or the bounded leading window is
+                # exceeded. This prevents a long bare-leading hidden
+                # reasoning prefix from leaking before a later ``</think>``.
+                if len(self._buf) > self._LEADING_THINK_MAX_CHARS:
+                    keep = self._OVERLAP
+                    emit = self._buf[: -keep]
                     if emit:
                         text_out.append(emit)
-                    self._buf = self._buf[-self._OVERLAP:]
+                    self._buf = self._buf[-keep:]
                     self._mode = "text"
                 break
 
@@ -207,6 +218,7 @@ class _ThinkStripper:
                     text_out.append(self._buf[:idx_open])
                     self._buf = self._buf[idx_open + len(self.THINK_OPEN):]
                     self._mode = "think"
+                    self._think_depth = 1
                     continue
                 if len(self._buf) > self._OVERLAP:
                     emit = self._buf[: -self._OVERLAP]
@@ -216,11 +228,20 @@ class _ThinkStripper:
                 break
 
             # self._mode == "think"
-            idx_close = self._buf.lower().find(self.THINK_CLOSE)
+            lowered = self._buf.lower()
+            idx_open = lowered.find(self.THINK_OPEN)
+            idx_close = lowered.find(self.THINK_CLOSE)
+            if idx_open != -1 and (idx_close == -1 or idx_open < idx_close):
+                think_out.append(self._buf[:idx_open])
+                self._buf = self._buf[idx_open + len(self.THINK_OPEN):]
+                self._think_depth += 1
+                continue
             if idx_close != -1:
                 think_out.append(self._buf[:idx_close])
                 self._buf = self._buf[idx_close + len(self.THINK_CLOSE):]
-                self._mode = "text"
+                self._think_depth = max(0, self._think_depth - 1)
+                if self._think_depth == 0:
+                    self._mode = "text"
                 continue
             if len(self._buf) > self._OVERLAP:
                 emit = self._buf[: -self._OVERLAP]
@@ -248,6 +269,7 @@ class _ThinkStripper:
 
         if self._mode == "think":
             self._unclosed_think_count += 1
+            self._think_depth = 0
             logger.debug(
                 "notebook.synth.unclosed_think",
                 residual_length=len(residual),
