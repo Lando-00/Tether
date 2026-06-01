@@ -78,11 +78,13 @@ _MAX_FACT_LENGTH = 4096
 # during cold-load (the live 43 s silence that motivated this fix lived
 # inside `_plan` -> provider.stream's first `__anext__`).
 #
-# 5 s is a deliberate compromise: short enough to surface real cold-loads,
-# long enough not to spam consumers during normal multi-second streaming.
+# 2 s is a deliberate compromise: short enough to surface real cold-loads
+# and feel responsive to interactive consumers, long enough not to spam them
+# during normal multi-second streaming. (Phase 9.7 W3-A lowered this from 5 s
+# to 2 s after cooperative-cancel latency review.)
 # Tests monkeypatch this module constant to a much smaller value
 # (e.g. 0.01 s) to keep the suite fast.
-_HEARTBEAT_INTERVAL_SEC = 5.0
+_HEARTBEAT_INTERVAL_SEC = 2.0
 
 
 def _query_log_fields(query: str) -> dict[str, Any]:
