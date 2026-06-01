@@ -49,6 +49,13 @@ _SNIPPET_META_RE = re.compile(
     re.IGNORECASE,
 )
 _VALID_CONFIDENCE = {"low", "medium", "high"}
+_MAX_PLAN_QUERY_CHARS = 160
+_MAX_PLAN_QUERY_WORDS = 16
+_PLAN_META_RE = re.compile(
+    r"\b(?:the user|user is|i need|i should|but wait|however,?\s+the user|"
+    r"let'?s|we need|that'?s a separate query)\b",
+    re.IGNORECASE,
+)
 
 # Narrowly anchored extraction-process vocabulary. Each entry is a
 # prefix (already lowercased, includes trailing space) that strongly
@@ -138,17 +145,51 @@ def parse_plan_output(raw: str, *, max_queries: int = 5) -> list[str]:
             if result is not None:
                 queries = result.get("key_elements", [])
                 if isinstance(queries, list):
-                    return [str(q) for q in queries if str(q).strip()][:max_queries]
+                    return _sanitize_plan_queries(queries, max_queries=max_queries)
 
         bullets = _layer_4_bullet_fallback(raw)
         if bullets:
-            return [b for b in bullets if b.strip()][:max_queries]
+            return _sanitize_plan_queries(bullets, max_queries=max_queries)
 
         logger.warning("notebook_parser.plan_total_fail", raw_length=raw_length)
         return []
     except Exception:
         logger.warning("notebook_parser.plan_total_fail", raw_length=raw_length, exc_info=True)
         return []
+
+
+def _sanitize_plan_queries(items: list[Any], *, max_queries: int) -> list[str]:
+    """Return short, search-shaped planner queries.
+
+    Real Qwen planner runs can place chain-of-thought/meta commentary inside
+    a ``key_elements`` string (for example, "The math problem 25 + 50. But
+    wait, the user..."). Those strings are not useful Brave queries and can
+    trigger 422s. Keep only concise, self-contained search-query candidates.
+    """
+    queries: list[str] = []
+    seen: set[str] = set()
+    for item in items:
+        query = str(item).strip()
+        if not query:
+            continue
+        if len(query) > _MAX_PLAN_QUERY_CHARS:
+            continue
+        if len(query.split()) > _MAX_PLAN_QUERY_WORDS:
+            continue
+        if _PLAN_META_RE.search(query):
+            continue
+        normalized = _normalize_plan_query(query)
+        if normalized in seen:
+            continue
+        seen.add(normalized)
+        queries.append(query)
+        if len(queries) >= max_queries:
+            break
+    return queries
+
+
+def _normalize_plan_query(query: str) -> str:
+    return re.sub(r"\s+", " ", query.strip().lower())
 
 
 def parse_extract_output(

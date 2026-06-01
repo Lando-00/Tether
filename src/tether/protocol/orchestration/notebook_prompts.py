@@ -49,6 +49,10 @@ Rules:
 - Each string is 3 to 12 words and must read as a self-contained web
   search query (no pronouns, no "the user wants...", no question marks
   unless they are part of the query itself).
+- Each string MUST be a web-search query only. Do NOT include reasoning,
+  caveats, arithmetic work, or commentary like "But wait..." / "the user...".
+  Bad: "The math problem 25 + 50. But wait, the user might..."
+  Good: "President of Ireland current age"
 - Cover distinct angles. Do not paraphrase the same topic twice.
 - Prefer concrete entities, dates, products, and proper nouns over
   abstract phrasing.
