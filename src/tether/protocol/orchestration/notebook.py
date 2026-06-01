@@ -523,6 +523,19 @@ class NotebookOrchestrator(Orchestrator):
                     else:
                         plan_queries = payload
                 logger.info("notebook.phase_complete", phase="plan", queries=len(plan_queries))
+                if not plan_queries and prompt.strip():
+                    # Real LLM planners can occasionally fail to emit strict
+                    # JSON (or emit an empty key_elements list) for typo-heavy
+                    # / multi-part user prompts. Falling straight through to
+                    # empty synthesis is a poor research UX; use the original
+                    # prompt as one broad search query so Explore still has a
+                    # chance to gather facts.
+                    fallback_query = prompt.strip()[:_MAX_QUERY_LENGTH]
+                    logger.warning(
+                        "notebook.plan_empty_fallback",
+                        query_length=len(fallback_query),
+                    )
+                    plan_queries = [fallback_query]
 
                 for query in plan_queries:
                     notebook_state.queue.append(query)

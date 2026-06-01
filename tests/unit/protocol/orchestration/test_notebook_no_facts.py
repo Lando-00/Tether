@@ -25,6 +25,7 @@ from tether.protocol.wire.events import (
     NotebookLimitReached,
     NotebookNoFacts,
     NotebookPhaseStart,
+    NotebookQueryAdded,
 )
 from tests.fixtures.fake_research_provider import FakeResearchProvider
 
@@ -173,22 +174,28 @@ async def test_all_queries_rate_limited_emits_no_facts():
 
 
 # ---------------------------------------------------------------------------
-# Test 2 — empty plan → NotebookNoFacts(0, 0, note="empty plan")
+# Test 2 — empty plan falls back to original prompt as one query
 # ---------------------------------------------------------------------------
 
 
 @pytest.mark.anyio
 async def test_empty_plan_emits_no_facts_with_zero_counters():
     """Planner returns an empty ``key_elements`` list, so the loop never
-    enters an iteration. NotebookNoFacts must be emitted with both
-    counters at 0 and a ``"empty plan"`` note. Synthesize still runs.
+    enters an iteration.
+
+    Phase 9.7 CLI smoke found this path in the wild: the planner returned no
+    queries for a typo-heavy multi-part prompt, causing immediate empty
+    synthesis. The orchestrator now falls back to the original user prompt as
+    a broad single search query. If that search also fails, NotebookNoFacts is
+    still emitted — but with one attempted query / iteration rather than an
+    ``empty plan`` note.
     """
     provider = FakeResearchProvider()
     provider.set_planner_response({"key_elements": []})
     provider.set_extractor_responses([])
     provider.set_synthesizer_response("Nothing to summarize.")
 
-    tool_runner = _ScriptedToolRunner([])  # no tool calls expected
+    tool_runner = _ScriptedToolRunner([{"error": "planner_empty_fallback_failed"}])
     orch = _build_orch(
         provider=provider,
         tool_runner=tool_runner,
@@ -207,13 +214,17 @@ async def test_empty_plan_emits_no_facts_with_zero_counters():
         )
     ]
 
-    assert tool_runner.calls == []
+    assert [call[1]["query"] for call in tool_runner.calls] == ["Tell me about nothing."]
+
+    fallback_queries = [e for e in events if isinstance(e, NotebookQueryAdded)]
+    assert len(fallback_queries) == 1
+    assert fallback_queries[0].query == "Tell me about nothing."
 
     no_facts = [e for e in events if isinstance(e, NotebookNoFacts)]
     assert len(no_facts) == 1
-    assert no_facts[0].queries_attempted == 0
-    assert no_facts[0].iterations == 0
-    assert no_facts[0].note == "empty plan"
+    assert no_facts[0].queries_attempted == 1
+    assert no_facts[0].iterations == 1
+    assert no_facts[0].note is None
 
     # Synthesize still runs and turn completes.
     synth_phases = [
