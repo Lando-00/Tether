@@ -95,17 +95,51 @@ class NotebookState:
     def try_add_fact(self, fact: AtomicFact) -> bool:
         """Attempt to add a fact.
 
-        Returns ``True`` if added (or if a duplicate was replaced with a
-        higher-confidence fact). Returns ``False`` for a duplicate at the
-        same-or-lower confidence.
+        Two-pass dedup:
+
+        1. **Exact-match** on the normalized :func:`_dedup_key`. Replace
+           the existing fact if the new one has strictly higher
+           confidence; otherwise reject.
+        2. **Substring-containment** (second pass). When both normalized
+           keys are at least 20 characters long and one is a substring of
+           the other, the pair is treated as a paraphrase duplicate. We
+           keep the **longer / more specific** text regardless of
+           confidence (a longer hedged claim beats a shorter absolute
+           one); confidence is used only as a tiebreaker when key lengths
+           are equal.
+
+        Returns ``True`` if the fact was added or if it replaced an
+        existing one. Returns ``False`` if it was rejected as a
+        duplicate.
         """
         key = _dedup_key(fact.text)
+
+        # Pass 1: exact normalized-key match.
         for i, existing in enumerate(self.facts):
             if _dedup_key(existing.text) == key:
                 if _conf_rank(fact.confidence) > _conf_rank(existing.confidence):
                     self.facts[i] = fact
                     return True
                 return False
+
+        # Pass 2: substring containment (paraphrase dedup).
+        if len(key) >= 20:
+            for i, existing in enumerate(self.facts):
+                existing_key = _dedup_key(existing.text)
+                if len(existing_key) < 20:
+                    continue
+                if key in existing_key or existing_key in key:
+                    if len(key) > len(existing_key):
+                        self.facts[i] = fact
+                        return True
+                    if len(key) < len(existing_key):
+                        return False
+                    # Equal length: fall back to confidence.
+                    if _conf_rank(fact.confidence) > _conf_rank(existing.confidence):
+                        self.facts[i] = fact
+                        return True
+                    return False
+
         self.facts.append(fact)
         return True
 
