@@ -124,12 +124,13 @@ class NotebookState:
            the existing fact if the new one has strictly higher
            confidence; otherwise reject.
         2. **Substring-containment** (second pass). When both normalized
-           keys are at least 20 characters long and one is a substring of
-           the other, the pair is treated as a paraphrase duplicate. We
-           keep the **longer / more specific** text regardless of
-           confidence (a longer hedged claim beats a shorter absolute
-           one); confidence is used only as a tiebreaker when key lengths
-           are equal.
+           keys are at least 20 characters long and one is a *strict*
+           substring of the other, the pair is treated as a paraphrase
+           duplicate. We keep the **longer / more specific** text
+           regardless of confidence (a longer hedged claim beats a
+           shorter absolute one). Equal-length containment is impossible
+           here — equal length plus substring relation implies the keys
+           are identical, which is already handled by Pass 1.
 
         Returns ``True`` if the fact was added or if it replaced an
         existing one. Returns ``False`` if it was rejected as a
@@ -157,12 +158,9 @@ class NotebookState:
                     if len(key) > len(existing_key):
                         self.facts[i] = fact
                         return True
-                    if len(key) < len(existing_key):
-                        return False
-                    # Equal length: fall back to confidence.
-                    if _conf_rank(fact.confidence) > _conf_rank(existing.confidence):
-                        self.facts[i] = fact
-                        return True
+                    # len(key) < len(existing_key): shorter loses.
+                    # Equal length is unreachable: equal-length containment
+                    # implies equal keys, already handled by Pass 1.
                     return False
 
         self.facts.append(fact)

@@ -2,10 +2,12 @@
 
 Phase 9.6 follow-up I-3 (ADR-0020 §D1.bis amendment): in addition to
 exact-normalized-key dedup, ``try_add_fact`` collapses paraphrase pairs
-where one normalized key is a substring of the other, provided both keys
-are at least 20 characters long. The longer (more specific) text wins
-regardless of confidence; confidence is only a tiebreaker on equal
-length. See plan §17.4 W1-B.
+where one normalized key is a strict substring of the other, provided
+both keys are at least 20 characters long. The longer (more specific)
+text wins regardless of confidence. Equal-length containment is
+impossible (equal length + substring relation ⇒ equal keys) and is
+therefore handled by the Pass 1 exact-match path, not Pass 2.
+See plan §17.4 W1-B and §18.6 W1-C.
 """
 from __future__ import annotations
 
@@ -115,21 +117,23 @@ def test_containment_trailing_phrase_paraphrase_collapses():
     assert state.facts[0].text == b
 
 
-def test_containment_equal_length_uses_confidence_tiebreaker():
+def test_equal_length_containment_is_exact_match_path():
+    """Equal-length substring containment is impossible without key equality.
+
+    If ``len(a) == len(b)`` and ``a in b`` (or vice versa), then ``a == b``.
+    Equal normalized keys are caught by Pass 1 (exact-match), not Pass 2.
+    This test documents that invariant: two texts that normalize to the
+    same key route through Pass 1 and follow its confidence semantics
+    (equal confidence → reject, keep original).
+    """
     state = NotebookState()
-    # Two distinct texts that happen to share a normalized key
-    # (built via case/punctuation noise) — exact match path triggers
-    # first, but the spec requires equal-length containment to fall back
-    # to confidence. Build a real equal-length containment by making the
-    # normalized keys equal (which is also an exact-match dup) — the
-    # tiebreaker behavior is observable through the resulting confidence.
     a = "The orchestrator emits message_start before any text deltas"
     b = "the orchestrator emits MESSAGE_START before any text deltas!"
 
     assert _dedup_key(a) == _dedup_key(b)
 
     assert state.try_add_fact(_fact(a, "medium")) is True
-    # Equal "length" (exact-match) + equal confidence → reject.
+    # Pass 1 handles this: equal key + equal confidence → reject.
     assert state.try_add_fact(_fact(b, "medium")) is False
     assert state.facts[0].text == a
 
