@@ -105,6 +105,7 @@ _HEARTBEAT_INTERVAL_SEC = 2.0
 # unboundedly would require an adversarial provider whose cleanup never
 # completes; that is a provider bug, not an orchestrator bug.
 _abandoned_cleanup_tasks: "set[asyncio.Task[Any]]" = set()
+_ABANDONED_CLEANUP_WARN_THRESHOLD = 8
 
 
 def _abandon_cleanup_task(task: "asyncio.Task[Any]", *, kind: str) -> None:
@@ -122,6 +123,14 @@ def _abandon_cleanup_task(task: "asyncio.Task[Any]", *, kind: str) -> None:
     this module (cf. ``_query_log_fields``).
     """
     _abandoned_cleanup_tasks.add(task)
+    backlog = len(_abandoned_cleanup_tasks)
+    if backlog >= _ABANDONED_CLEANUP_WARN_THRESHOLD:
+        logger.warning(
+            "notebook.abandoned_cleanup.backlog",
+            kind=kind,
+            backlog=backlog,
+            threshold=_ABANDONED_CLEANUP_WARN_THRESHOLD,
+        )
 
     def _on_done(t: "asyncio.Task[Any]") -> None:
         _abandoned_cleanup_tasks.discard(t)
