@@ -26,6 +26,7 @@ import pytest
 import structlog
 
 from tether.config.settings import ResearchSettings
+from tether.core.logging import reset_logging_for_tests
 from tether.core.types import OrchestratorConfig
 from tether.protocol.orchestration.notebook import NotebookOrchestrator
 from tether.protocol.parsers.sliding import SlidingParser
@@ -112,17 +113,19 @@ def anyio_backend():
 
 
 @pytest.fixture(autouse=True)
-def _reset_structlog_defaults():
-    """Reset structlog defaults AND replace cached module loggers.
+def _reset_logging_for_capture():
+    """Restore a clean structlog config before each test.
 
-    See ``test_notebook_query_redaction.py`` for the full rationale.
+    See ``test_notebook_query_redaction.py`` for the full rationale —
+    Phase 9.7 W2 moved the cached-proxy invalidation into
+    ``tether.core.logging.reset_logging_for_tests`` so notebook tests
+    no longer need a bespoke fixture.
+
     Tracked: ``fu-notebook-tests-structlog-isolation``.
     """
-    import tether.protocol.orchestration.notebook as _notebook_mod
-    import tether.core.logging as _logging_mod
-    structlog.reset_defaults()
-    _notebook_mod.logger = structlog.get_logger(_notebook_mod.__name__)
-    _logging_mod.logger = structlog.get_logger("tether")
+    reset_logging_for_tests()
+    yield
+    reset_logging_for_tests()
 
 
 # ---------------------------------------------------------------------------

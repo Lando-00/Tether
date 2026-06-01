@@ -210,14 +210,101 @@ def _resolve_log_file_path(configured: Optional[str]) -> Path:
     return log_dir / "tether.jsonl"
 
 
-def reset_logging_for_tests() -> None:
-    """Test-helper: clear the configure_logging idempotency flag.
+def _clear_structlog_lazy_proxy_caches() -> int:
+    """Drop cached ``bind`` closures on every loaded ``tether*`` module's lazy proxy.
 
-    Used by test fixtures that need to reconfigure logging with custom
-    settings. NOT part of the public library API.
+    Phase 9.7 fu-notebook-tests-structlog-isolation. Background:
+
+    :func:`configure_logging` calls ``structlog.configure(...,
+    cache_logger_on_first_use=True)``. The first time a module-level
+    :class:`structlog._config.BoundLoggerLazyProxy` is used, structlog
+    installs an instance-level ``bind`` attribute on the proxy that
+    captures the *then-current* bound logger + processor chain. After
+    that, the proxy bypasses :func:`structlog.get_config` entirely.
+
+    :func:`structlog.reset_defaults` resets the global config but does
+    **not** invalidate those per-proxy ``bind`` caches. The consequence
+    in tests: when a fixture configures logging (stdlib bridge factory),
+    emits once through ``tether.protocol.orchestration.notebook.logger``,
+    then later code uses :func:`structlog.testing.capture_logs`, the
+    cached proxy keeps routing to the stdlib bridge and ``capture_logs``
+    returns ``[]``.
+
+    Fix: walk loaded ``tether*`` modules, find the proxy instances stored
+    as module globals (or re-exports), and ``del`` the cached ``bind``
+    attribute. This forces structlog to re-resolve a fresh bound logger
+    from the current global config on the next use. Deletion is
+    preferred over module-global reassignment because it fixes every
+    reference to the same proxy object — including modules that did
+    ``from tether.core.logging import logger``.
+
+    Returns the number of proxies cleared (useful for the regression
+    test).
+    """
+    # Import inside the helper so that simply importing ``tether.core.logging``
+    # does not reach into structlog internals.
+    from structlog._config import BoundLoggerLazyProxy
+
+    cleared = 0
+    seen: set[int] = set()
+    for module_name, module in list(sys.modules.items()):
+        if not _is_tether_module(module_name):
+            continue
+        # ``vars(module)`` can raise on weird module shims; be defensive.
+        try:
+            namespace = vars(module)
+        except TypeError:
+            continue
+        for value in list(namespace.values()):
+            if not isinstance(value, BoundLoggerLazyProxy):
+                continue
+            ident = id(value)
+            if ident in seen:
+                continue
+            seen.add(ident)
+            if "bind" in value.__dict__:
+                value.__dict__.pop("bind", None)
+                cleared += 1
+    return cleared
+
+
+def _is_tether_module(name: str) -> bool:
+    return (
+        name == "tether"
+        or name.startswith("tether.")
+        or name == "tether_service"
+        or name.startswith("tether_service.")
+    )
+
+
+def reset_logging_for_tests() -> None:
+    """Test-helper: fully reset logging state so tests are order-independent.
+
+    Clears:
+    1. The :func:`configure_logging` idempotency flag (``_CONFIGURED``).
+    2. structlog global defaults (back to ``PrintLoggerFactory`` /
+       ``cache_logger_on_first_use=False``).
+    3. structlog contextvars (so a previous test's bound context
+       does not leak into the next one).
+    4. Cached ``bind`` closures on every ``BoundLoggerLazyProxy`` held by
+       loaded ``tether*`` modules — see
+       :func:`_clear_structlog_lazy_proxy_caches` for the underlying
+       structlog cache-invalidation issue.
+
+    The cache-clearing step is what lets a test call
+    :func:`structlog.testing.capture_logs` and actually capture events
+    emitted through module-level loggers that were previously bound to
+    the stdlib bridge by an earlier :func:`configure_logging` call.
+
+    NOT part of the public library API; tests only.
+
+    Tracked: ``fu-notebook-tests-structlog-isolation``.
     """
     global _CONFIGURED
     _CONFIGURED = False
+    structlog.reset_defaults()
+    structlog.contextvars.clear_contextvars()
+    _clear_structlog_lazy_proxy_caches()
 
 
 __all__ = [

@@ -12,10 +12,10 @@ from datetime import date
 from typing import Any
 
 import pytest
-import structlog
 from structlog.testing import capture_logs
 
 from tether.config.settings import ResearchSettings
+from tether.core.logging import reset_logging_for_tests
 from tether.core.types import OrchestratorConfig
 from tether.protocol.orchestration.notebook import NotebookOrchestrator
 from tether.protocol.parsers.sliding import SlidingParser
@@ -55,28 +55,21 @@ def anyio_backend():
 
 
 @pytest.fixture(autouse=True)
-def _reset_structlog_defaults():
-    """Reset structlog defaults AND replace cached module loggers.
+def _reset_logging_for_capture():
+    """Restore a clean structlog config before each test.
 
-    Required because :func:`tether.core.logging.configure_logging` —
-    called by integration-test fixtures earlier in the suite — sets
-    ``cache_logger_on_first_use=True`` with a stdlib-bridge factory.
-    Once cached, BoundLoggers keep using stdlib regardless of
-    ``capture_logs()`` swapping processors → ``capture_logs`` returns
-    empty.
-
-    Workaround: reset structlog defaults (clears global config back to
-    PrintLoggerFactory, cache_logger_on_first_use=False) AND re-create
-    the module-level lazy proxies in notebook + core.logging so they
-    pick up the new default config on next ``logger.info`` call.
+    Previous notebook test fixtures rebound module-level loggers by hand
+    to work around ``structlog.configure(cache_logger_on_first_use=True)``
+    contamination from earlier integration fixtures. Phase 9.7 W2 moved
+    that workaround into ``tether.core.logging.reset_logging_for_tests``,
+    which clears the cached ``bind`` closures on every tether
+    BoundLoggerLazyProxy.
 
     Tracked: ``fu-notebook-tests-structlog-isolation``.
     """
-    import tether.protocol.orchestration.notebook as _notebook_mod
-    import tether.core.logging as _logging_mod
-    structlog.reset_defaults()
-    _notebook_mod.logger = structlog.get_logger(_notebook_mod.__name__)
-    _logging_mod.logger = structlog.get_logger("tether")
+    reset_logging_for_tests()
+    yield
+    reset_logging_for_tests()
 
 
 def _provider(question_query: str) -> FakeResearchProvider:
