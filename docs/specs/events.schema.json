@@ -395,6 +395,79 @@
       "title": "NotebookLimitReached",
       "type": "object"
     },
+    "NotebookNoFacts": {
+      "additionalProperties": false,
+      "description": "The Notebook loop ended with zero facts gathered.\n\nEmitted immediately before ``NotebookPhaseStart(phase=\"synthesize\")``\nwhen ``len(notebook.facts) == 0`` at loop exit (and the turn was not\ncancelled). Synthesis still runs on the empty Notebook and the turn\nstill terminates with ``MessageStop(stop_reason=\"complete\")`` — this\nevent is a signal, NOT an :class:`Error` and NOT a\n:class:`NotebookLimitReached`. Clients can use it to surface a\n\"we couldn't find anything\" affordance before the empty synthesis\ntext arrives.\n\n``queries_attempted`` is the number of sub-queries dequeued and sent\nto ``explore`` (including ones whose tool call errored). In the\ncurrent single-query-per-iteration loop this equals ``iterations``\n(see ``notebook.py``: ``notebook_state.iteration`` is incremented\nonce per dequeue, ratified Phase 9.7 W3-B). Both are surfaced\nindependently so future multi-query iterations don't break the\ncontract. Both are ``0`` when the planner produced an empty queue.",
+      "properties": {
+        "iterations": {
+          "description": "Loop iterations completed before exiting the Notebook loop.",
+          "minimum": 0,
+          "title": "Iterations",
+          "type": "integer"
+        },
+        "note": {
+          "anyOf": [
+            {
+              "maxLength": 256,
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "Optional short human-readable hint (e.g. 'empty plan').",
+          "title": "Note"
+        },
+        "protocol_version": {
+          "default": "1.0",
+          "title": "Protocol Version",
+          "type": "string"
+        },
+        "queries_attempted": {
+          "description": "Number of sub-queries dequeued + sent to explore (includes queries whose tool call errored).",
+          "minimum": 0,
+          "title": "Queries Attempted",
+          "type": "integer"
+        },
+        "seq": {
+          "description": "Per-turn monotonically-increasing sequence number",
+          "minimum": 0,
+          "title": "Seq",
+          "type": "integer"
+        },
+        "session_id": {
+          "title": "Session Id",
+          "type": "string"
+        },
+        "ts": {
+          "description": "Server-side emission timestamp (UTC)",
+          "format": "date-time",
+          "title": "Ts",
+          "type": "string"
+        },
+        "turn_id": {
+          "title": "Turn Id",
+          "type": "string"
+        },
+        "type": {
+          "const": "notebook_no_facts",
+          "default": "notebook_no_facts",
+          "title": "Type",
+          "type": "string"
+        }
+      },
+      "required": [
+        "session_id",
+        "turn_id",
+        "seq",
+        "ts",
+        "queries_attempted",
+        "iterations"
+      ],
+      "title": "NotebookNoFacts",
+      "type": "object"
+    },
     "NotebookPhaseProgress": {
       "additionalProperties": false,
       "description": "Heartbeat progress event emitted during a long-running Notebook phase.\n\nUnlike :class:`NotebookPhaseStart` (one-shot at phase entry), this event\nmay be emitted multiple times within a single phase to surface elapsed\ntime and an optional human-readable note. Useful for UI progress\nindicators on slow phases (e.g., long ``explore`` tool calls or\nmulti-second ``extract`` / ``synthesize`` LLM passes).\n\n``phase`` mirrors :class:`NotebookPhaseStart` values. ``iteration``\nfollows the same indexing convention: ``0`` for one-shot\n``plan``/``synthesize``, 1-indexed for ``explore``/``extract``/\n``refine``. ``elapsed_ms`` is the time spent in the current phase so\nfar. ``note`` is an optional short descriptor (e.g., the running\nsub-query, or ``\"awaiting tool result\"``).",
@@ -912,6 +985,7 @@
       "message_stop": "#/$defs/MessageStop",
       "notebook_fact_added": "#/$defs/NotebookFactAdded",
       "notebook_limit_reached": "#/$defs/NotebookLimitReached",
+      "notebook_no_facts": "#/$defs/NotebookNoFacts",
       "notebook_phase_progress": "#/$defs/NotebookPhaseProgress",
       "notebook_phase_start": "#/$defs/NotebookPhaseStart",
       "notebook_query_added": "#/$defs/NotebookQueryAdded",
@@ -964,6 +1038,9 @@
     },
     {
       "$ref": "#/$defs/NotebookLimitReached"
+    },
+    {
+      "$ref": "#/$defs/NotebookNoFacts"
     }
   ]
 }

@@ -9,6 +9,7 @@ from pydantic import TypeAdapter, ValidationError
 from tether.protocol.wire.events import (
     NotebookFactAdded,
     NotebookLimitReached,
+    NotebookNoFacts,
     NotebookPhaseProgress,
     NotebookPhaseStart,
     NotebookQueryAdded,
@@ -223,3 +224,58 @@ def test_notebook_phase_progress_json_includes_fields():
 def test_notebook_phase_progress_rejects_negative_elapsed_ms():
     with pytest.raises(ValidationError):
         NotebookPhaseProgress(**_base(phase="plan", iteration=0, elapsed_ms=-1))
+
+
+# --- NotebookNoFacts (Phase 9.7 W3-B: nho-fu-w3b-empty-signal) ---
+
+def test_notebook_no_facts_roundtrip_succeeds():
+    event = NotebookNoFacts(
+        **_base(queries_attempted=3, iterations=3, note="all rate-limited")
+    )
+
+    assert NotebookNoFacts.model_validate(event.model_dump()) == event
+
+
+def test_notebook_no_facts_defaults_note_to_none():
+    event = NotebookNoFacts(**_base(queries_attempted=0, iterations=0))
+
+    assert event.note is None
+
+
+def test_notebook_no_facts_rejects_negative_queries_attempted():
+    with pytest.raises(ValidationError):
+        NotebookNoFacts(**_base(queries_attempted=-1, iterations=0))
+
+
+def test_notebook_no_facts_rejects_negative_iterations():
+    with pytest.raises(ValidationError):
+        NotebookNoFacts(**_base(queries_attempted=0, iterations=-1))
+
+
+def test_notebook_no_facts_rejects_note_over_256():
+    with pytest.raises(ValidationError):
+        NotebookNoFacts(
+            **_base(queries_attempted=0, iterations=0, note="x" * 257)
+        )
+
+
+def test_notebook_no_facts_serializes_to_json():
+    event = NotebookNoFacts(
+        **_base(queries_attempted=2, iterations=2, note="nothing found")
+    )
+    payload = event.model_dump_json()
+
+    assert '"type":"notebook_no_facts"' in payload
+    assert '"queries_attempted":2' in payload
+    assert '"iterations":2' in payload
+    assert NotebookNoFacts.model_validate_json(payload) == event
+
+
+def test_wire_event_union_accepts_notebook_no_facts():
+    event = NotebookNoFacts(**_base(queries_attempted=1, iterations=1))
+
+    parsed = TypeAdapter(WireEvent).validate_python(event.model_dump())
+
+    assert isinstance(parsed, NotebookNoFacts)
+    assert parsed == event
+

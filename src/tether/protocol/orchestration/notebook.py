@@ -46,6 +46,7 @@ from tether.protocol.wire.events import (
     MessageStop,
     NotebookFactAdded,
     NotebookLimitReached,
+    NotebookNoFacts,
     NotebookPhaseProgress,
     NotebookPhaseStart,
     NotebookQueryAdded,
@@ -618,6 +619,31 @@ class NotebookOrchestrator(Orchestrator):
                     yield await _emit_message_start()
                 yield MessageStop(**_envelope(), stop_reason="cancelled")
                 return
+
+            if not notebook_state.facts:
+                # Phase 9.7 W3-B (nho-fu-w3b-empty-signal): surface an
+                # empty-Notebook signal BEFORE synthesize so clients can
+                # distinguish "we ran the loop but found nothing" from
+                # "we found something and are synthesizing". This is
+                # NOT an Error and NOT a NotebookLimitReached — synthesis
+                # still runs on the empty Notebook and MessageStop is
+                # still ``complete``.
+                #
+                # ``queries_attempted`` and ``iterations`` are both sourced
+                # from ``notebook_state.iteration``: the counter is
+                # incremented once per dequeue+explore (notebook.py:413),
+                # so in the current single-query-per-iteration loop they
+                # coincide. Both are surfaced independently so the wire
+                # contract survives future multi-query iterations.
+                queries_attempted = notebook_state.iteration
+                iterations = notebook_state.iteration
+                note = "empty plan" if queries_attempted == 0 else None
+                yield NotebookNoFacts(
+                    **_envelope(),
+                    queries_attempted=queries_attempted,
+                    iterations=iterations,
+                    note=note,
+                )
 
             yield NotebookPhaseStart(
                 **_envelope(),

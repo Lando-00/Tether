@@ -313,6 +313,46 @@ class NotebookLimitReached(_Base):
     )
 
 
+class NotebookNoFacts(_Base):
+    """The Notebook loop ended with zero facts gathered.
+
+    Emitted immediately before ``NotebookPhaseStart(phase="synthesize")``
+    when ``len(notebook.facts) == 0`` at loop exit (and the turn was not
+    cancelled). Synthesis still runs on the empty Notebook and the turn
+    still terminates with ``MessageStop(stop_reason="complete")`` — this
+    event is a signal, NOT an :class:`Error` and NOT a
+    :class:`NotebookLimitReached`. Clients can use it to surface a
+    "we couldn't find anything" affordance before the empty synthesis
+    text arrives.
+
+    ``queries_attempted`` is the number of sub-queries dequeued and sent
+    to ``explore`` (including ones whose tool call errored). In the
+    current single-query-per-iteration loop this equals ``iterations``
+    (see ``notebook.py``: ``notebook_state.iteration`` is incremented
+    once per dequeue, ratified Phase 9.7 W3-B). Both are surfaced
+    independently so future multi-query iterations don't break the
+    contract. Both are ``0`` when the planner produced an empty queue.
+    """
+
+    type: Literal["notebook_no_facts"] = "notebook_no_facts"
+    queries_attempted: int = Field(
+        ge=0,
+        description=(
+            "Number of sub-queries dequeued + sent to explore (includes "
+            "queries whose tool call errored)."
+        ),
+    )
+    iterations: int = Field(
+        ge=0,
+        description="Loop iterations completed before exiting the Notebook loop.",
+    )
+    note: Optional[str] = Field(
+        default=None,
+        max_length=256,
+        description="Optional short human-readable hint (e.g. 'empty plan').",
+    )
+
+
 WireEvent = Annotated[
     Union[
         MessageStart,
@@ -330,6 +370,7 @@ WireEvent = Annotated[
         NotebookFactAdded,
         NotebookQueryAdded,
         NotebookLimitReached,
+        NotebookNoFacts,
     ],
     Field(discriminator="type"),
 ]
@@ -353,5 +394,6 @@ __all__ = [
     "NotebookFactAdded",
     "NotebookQueryAdded",
     "NotebookLimitReached",
+    "NotebookNoFacts",
     "WireEvent",
 ]
