@@ -46,6 +46,7 @@ from tether.protocol.wire.events import (
     MessageStop,
     NotebookFactAdded,
     NotebookLimitReached,
+    NotebookPhaseProgress,
     NotebookPhaseStart,
     NotebookQueryAdded,
     TextDelta,
@@ -69,6 +70,19 @@ _WEB_SEARCH_COUNT = 5
 # consumer hung without a MessageStop.
 _MAX_QUERY_LENGTH = 512
 _MAX_FACT_LENGTH = 4096
+# Phase 9.6 I-4 (W2-B): heartbeat cadence for long research phases.
+#
+# Wraps the provider stream's `__anext__()` await for planner / extractor /
+# synthesizer phases. If no chunk arrives within this interval, the orchestrator
+# yields a `NotebookPhaseProgress` event so consumers (UI, CLI) see liveness
+# during cold-load (the live 43 s silence that motivated this fix lived
+# inside `_plan` -> provider.stream's first `__anext__`).
+#
+# 5 s is a deliberate compromise: short enough to surface real cold-loads,
+# long enough not to spam consumers during normal multi-second streaming.
+# Tests monkeypatch this module constant to a much smaller value
+# (e.g. 0.01 s) to keep the suite fast.
+_HEARTBEAT_INTERVAL_SEC = 5.0
 
 
 def _query_log_fields(query: str) -> dict[str, Any]:
@@ -344,12 +358,23 @@ class NotebookOrchestrator(Orchestrator):
                     phase="plan",
                     iteration=0,
                 )
-                plan_queries = await self._plan(
+                plan_queries: list[str] = []
+                async for item in self._plan(
                     model_name=planner_model,
                     question=prompt,
                     today_iso=today_iso,
                     cancel_token=cancel_token,
-                )
+                ):
+                    kind, payload = item
+                    if kind == "heartbeat":
+                        yield NotebookPhaseProgress(
+                            **_envelope(),
+                            phase="plan",
+                            iteration=0,
+                            elapsed_ms=payload,
+                        )
+                    else:
+                        plan_queries = payload
                 logger.info("notebook.phase_complete", phase="plan", queries=len(plan_queries))
 
                 for query in plan_queries:
@@ -466,7 +491,8 @@ class NotebookOrchestrator(Orchestrator):
                     phase="extract",
                     iteration=iteration,
                 )
-                extract_result = await self._extract(
+                extract_result: Optional[ExtractResult] = None
+                async for item in self._extract(
                     model_name=extractor_model,
                     question=prompt,
                     source_query=query,
@@ -474,7 +500,23 @@ class NotebookOrchestrator(Orchestrator):
                     facts=notebook_state.facts,
                     today_iso=today_iso,
                     cancel_token=cancel_token,
-                )
+                ):
+                    kind, payload = item
+                    if kind == "heartbeat":
+                        yield NotebookPhaseProgress(
+                            **_envelope(),
+                            phase="extract",
+                            iteration=iteration,
+                            elapsed_ms=payload,
+                        )
+                    else:
+                        extract_result = payload
+                # ``_extract`` always yields a final ("result", ExtractResult).
+                # The assert pins that invariant for type-checkers and surfaces
+                # any future regression where the helper exits before yielding
+                # the result sentinel (which would otherwise NoneType-crash
+                # later when we iterate over .facts).
+                assert extract_result is not None
                 logger.info(
                     "notebook.phase_complete",
                     phase="extract",
@@ -584,23 +626,53 @@ class NotebookOrchestrator(Orchestrator):
             # after each yield, the next ``__anext__()`` can park on a
             # blocking await (provider sleep) and we'd miss the cancel
             # until the bounded ``aclose()`` grace fires.
+            #
+            # Phase 9.6 I-4 (W2-B): drive ``astream.__anext__()`` from a
+            # single-consumer ``asyncio.wait({pending}, timeout=interval)``
+            # so we can emit ``NotebookPhaseProgress`` heartbeats during
+            # cold-load idle without losing ``seq`` monotonicity (all
+            # yields still flow through ``_envelope()``).
             stripper = _ThinkStripper()
+            synth_loop = asyncio.get_running_loop()
+            synth_started = synth_loop.time()
+            pending_chunk: Optional[asyncio.Task[Any]] = None
             try:
-                async for chunk in astream:
+                pending_chunk = asyncio.create_task(astream.__anext__())
+                while True:
                     if _is_cancelled():
                         cancelled = True
                         break
-                    text_part, thinking_part = stripper.feed(chunk)
-                    if text_part:
-                        yield TextDelta(**_envelope(), text=text_part)
-                        if _is_cancelled():
-                            cancelled = True
+                    done, _still = await asyncio.wait(
+                        {pending_chunk}, timeout=_HEARTBEAT_INTERVAL_SEC
+                    )
+                    if pending_chunk in done:
+                        try:
+                            chunk = pending_chunk.result()
+                        except StopAsyncIteration:
+                            pending_chunk = None
                             break
-                    if thinking_part and self.config.save_thinking:
-                        yield ThinkingDelta(**_envelope(), text=thinking_part)
-                        if _is_cancelled():
-                            cancelled = True
-                            break
+                        text_part, thinking_part = stripper.feed(chunk)
+                        if text_part:
+                            yield TextDelta(**_envelope(), text=text_part)
+                            if _is_cancelled():
+                                cancelled = True
+                                break
+                        if thinking_part and self.config.save_thinking:
+                            yield ThinkingDelta(**_envelope(), text=thinking_part)
+                            if _is_cancelled():
+                                cancelled = True
+                                break
+                        pending_chunk = asyncio.create_task(astream.__anext__())
+                    else:
+                        elapsed_ms = int(
+                            (synth_loop.time() - synth_started) * 1000
+                        )
+                        yield NotebookPhaseProgress(
+                            **_envelope(),
+                            phase="synthesize",
+                            iteration=0,
+                            elapsed_ms=elapsed_ms,
+                        )
                 # Normal exhaustion only. On cancel we drop the residual
                 # rather than emit stale text after the cancel signal.
                 if not cancelled and not _is_cancelled():
@@ -610,6 +682,20 @@ class NotebookOrchestrator(Orchestrator):
                     if thinking_tail and self.config.save_thinking:
                         yield ThinkingDelta(**_envelope(), text=thinking_tail)
             finally:
+                # Phase 9.6 I-4: cancel the in-flight __anext__ task first,
+                # bounded by the cancel grace, so an external CancelledError
+                # arriving during an idle wait can't leak the task. Mirrors
+                # the explore-phase tool_task pattern at lines 446-458.
+                if pending_chunk is not None and not pending_chunk.done():
+                    pending_chunk.cancel()
+                    try:
+                        await asyncio.wait_for(
+                            pending_chunk, timeout=_TOOL_CANCEL_GRACE_SEC
+                        )
+                    except (asyncio.TimeoutError, asyncio.CancelledError):
+                        pass
+                    except StopAsyncIteration:
+                        pass
                 # Phase 9.5 fu-research-synth-cancel-grace
                 # (mirrors chatty.py:601-612).
                 #
@@ -656,11 +742,18 @@ class NotebookOrchestrator(Orchestrator):
         question: str,
         today_iso: str,
         cancel_token: Optional["CancelToken"] = None,
-    ) -> list[str]:
-        """Run the Planner as raw text, then parse seed queries."""
+    ) -> AsyncIterator[tuple[str, Any]]:
+        """Run the Planner as raw text, then parse seed queries.
+
+        Async generator: yields ``("heartbeat", elapsed_ms)`` items while
+        the planner provider stream is idle, then a final ``("result",
+        queries)`` item (``queries: list[str]``). The orchestrator wraps
+        heartbeats into :class:`NotebookPhaseProgress` events.
+        """
         with structlog.contextvars.bound_contextvars(phase="plan"):
             logger.info("notebook.phase_start", phase="plan")
-            raw = await self._collect_stream_text(
+            raw = ""
+            async for item in self._collect_stream_text(
                 model_name=model_name,
                 messages=[
                     {
@@ -673,7 +766,12 @@ class NotebookOrchestrator(Orchestrator):
                     },
                 ],
                 cancel_token=cancel_token,
-            )
+            ):
+                kind, payload = item
+                if kind == "heartbeat":
+                    yield item
+                else:
+                    raw = payload
             queries = parse_plan_output(raw, max_queries=5)
             logger.info(
                 "notebook.phase_complete",
@@ -682,7 +780,7 @@ class NotebookOrchestrator(Orchestrator):
                 raw_length=len(raw),
                 parser_layer=None,
             )
-            return queries
+            yield ("result", queries)
 
     async def _extract(
         self,
@@ -694,11 +792,19 @@ class NotebookOrchestrator(Orchestrator):
         facts: list[AtomicFact],
         today_iso: str,
         cancel_token: Optional["CancelToken"] = None,
-    ) -> ExtractResult:
-        """Run the Extractor as raw text, then parse facts and follow-ups."""
+    ) -> AsyncIterator[tuple[str, Any]]:
+        """Run the Extractor as raw text, then parse facts and follow-ups.
+
+        Async generator: yields ``("heartbeat", elapsed_ms)`` items while
+        the extractor provider stream is idle, then a final ``("result",
+        ExtractResult)`` item. The orchestrator wraps heartbeats into
+        :class:`NotebookPhaseProgress` events tagged with the current
+        iteration counter.
+        """
         with structlog.contextvars.bound_contextvars(phase="extract"):
             logger.info("notebook.phase_start", phase="extract")
-            raw = await self._collect_stream_text(
+            raw = ""
+            async for item in self._collect_stream_text(
                 model_name=model_name,
                 messages=[
                     {
@@ -721,12 +827,18 @@ class NotebookOrchestrator(Orchestrator):
                     },
                 ],
                 cancel_token=cancel_token,
-            )
-            return parse_extract_output(
+            ):
+                kind, payload = item
+                if kind == "heartbeat":
+                    yield item
+                else:
+                    raw = payload
+            extract_result = parse_extract_output(
                 raw,
                 source_query,
                 max_facts=self.research_settings.max_facts_per_extract,
             )
+            yield ("result", extract_result)
 
     async def _synthesize_stream(
         self,
@@ -767,22 +879,95 @@ class NotebookOrchestrator(Orchestrator):
         model_name: str,
         messages: list[dict[str, Any]],
         cancel_token: Optional["CancelToken"] = None,
-    ) -> str:
+    ) -> AsyncIterator[tuple[str, Any]]:
+        """Stream provider text with heartbeat sentinels.
+
+        Yields:
+
+        ``("heartbeat", elapsed_ms)``
+            Emitted each time no chunk arrives within
+            ``_HEARTBEAT_INTERVAL_SEC``. ``elapsed_ms`` is the int
+            milliseconds since the helper started. The caller wraps these
+            into a :class:`NotebookPhaseProgress` event so ``seq`` stays
+            monotonic (we never spawn a side-channel emitter task).
+
+        ``("text", accumulated_text)``
+            Final sentinel, emitted exactly once after the stream is
+            exhausted (or cooperatively cancelled). The caller treats
+            ``accumulated_text`` as the raw planner / extractor output and
+            feeds it to the corresponding parser.
+
+        Implementation: single-consumer ``asyncio.wait({pending}, timeout=...)``
+        pattern. The pending task awaits one ``astream.__anext__()`` at a
+        time; on timeout we yield a heartbeat and re-enter ``wait``. On
+        cancellation or exception, the pending task is cancelled and
+        grace-waited (``_TOOL_CANCEL_GRACE_SEC``), then ``astream.aclose()``
+        is bounded by the same grace. ``StopAsyncIteration`` resolution of
+        ``pending`` ends the loop normally ? note the bare ``except`` for
+        ``StopAsyncIteration`` is required because it is *not* an
+        ``Exception`` subclass on the result-side of a task.
+        """
         chunks: list[str] = []
-        async for chunk in self.provider.stream(
+        astream = self.provider.stream(
             model_name=model_name,
             messages=messages,
             tools=None,
-        ):
-            # Research-mode LLM phases are raw text only. Do not route them
-            # through SlidingParser; untrusted snippets may contain tool markers.
-            if cancel_token is not None and cancel_token.cancelled():
-                break
-            if isinstance(chunk, str):
-                chunks.append(chunk)
-            else:
-                logger.warning("notebook.non_text_provider_chunk")
-        return "".join(chunks)
+        )
+        loop = asyncio.get_running_loop()
+        started = loop.time()
+        pending: Optional[asyncio.Task[Any]] = None
+        try:
+            pending = asyncio.create_task(astream.__anext__())
+            while True:
+                if cancel_token is not None and cancel_token.cancelled():
+                    break
+                done, _still_pending = await asyncio.wait(
+                    {pending}, timeout=_HEARTBEAT_INTERVAL_SEC
+                )
+                if pending in done:
+                    try:
+                        chunk = pending.result()
+                    except StopAsyncIteration:
+                        pending = None
+                        break
+                    if isinstance(chunk, str):
+                        chunks.append(chunk)
+                    else:
+                        logger.warning("notebook.non_text_provider_chunk")
+                    pending = asyncio.create_task(astream.__anext__())
+                else:
+                    elapsed_ms = int((loop.time() - started) * 1000)
+                    yield ("heartbeat", elapsed_ms)
+        finally:
+            # Bounded cleanup mirrors the synth-cancel pattern below and
+            # chatty.py F3 (lines 1292-1322): cancel any in-flight
+            # __anext__() task and wait for it within the grace, then
+            # bound astream.aclose() the same way. Without these bounds
+            # an external CancelledError could leak the in-flight
+            # provider call and an unresponsive aclose() could keep the
+            # request alive past the cancellation grace.
+            if pending is not None and not pending.done():
+                pending.cancel()
+                try:
+                    await asyncio.wait_for(
+                        pending, timeout=_TOOL_CANCEL_GRACE_SEC
+                    )
+                except (asyncio.TimeoutError, asyncio.CancelledError):
+                    pass
+                except StopAsyncIteration:
+                    # Provider exhausted right as we cancelled ? benign.
+                    pass
+            try:
+                await asyncio.wait_for(
+                    astream.aclose(),
+                    timeout=_TOOL_CANCEL_GRACE_SEC,
+                )
+            except (asyncio.TimeoutError, asyncio.CancelledError):
+                pass
+            except Exception:
+                logger.exception("notebook.collect_stream_aclose_error")
+
+        yield ("text", "".join(chunks))
 
 
 def _format_notebook_block(facts: list[AtomicFact]) -> str:
