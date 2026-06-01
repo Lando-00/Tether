@@ -173,16 +173,17 @@ async def _await_done(task: asyncio.Task[None]) -> None:
 
 @pytest.mark.anyio
 async def test_external_cancel_cancels_tool_task_within_grace():
-    # Snapshot live tasks before exercising the orchestrator so we can
-    # assert no orphan task survives.
-    baseline = {t for t in asyncio.all_tasks() if not t.done()}
-
+    # W1-B: rather than diffing ``asyncio.all_tasks()`` snapshots (which
+    # leaks unrelated event-loop tasks into the assertion), we observe
+    # the in-flight tool task directly via runner-internal signals
+    # (``tool_started``, ``tool_task_was_cancelled``, ``tool_completed``).
     runner = _SlowToolRunner(block_seconds=10.0, ignore_cancel_for=0.0)
     orch = _orch(runner)
 
     _events, elapsed = await _run_until_explore_then_cancel(orch, runner)
 
-    # The tool task either honored the cancel or was bounded by grace.
+    # The tool task must have observed the cancel (the explore-phase
+    # ``try/finally`` propagated CancelledError into the tool body).
     assert runner.tool_task_was_cancelled, (
         "external cancel must have propagated to the tool task; "
         "the finally block is missing the cancel call"
@@ -192,15 +193,16 @@ async def test_external_cancel_cancels_tool_task_within_grace():
         f"cancellation took {elapsed:.3f}s > {_TOOL_CANCEL_GRACE_SEC + GRACE_SLACK_SEC:.3f}s"
     )
 
-    # Yield once so any cancelled tasks finish unwinding.
-    await asyncio.sleep(0)
-    await asyncio.sleep(0)
-
-    # No orphaned tasks beyond the baseline.
-    live = {t for t in asyncio.all_tasks() if not t.done()} - baseline
-    # Exclude the current task itself (the test coroutine).
-    live.discard(asyncio.current_task())
-    assert not live, f"orphaned tasks survived external cancel: {live!r}"
+    # The tool's ``finally`` block must have executed — proves the task
+    # actually unwound rather than being orphaned. Bounded wait so a
+    # regression that leaks the task fails the test instead of hanging.
+    try:
+        await asyncio.wait_for(runner.tool_completed.wait(), timeout=GRACE_SLACK_SEC)
+    except asyncio.TimeoutError as exc:  # pragma: no cover - regression guard
+        raise AssertionError(
+            "tool task's finally block did not execute within slack; "
+            "task appears orphaned after external cancel"
+        ) from exc
 
 
 @pytest.mark.anyio
@@ -208,8 +210,6 @@ async def test_external_cancel_with_tool_ignoring_cancel_is_bounded():
     # Even if the tool's CancelledError handler does cleanup work that
     # ignores cancellation for ~1s, the orchestrator's grace bound must
     # still hold: total cleanup latency <= _TOOL_CANCEL_GRACE_SEC + slack.
-    baseline = {t for t in asyncio.all_tasks() if not t.done()}
-
     runner = _SlowToolRunner(block_seconds=10.0, ignore_cancel_for=1.0)
     orch = _orch(runner)
 
@@ -222,10 +222,18 @@ async def test_external_cancel_with_tool_ignoring_cancel_is_bounded():
         f"at {_TOOL_CANCEL_GRACE_SEC + GRACE_SLACK_SEC:.3f}s even when tool ignores cancel"
     )
 
-    # Wait a touch longer so the tool's shielded sleep can exit naturally;
-    # without this its stuck task would show up as orphaned.
-    await asyncio.sleep(runner.ignore_cancel_for + 0.2)
-
-    live = {t for t in asyncio.all_tasks() if not t.done()} - baseline
-    live.discard(asyncio.current_task())
-    assert not live, f"orphaned tasks survived bounded external cancel: {live!r}"
+    # The tool's shielded cleanup runs for ``ignore_cancel_for`` seconds
+    # after the orchestrator gave up. Verify it eventually finishes — i.e.
+    # the task isn't orphaned forever — by waiting on its ``finally``
+    # signal with a bounded timeout.
+    try:
+        await asyncio.wait_for(
+            runner.tool_completed.wait(),
+            timeout=runner.ignore_cancel_for + GRACE_SLACK_SEC,
+        )
+    except asyncio.TimeoutError as exc:  # pragma: no cover - regression guard
+        raise AssertionError(
+            "tool task's finally block did not execute within "
+            f"{runner.ignore_cancel_for + GRACE_SLACK_SEC:.3f}s; "
+            "task appears orphaned after bounded external cancel"
+        ) from exc
