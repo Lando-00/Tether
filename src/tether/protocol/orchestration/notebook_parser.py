@@ -44,7 +44,49 @@ _FACT_LINE_RE = re.compile(
     re.IGNORECASE,
 )
 _VALID_CONFIDENCE = {"low", "medium", "high"}
+
+# Narrowly anchored extraction-process vocabulary. Each entry is a
+# prefix (already lowercased, includes trailing space) that strongly
+# indicates the LLM is describing the search results / its own
+# reasoning rather than emitting a world-fact. We deliberately do NOT
+# include generic English starters like "this is " or "i " — those
+# would over-fire on valid facts ("This benchmark reports 45 TOPS",
+# "The first iPhone shipped in 2007", "Confidence in the vaccine
+# increased in 2025"). See plan.md §17.4 W1-A and the live-test
+# failure mode addressed by I-2.
+_REASONING_LEAK_PREFIXES: tuple[str, ...] = (
+    "the first snippet ",
+    "the second snippet ",
+    "the third snippet ",
+    "the fourth snippet ",
+    "the fifth snippet ",
+    "this snippet ",
+    "the snippet ",
+    "snippet ",
+    "confidence is ",
+    "the confidence ",
+    "this is a fact about ",
+    "this fact ",
+    "i think ",
+    "the user is asking ",
+)
+
 logger = structlog.get_logger(__name__)
+
+
+def _is_reasoning_leak(text: str) -> bool:
+    """Return True iff ``text`` opens with extraction-process meta-prose.
+
+    Comparison is case-insensitive and tolerant of leading whitespace.
+    Only the narrow ``_REASONING_LEAK_PREFIXES`` vocabulary triggers;
+    generic English openers are intentionally NOT included so that
+    valid facts like "The first iPhone shipped in 2007" or "This
+    benchmark reports 45 TOPS" are preserved.
+    """
+    if not text:
+        return False
+    needle = text.strip().lower()
+    return any(needle.startswith(prefix) for prefix in _REASONING_LEAK_PREFIXES)
 
 
 @dataclass(frozen=True)
@@ -61,6 +103,7 @@ class ExtractResult:
     follow_up_queries: list[str] = field(default_factory=list)
     parser_layer: int = 5
     raw_length: int = 0
+    reasoning_leak_dropped: int = 0
 
 
 def parse_plan_output(raw: str, *, max_queries: int = 5) -> list[str]:
@@ -141,7 +184,15 @@ def parse_extract_output(
                 followups_raw = result.get("follow_up_queries", [])
                 if not isinstance(followups_raw, list):
                     followups_raw = []
-                facts = _coerce_facts(facts_raw, source_query)[:max_facts]
+                coerced = _coerce_facts(facts_raw, source_query)
+                kept_facts: list[AtomicFact] = []
+                leak_dropped = 0
+                for fact in coerced:
+                    if _is_reasoning_leak(fact.text):
+                        leak_dropped += 1
+                        continue
+                    kept_facts.append(fact)
+                facts = kept_facts[:max_facts]
                 followups = [q.strip() for q in followups_raw if isinstance(q, str) and q.strip()][
                     :max_facts
                 ]
@@ -150,10 +201,18 @@ def parse_extract_output(
                     follow_up_queries=followups,
                     parser_layer=layer_num,
                     raw_length=raw_length,
+                    reasoning_leak_dropped=leak_dropped,
                 )
 
         bullets = _layer_4_bullet_fallback(raw)
         if bullets:
+            leak_dropped = 0
+            kept_bullets: list[str] = []
+            for bullet in bullets:
+                if _is_reasoning_leak(bullet):
+                    leak_dropped += 1
+                    continue
+                kept_bullets.append(bullet)
             facts = [
                 AtomicFact(
                     text=b,
@@ -161,13 +220,14 @@ def parse_extract_output(
                     confidence="low",
                     created_at=datetime.now(timezone.utc),
                 )
-                for b in bullets[:max_facts]
+                for b in kept_bullets[:max_facts]
             ]
             return ExtractResult(
                 facts=facts,
                 follow_up_queries=[],
                 parser_layer=4,
                 raw_length=raw_length,
+                reasoning_leak_dropped=leak_dropped,
             )
 
         logger.warning(
@@ -353,4 +413,6 @@ __all__ = [
     "ExtractResult",
     "parse_plan_output",
     "parse_extract_output",
+    "_is_reasoning_leak",
+    "_REASONING_LEAK_PREFIXES",
 ]
