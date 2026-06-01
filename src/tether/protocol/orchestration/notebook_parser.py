@@ -35,6 +35,7 @@ from typing import Any, Optional
 
 import structlog
 
+from tether.core.redact import redact_text
 from tether.protocol.orchestration.notebook_state import AtomicFact
 
 
@@ -238,14 +239,14 @@ def parse_extract_output(
         logger.warning(
             "notebook_parser.extract_total_fail",
             raw_length=raw_length,
-            source_query=source_query,
+            source_query=redact_text(source_query),
         )
         return ExtractResult(facts=[], follow_up_queries=[], parser_layer=5, raw_length=raw_length)
     except Exception:
         logger.warning(
             "notebook_parser.extract_total_fail",
             raw_length=raw_length,
-            source_query=source_query,
+            source_query=redact_text(source_query),
             exc_info=True,
         )
         return ExtractResult(facts=[], follow_up_queries=[], parser_layer=5, raw_length=raw_length)

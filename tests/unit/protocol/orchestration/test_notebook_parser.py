@@ -284,3 +284,108 @@ def test_public_wrappers_do_not_raise_on_unusual_inputs():
     assert parse_plan_output(None) == []  # type: ignore[arg-type]
     result = parse_extract_output(None, "source")  # type: ignore[arg-type]
     assert result.parser_layer == 5
+
+
+# ---------------------------------------------------------------------------
+# Phase 9.7 W1-A · fu-research-parser-source-query-redaction
+#
+# Total-fail WARNING/ERROR paths must run source_query through redact_text()
+# so embedded API-key / Bearer / env-style secret substrings don't leak to
+# logs. Wire events (AtomicFact.source_query) intentionally keep the raw
+# value — see nho-fu-w0b-logging.md.
+#
+# These tests monkeypatch ``notebook_parser.logger`` with a fake recorder so
+# they are immune to structlog cache ordering with the rest of the suite.
+# ---------------------------------------------------------------------------
+
+
+class _RecordingLogger:
+    def __init__(self) -> None:
+        self.calls: list[tuple[str, str, dict]] = []
+
+    def warning(self, event: str, **fields) -> None:
+        fields.pop("exc_info", None)
+        self.calls.append(("warning", event, fields))
+
+    def info(self, event: str, **fields) -> None:
+        self.calls.append(("info", event, fields))
+
+    def error(self, event: str, **fields) -> None:
+        fields.pop("exc_info", None)
+        self.calls.append(("error", event, fields))
+
+
+def _patch_logger(monkeypatch: pytest.MonkeyPatch) -> _RecordingLogger:
+    from tether.protocol.orchestration import notebook_parser as _np
+
+    recorder = _RecordingLogger()
+    monkeypatch.setattr(_np, "logger", recorder)
+    return recorder
+
+
+def test_extract_total_fail_redacts_secret_in_source_query(monkeypatch: pytest.MonkeyPatch) -> None:
+    recorder = _patch_logger(monkeypatch)
+    secret = "secret_abc12345xyz"
+    source_query = f"BRAVE_API_KEY={secret}"
+
+    # Force layers 1-4 to return nothing → falls through to total_fail.
+    result = parse_extract_output("not json and no bullets here", source_query)
+
+    assert result.parser_layer == 5
+    assert result.facts == []
+
+    fails = [c for c in recorder.calls if c[1] == "notebook_parser.extract_total_fail"]
+    assert fails, f"expected extract_total_fail log, got: {recorder.calls}"
+
+    for _level, _event, fields in fails:
+        sq = fields.get("source_query")
+        assert isinstance(sq, str)
+        assert secret not in sq, f"raw secret leaked into log: {sq!r}"
+        assert "***REDACTED***" in sq
+
+    # Defense in depth: scan every captured field for the raw secret.
+    for _level, _event, fields in recorder.calls:
+        for key, value in fields.items():
+            if isinstance(value, str):
+                assert secret not in value, (
+                    f"raw secret leaked into field {key!r}: {value!r}"
+                )
+
+
+def test_extract_total_fail_keeps_non_secret_source_query(monkeypatch: pytest.MonkeyPatch) -> None:
+    recorder = _patch_logger(monkeypatch)
+    source_query = "What is the capital of France?"
+
+    result = parse_extract_output("not json and no bullets here", source_query)
+
+    assert result.parser_layer == 5
+    fails = [c for c in recorder.calls if c[1] == "notebook_parser.extract_total_fail"]
+    assert fails
+    for _level, _event, fields in fails:
+        assert fields.get("source_query") == source_query
+
+
+def test_extract_exception_path_redacts_secret_in_source_query(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    recorder = _patch_logger(monkeypatch)
+    secret = "secret_abc12345xyz"
+    source_query = f"BRAVE_API_KEY={secret}"
+
+    def _boom(_raw):  # noqa: ANN001
+        raise RuntimeError("layer blew up")
+
+    from tether.protocol.orchestration import notebook_parser as _np
+
+    monkeypatch.setattr(_np, "_layer_1_direct_json", _boom)
+
+    result = parse_extract_output('{"facts":[]}', source_query)
+    assert result.parser_layer == 5
+
+    fails = [c for c in recorder.calls if c[1] == "notebook_parser.extract_total_fail"]
+    assert fails, f"expected extract_total_fail log on exception, got: {recorder.calls}"
+    for _level, _event, fields in fails:
+        sq = fields.get("source_query")
+        assert isinstance(sq, str)
+        assert secret not in sq
+        assert "***REDACTED***" in sq
