@@ -152,8 +152,16 @@ Recommended loop bounds depend on how interactive you want the turn to feel:
 | Deep batch | 80 | 40 | overnight/batch research after raising timeouts deliberately |
 
 Set these under `orchestrator.research` in `src/tether/config/default.yml`.
-Phase-progress events (`notebook_phase_progress`) emit during long plan/extract/
-synthesize calls so clients can show progress during MLC cold-loads or slow searches.
+Phase-progress events (`notebook_phase_progress`) emit every ~2 seconds during long
+plan/extract/synthesize calls so clients can show progress during MLC cold-loads
+or slow searches. If the research loop finishes with zero gathered facts, Tether
+emits `notebook_no_facts` before synthesis; synthesis still runs so the model can
+plainly say it did not gather enough evidence.
+
+Research synthesis strips normal `<think>...</think>` blocks from user-visible
+`text_delta` events. A long hidden preamble before a bare-leading `</think>`
+remains a documented model-template edge case because buffering enough to solve it
+regresses first-token streaming latency; see `fu-research-thinkstripper-long-bare-leading`.
 
 Research mode is single-tool for v1 (`web_search` only). Multi-tool research is a future seam.
 
