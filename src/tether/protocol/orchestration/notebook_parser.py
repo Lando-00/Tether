@@ -61,8 +61,6 @@ _REASONING_LEAK_PREFIXES: tuple[str, ...] = (
     "the fourth snippet ",
     "the fifth snippet ",
     "this snippet ",
-    "the snippet ",
-    "snippet ",
     "confidence is ",
     "the confidence ",
     "this is a fact about ",

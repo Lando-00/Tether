@@ -60,6 +60,8 @@ POSITIVE_CONTROLS: list[str] = [
     "The first iPhone shipped in 2007.",
     "Confidence in the vaccine increased in 2025.",
     "This benchmark reports 45 TOPS.",
+    'Snippet says "<<function_call>>" without escalating to a tool call.',
+    'The snippet contains: {"key":"value"}',
 ]
 
 
