@@ -113,6 +113,11 @@ async def test_notebook_orchestrator_hanov_smoke_event_sequence():
         NotebookFactAdded,
         NotebookPhaseStart,
         MessageStart,
+        # Phase 9.6 I-1: ``_ThinkStripper`` adds an OVERLAP-sized hold
+        # buffer in front of TextDelta emission, so two synth chunks
+        # (no markers) flush across three deltas: one per chunk after
+        # the first, plus a finalize() tail.
+        TextDelta,
         TextDelta,
         TextDelta,
         MessageStop,
@@ -123,6 +128,11 @@ async def test_notebook_orchestrator_hanov_smoke_event_sequence():
         ("extract", 1),
         ("synthesize", 0),
     ]
+    # Chunking is an implementation detail of the stripper; assert the
+    # concatenated synth text exactly matches what the provider streamed.
+    assert "".join(e.text for e in events if isinstance(e, TextDelta)) == (
+        "X launched in 2026 [1]."
+    )
     assert [e.seq for e in events] == list(range(len(events)))
     assert events[-1].stop_reason == "complete"  # type: ignore[attr-defined]
     assert tool_runner.calls == [("web_search", {"query": "X launch details", "count": 5})]

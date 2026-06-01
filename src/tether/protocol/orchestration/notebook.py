@@ -49,6 +49,7 @@ from tether.protocol.wire.events import (
     NotebookPhaseStart,
     NotebookQueryAdded,
     TextDelta,
+    ThinkingDelta,
 )
 
 if TYPE_CHECKING:
@@ -90,6 +91,158 @@ def _query_log_fields(query: str) -> dict[str, Any]:
         ).hexdigest()[:8],
         "query_length": len(query),
     }
+
+
+class _ThinkStripper:
+    """Stateful streaming filter that splits a chunk stream into
+    ``(text, thinking)`` parts by consuming ``<think>...</think>`` blocks.
+
+    NotebookOrchestrator bypasses :class:`SlidingParser` (ADR-0020 §D1
+    prompt-injection defense): tool markers MUST NOT be parsed in the
+    research path because untrusted web-search snippets could otherwise
+    smuggle ``<<function_call>>`` payloads through the synth turn. But
+    the synth model still emits raw ``<think>...</think>`` tokens that
+    leak into the user-visible text stream verbatim if we just pass
+    chunks through. This class is the minimum bookkeeping needed to
+    strip those blocks without re-introducing tool-marker parsing.
+
+    Design (mirrors SlidingParser's think sub-state-machine, NO tool
+    marker handling):
+
+    * Three states: ``"leading"`` (start of stream, ambiguous), ``"text"``
+      (passthrough), ``"think"`` (inside a ``<think>`` block).
+    * Retained overlap = ``len(THINK_CLOSE) - 1`` so a marker split across
+      chunk boundaries (``"<thi"`` + ``"nk>"`` or ``"</thi"`` + ``"nk>"``)
+      is detected.
+    * Leading state handles the "bare-leading ``</think>``" case: Qwen
+      sometimes starts mid-thinking because the chat template injects
+      ``<think>`` out-of-band. If ``</think>`` appears before any
+      ``<think>``, treat preceding buffered content as thinking.
+    * On unclosed ``<think>`` at end-of-stream, :meth:`finalize` returns
+      the residual as thinking (never as text). The caller decides
+      whether to surface it as a :class:`ThinkingDelta` based on
+      ``save_thinking``.
+    """
+
+    THINK_OPEN = "<think>"
+    THINK_CLOSE = "</think>"
+    _OVERLAP = max(len(THINK_OPEN), len(THINK_CLOSE)) - 1
+
+    def __init__(self) -> None:
+        self._mode: str = "leading"
+        self._buf: str = ""
+        self._unclosed_think_count: int = 0
+
+    def feed(self, chunk: str) -> tuple[str, str]:
+        """Consume one chunk; return ``(text_part, thinking_part)``.
+
+        Either part may be ``""``. Multiple ``<think>`` blocks in a single
+        chunk are all handled; split markers across chunks are buffered
+        via the retained overlap.
+        """
+        if not chunk:
+            return "", ""
+
+        self._buf += chunk
+        text_out: list[str] = []
+        think_out: list[str] = []
+
+        while True:
+            if self._mode == "leading":
+                # Ambiguous start: a leading bare ``</think>`` means the
+                # model began inside a thinking block. Disambiguate by
+                # which marker appears first.
+                lowered = self._buf.lower()
+                idx_open = lowered.find(self.THINK_OPEN)
+                idx_close = lowered.find(self.THINK_CLOSE)
+                first_pos = -1
+                marker_kind: Optional[str] = None
+                if idx_open != -1:
+                    first_pos = idx_open
+                    marker_kind = "open"
+                if idx_close != -1 and (first_pos == -1 or idx_close < first_pos):
+                    first_pos = idx_close
+                    marker_kind = "close"
+
+                if marker_kind == "open":
+                    text_out.append(self._buf[:first_pos])
+                    self._buf = self._buf[first_pos + len(self.THINK_OPEN):]
+                    self._mode = "think"
+                    continue
+                if marker_kind == "close":
+                    think_out.append(self._buf[:first_pos])
+                    self._buf = self._buf[first_pos + len(self.THINK_CLOSE):]
+                    self._mode = "text"
+                    continue
+
+                # No marker yet. Hold up to OVERLAP chars in case a
+                # marker is split across this and the next chunk; flush
+                # the rest as text and transition out of leading mode
+                # (we've definitively passed any leading marker position).
+                if len(self._buf) > self._OVERLAP:
+                    emit = self._buf[: -self._OVERLAP]
+                    if emit:
+                        text_out.append(emit)
+                    self._buf = self._buf[-self._OVERLAP:]
+                    self._mode = "text"
+                break
+
+            if self._mode == "text":
+                idx_open = self._buf.lower().find(self.THINK_OPEN)
+                if idx_open != -1:
+                    text_out.append(self._buf[:idx_open])
+                    self._buf = self._buf[idx_open + len(self.THINK_OPEN):]
+                    self._mode = "think"
+                    continue
+                if len(self._buf) > self._OVERLAP:
+                    emit = self._buf[: -self._OVERLAP]
+                    if emit:
+                        text_out.append(emit)
+                    self._buf = self._buf[-self._OVERLAP:]
+                break
+
+            # self._mode == "think"
+            idx_close = self._buf.lower().find(self.THINK_CLOSE)
+            if idx_close != -1:
+                think_out.append(self._buf[:idx_close])
+                self._buf = self._buf[idx_close + len(self.THINK_CLOSE):]
+                self._mode = "text"
+                continue
+            if len(self._buf) > self._OVERLAP:
+                emit = self._buf[: -self._OVERLAP]
+                if emit:
+                    think_out.append(emit)
+                self._buf = self._buf[-self._OVERLAP:]
+            break
+
+        return "".join(text_out), "".join(think_out)
+
+    def finalize(self) -> tuple[str, str]:
+        """Flush any residual buffered state at end-of-stream.
+
+        Returns ``(text_part, thinking_part)``. An unclosed ``<think>``
+        block is returned as thinking (never as text) so it can't leak
+        into the user-visible answer; the caller drops it unless
+        ``save_thinking`` is true. Increments an internal debug counter
+        on unclosed-block flush.
+        """
+        if not self._buf:
+            return "", ""
+
+        residual = self._buf
+        self._buf = ""
+
+        if self._mode == "think":
+            self._unclosed_think_count += 1
+            logger.debug(
+                "notebook.synth.unclosed_think",
+                residual_length=len(residual),
+                unclosed_count=self._unclosed_think_count,
+            )
+            return "", residual
+        # "leading" with no marker ever seen, or "text" with trailing
+        # overlap — both flush as text.
+        return residual, ""
 
 
 class NotebookOrchestrator(Orchestrator):
@@ -417,12 +570,45 @@ class NotebookOrchestrator(Orchestrator):
                 facts=notebook_state.facts,
                 today_iso=today_iso,
             )
+            # Phase 9.6 I-1 (HIGH-A): strip <think>...</think> blocks
+            # from the synth stream. NotebookOrchestrator bypasses
+            # SlidingParser (ADR-0020 §D1 prompt-injection defense), so
+            # without this filter Qwen3's thinking tokens bleed verbatim
+            # into TextDelta. _ThinkStripper is a think-only state
+            # machine — it does NOT detect <<function_call>> markers.
+            #
+            # The post-yield ``_is_cancelled()`` checks are load-bearing:
+            # the stripper holds up to OVERLAP chars before emitting, so
+            # the chunk that triggered TextDelta is one ahead of the
+            # chunk the consumer's cancel reacted to. Without rechecking
+            # after each yield, the next ``__anext__()`` can park on a
+            # blocking await (provider sleep) and we'd miss the cancel
+            # until the bounded ``aclose()`` grace fires.
+            stripper = _ThinkStripper()
             try:
                 async for chunk in astream:
                     if _is_cancelled():
                         cancelled = True
                         break
-                    yield TextDelta(**_envelope(), text=chunk)
+                    text_part, thinking_part = stripper.feed(chunk)
+                    if text_part:
+                        yield TextDelta(**_envelope(), text=text_part)
+                        if _is_cancelled():
+                            cancelled = True
+                            break
+                    if thinking_part and self.config.save_thinking:
+                        yield ThinkingDelta(**_envelope(), text=thinking_part)
+                        if _is_cancelled():
+                            cancelled = True
+                            break
+                # Normal exhaustion only. On cancel we drop the residual
+                # rather than emit stale text after the cancel signal.
+                if not cancelled and not _is_cancelled():
+                    text_tail, thinking_tail = stripper.finalize()
+                    if text_tail:
+                        yield TextDelta(**_envelope(), text=text_tail)
+                    if thinking_tail and self.config.save_thinking:
+                        yield ThinkingDelta(**_envelope(), text=thinking_tail)
             finally:
                 # Phase 9.5 fu-research-synth-cancel-grace
                 # (mirrors chatty.py:601-612).
