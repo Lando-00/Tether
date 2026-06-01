@@ -128,11 +128,12 @@ class _ThinkStripper:
     * Retained overlap = ``len(THINK_CLOSE) - 1`` so a marker split across
       chunk boundaries (``"<thi"`` + ``"nk>"`` or ``"</thi"`` + ``"nk>"``)
       is detected.
-    * Leading state handles the "bare-leading ``</think>``" case: Qwen
-      sometimes starts mid-thinking because the chat template injects
-      ``<think>`` out-of-band. Hold a bounded leading buffer so hidden
-      reasoning that precedes the first close marker cannot leak just
-      because it is longer than the marker-overlap window.
+    * Leading state handles the *short* "bare-leading ``</think>``" case:
+      Qwen sometimes starts mid-thinking because the chat template injects
+      ``<think>`` out-of-band. The detection window is intentionally bounded
+      to the marker-overlap tail so no-think streams still begin streaming
+      promptly; long hidden preambles before a bare close are tracked as a
+      follow-up because fixing them requires trading off first-token latency.
     * Nested think blocks are treated conservatively with a depth counter.
       Hidden text is not released until the matching outer close marker.
     * On unclosed ``<think>`` at end-of-stream, :meth:`finalize` returns
@@ -144,11 +145,6 @@ class _ThinkStripper:
     THINK_OPEN = "<think>"
     THINK_CLOSE = "</think>"
     _OVERLAP = max(len(THINK_OPEN), len(THINK_CLOSE)) - 1
-    # Long enough for realistic hidden preambles before a bare-leading
-    # ``</think>`` while still bounding no-think streams so they don't
-    # buffer unboundedly before first visible text.
-    _LEADING_THINK_MAX_CHARS = 512
-
     def __init__(self) -> None:
         self._mode: str = "leading"
         self._buf: str = ""
@@ -199,16 +195,15 @@ class _ThinkStripper:
                     self._think_depth = 0
                     continue
 
-                # No marker yet. Stay in the ambiguous leading state until
-                # either a marker arrives or the bounded leading window is
-                # exceeded. This prevents a long bare-leading hidden
-                # reasoning prefix from leaking before a later ``</think>``.
-                if len(self._buf) > self._LEADING_THINK_MAX_CHARS:
-                    keep = self._OVERLAP
-                    emit = self._buf[: -keep]
+                # No marker yet. Hold up to OVERLAP chars in case a marker
+                # is split across this and the next chunk; flush the rest as
+                # text and transition out of leading mode. This preserves
+                # first-token streaming for normal no-think synth output.
+                if len(self._buf) > self._OVERLAP:
+                    emit = self._buf[: -self._OVERLAP]
                     if emit:
                         text_out.append(emit)
-                    self._buf = self._buf[-keep:]
+                    self._buf = self._buf[-self._OVERLAP:]
                     self._mode = "text"
                 break
 

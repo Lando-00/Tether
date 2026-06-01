@@ -143,6 +143,18 @@ curl -X POST http://localhost:8000/api/v1/chat/stream \
   -d '{"session_id":"s","prompt":"Latest research on...", "model_name":"qwen3-4b", "mode":"research"}'
 ```
 
+Recommended loop bounds depend on how interactive you want the turn to feel:
+
+| Profile | `max_facts` | `max_iterations` | Use when |
+|---|---:|---:|---|
+| Interactive | 10 | 5 | quick local experiments and CLI/manual smoke tests |
+| Default | 40 | 20 | deeper answers when multi-minute latency is acceptable |
+| Deep batch | 80 | 40 | overnight/batch research after raising timeouts deliberately |
+
+Set these under `orchestrator.research` in `src/tether/config/default.yml`.
+Phase-progress events (`notebook_phase_progress`) emit during long plan/extract/
+synthesize calls so clients can show progress during MLC cold-loads or slow searches.
+
 Research mode is single-tool for v1 (`web_search` only). Multi-tool research is a future seam.
 
 ## Where to go next
