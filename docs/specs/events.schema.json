@@ -395,6 +395,91 @@
       "title": "NotebookLimitReached",
       "type": "object"
     },
+    "NotebookPhaseProgress": {
+      "additionalProperties": false,
+      "description": "Heartbeat progress event emitted during a long-running Notebook phase.\n\nUnlike :class:`NotebookPhaseStart` (one-shot at phase entry), this event\nmay be emitted multiple times within a single phase to surface elapsed\ntime and an optional human-readable note. Useful for UI progress\nindicators on slow phases (e.g., long ``explore`` tool calls or\nmulti-second ``extract`` / ``synthesize`` LLM passes).\n\n``phase`` mirrors :class:`NotebookPhaseStart` values. ``iteration``\nfollows the same indexing convention: ``0`` for one-shot\n``plan``/``synthesize``, 1-indexed for ``explore``/``extract``/\n``refine``. ``elapsed_ms`` is the time spent in the current phase so\nfar. ``note`` is an optional short descriptor (e.g., the running\nsub-query, or ``\"awaiting tool result\"``).",
+      "properties": {
+        "elapsed_ms": {
+          "description": "Milliseconds elapsed in the current phase at emission time.",
+          "minimum": 0,
+          "title": "Elapsed Ms",
+          "type": "integer"
+        },
+        "iteration": {
+          "default": 0,
+          "description": "Loop iteration counter. 0 for one-shot plan/synthesize; 1-indexed for explore/extract/refine (matches NotebookPhaseStart).",
+          "minimum": 0,
+          "title": "Iteration",
+          "type": "integer"
+        },
+        "note": {
+          "anyOf": [
+            {
+              "maxLength": 256,
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "Optional short progress note (e.g., running sub-query).",
+          "title": "Note"
+        },
+        "phase": {
+          "enum": [
+            "plan",
+            "explore",
+            "extract",
+            "refine",
+            "synthesize"
+          ],
+          "title": "Phase",
+          "type": "string"
+        },
+        "protocol_version": {
+          "default": "1.0",
+          "title": "Protocol Version",
+          "type": "string"
+        },
+        "seq": {
+          "description": "Per-turn monotonically-increasing sequence number",
+          "minimum": 0,
+          "title": "Seq",
+          "type": "integer"
+        },
+        "session_id": {
+          "title": "Session Id",
+          "type": "string"
+        },
+        "ts": {
+          "description": "Server-side emission timestamp (UTC)",
+          "format": "date-time",
+          "title": "Ts",
+          "type": "string"
+        },
+        "turn_id": {
+          "title": "Turn Id",
+          "type": "string"
+        },
+        "type": {
+          "const": "notebook_phase_progress",
+          "default": "notebook_phase_progress",
+          "title": "Type",
+          "type": "string"
+        }
+      },
+      "required": [
+        "session_id",
+        "turn_id",
+        "seq",
+        "ts",
+        "phase",
+        "elapsed_ms"
+      ],
+      "title": "NotebookPhaseProgress",
+      "type": "object"
+    },
     "NotebookPhaseStart": {
       "additionalProperties": false,
       "description": "Emitted once per phase transition in the Notebook loop.\n\n``phase`` values:\n\n``plan``\n    LLM has decomposed the user question into Key Elements / initial\n    sub-queries. Emitted once, before the first Explore phase.\n``explore``\n    A sub-query has been dequeued and the tool call is about to run.\n    Emitted once per loop iteration (once per sub-query consumed).\n``extract``\n    Tool result received; LLM is now extracting atomic facts from the\n    raw result into the Notebook. Emitted once per loop iteration,\n    after the explore tool result lands.\n``refine``\n    At least one new follow-up query was enqueued from the extract\n    step. Emitted at most once per loop iteration (skipped if no new\n    queries were produced by this iteration).\n``synthesize``\n    Notebook is considered complete; LLM will now synthesize the final\n    answer. Followed immediately by ``MessageStart``.\n\n``iteration`` is the loop iteration counter. It is ``0`` for the\none-shot ``plan`` and ``synthesize`` phases. For ``explore``/``extract``/\n``refine`` it is ``1``-indexed (i.e., the first dequeued sub-query\nyields ``iteration=1``) — matches the impl's increment-before-yield\npattern in ``notebook.py`` (Wave 4 reconcile R-F2). Pydantic accepts\n``ge=0`` to cover both shapes.",
@@ -827,6 +912,7 @@
       "message_stop": "#/$defs/MessageStop",
       "notebook_fact_added": "#/$defs/NotebookFactAdded",
       "notebook_limit_reached": "#/$defs/NotebookLimitReached",
+      "notebook_phase_progress": "#/$defs/NotebookPhaseProgress",
       "notebook_phase_start": "#/$defs/NotebookPhaseStart",
       "notebook_query_added": "#/$defs/NotebookQueryAdded",
       "text_delta": "#/$defs/TextDelta",
@@ -866,6 +952,9 @@
     },
     {
       "$ref": "#/$defs/NotebookPhaseStart"
+    },
+    {
+      "$ref": "#/$defs/NotebookPhaseProgress"
     },
     {
       "$ref": "#/$defs/NotebookFactAdded"

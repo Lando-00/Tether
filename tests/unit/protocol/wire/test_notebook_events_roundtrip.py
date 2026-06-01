@@ -9,6 +9,7 @@ from pydantic import TypeAdapter, ValidationError
 from tether.protocol.wire.events import (
     NotebookFactAdded,
     NotebookLimitReached,
+    NotebookPhaseProgress,
     NotebookPhaseStart,
     NotebookQueryAdded,
     WireEvent,
@@ -183,3 +184,42 @@ def test_notebook_query_accepts_under_limit():
     event = NotebookQueryAdded(**_base(query="search terms", queue_depth=1))
 
     assert event.query == "search terms"
+
+
+# --- NotebookPhaseProgress (Phase 9.6 W1-C: nho-q-w1c-events) ---
+
+
+def test_notebook_phase_progress_roundtrip_succeeds():
+    event = NotebookPhaseProgress(
+        **_base(phase="explore", iteration=2, elapsed_ms=1500, note="running query")
+    )
+
+    assert NotebookPhaseProgress.model_validate(event.model_dump()) == event
+
+
+def test_notebook_phase_progress_wire_union_roundtrip():
+    event = NotebookPhaseProgress(
+        **_base(phase="synthesize", iteration=0, elapsed_ms=42)
+    )
+
+    parsed = TypeAdapter(WireEvent).validate_python(event.model_dump())
+
+    assert isinstance(parsed, NotebookPhaseProgress)
+    assert parsed == event
+
+
+def test_notebook_phase_progress_json_includes_fields():
+    event = NotebookPhaseProgress(
+        **_base(phase="extract", iteration=1, elapsed_ms=750, note="parsing facts")
+    )
+
+    payload = event.model_dump_json()
+
+    assert '"type":"notebook_phase_progress"' in payload
+    assert '"elapsed_ms":750' in payload
+    assert '"note":"parsing facts"' in payload
+
+
+def test_notebook_phase_progress_rejects_negative_elapsed_ms():
+    with pytest.raises(ValidationError):
+        NotebookPhaseProgress(**_base(phase="plan", iteration=0, elapsed_ms=-1))

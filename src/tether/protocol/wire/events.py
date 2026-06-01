@@ -215,6 +215,44 @@ class NotebookPhaseStart(_Base):
     )
 
 
+class NotebookPhaseProgress(_Base):
+    """Heartbeat progress event emitted during a long-running Notebook phase.
+
+    Unlike :class:`NotebookPhaseStart` (one-shot at phase entry), this event
+    may be emitted multiple times within a single phase to surface elapsed
+    time and an optional human-readable note. Useful for UI progress
+    indicators on slow phases (e.g., long ``explore`` tool calls or
+    multi-second ``extract`` / ``synthesize`` LLM passes).
+
+    ``phase`` mirrors :class:`NotebookPhaseStart` values. ``iteration``
+    follows the same indexing convention: ``0`` for one-shot
+    ``plan``/``synthesize``, 1-indexed for ``explore``/``extract``/
+    ``refine``. ``elapsed_ms`` is the time spent in the current phase so
+    far. ``note`` is an optional short descriptor (e.g., the running
+    sub-query, or ``"awaiting tool result"``).
+    """
+
+    type: Literal["notebook_phase_progress"] = "notebook_phase_progress"
+    phase: Literal["plan", "explore", "extract", "refine", "synthesize"]
+    iteration: int = Field(
+        default=0,
+        ge=0,
+        description=(
+            "Loop iteration counter. 0 for one-shot plan/synthesize; "
+            "1-indexed for explore/extract/refine (matches NotebookPhaseStart)."
+        ),
+    )
+    elapsed_ms: int = Field(
+        ge=0,
+        description="Milliseconds elapsed in the current phase at emission time.",
+    )
+    note: Optional[str] = Field(
+        default=None,
+        max_length=256,
+        description="Optional short progress note (e.g., running sub-query).",
+    )
+
+
 class NotebookFactAdded(_Base):
     """One atomic fact extracted into the Notebook.
 
@@ -288,6 +326,7 @@ WireEvent = Annotated[
         HwReset,
         # --- Phase 9: NotebookOrchestrator events ---
         NotebookPhaseStart,
+        NotebookPhaseProgress,
         NotebookFactAdded,
         NotebookQueryAdded,
         NotebookLimitReached,
@@ -310,6 +349,7 @@ __all__ = [
     "LoopLimitReached",
     "HwReset",
     "NotebookPhaseStart",
+    "NotebookPhaseProgress",
     "NotebookFactAdded",
     "NotebookQueryAdded",
     "NotebookLimitReached",
