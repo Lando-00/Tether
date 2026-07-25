@@ -112,8 +112,8 @@ class GenieXProvider(ModelProvider):
 
     @property
     def source(self) -> str:
-        """Local inference on operator-managed server."""
-        return "local"
+        """External HTTP inference server."""
+        return "remote"
 
     def default_model(self) -> str | None:
         return self._model_id
@@ -168,7 +168,7 @@ class GenieXProvider(ModelProvider):
         healthy = await self._client.health()
         if not healthy:
             raise TransientProviderError(
-                f"GenieX server health check failed (GET /v1/ did not return 200)"
+                "GenieX server health check failed (GET /v1/ did not return 200)"
             )
 
         try:

@@ -17,12 +17,7 @@ from typing import Any, Dict, List
 import httpx
 import pytest
 
-# Skip cleanly if the provider module is not yet merged.
-_mod = pytest.importorskip(
-    "tether.providers.geniex.provider", reason="GenieXProvider not merged yet"
-)
-GenieXProvider = _mod.GenieXProvider
-
+from tether.providers.geniex.provider import GenieXProvider
 
 # ---------------------------------------------------------------------------
 # Helpers

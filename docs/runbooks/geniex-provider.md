@@ -1,6 +1,6 @@
 # GenieX External Provider — Operator Runbook
 
-> **Status**: Planned (provider integration not yet merged to `main`).
+> **Status**: Implemented as an opt-in provider; live hardware validation is separate.
 > MLC remains the default GPU provider. GenieX is opt-in via configuration.
 
 ---
@@ -103,7 +103,7 @@ Invoke-RestMethod http://127.0.0.1:18181/v1/
 
 ---
 
-## Tether Configuration (Planned)
+## Tether Configuration
 
 GenieX is configured via `model_registry` + `default_model_provider` in
 `src/tether/config/default.yml`. The provider is **opt-in**; MLC remains default.
@@ -121,27 +121,31 @@ providers:
     # geniex:                             # ← Uncomment to enable
     #   impl: "tether.providers.geniex.provider.GenieXProvider"
     #   args:
-    #     base_url: "${GENIEX_BASE_URL:-http://127.0.0.1:18181}"
+    #     base_url: "http://127.0.0.1:18181"  # Server root, without /v1
     #     model_id: "unsloth/Qwen3-1.7B-GGUF:Q4_0"
-    #     enable_think: false
-    #     marker_only_tools: true
-    #     timeouts:
-    #       connect_sec: 2
-    #       read_sec: 30
+    #     connect_timeout_seconds: 2
+    #     timeout_seconds: 30
 ```
 
-Environment variables used:
+The provider always sends top-level `enable_think: false` and never sends
+native `tools`, `tool_choice`, or `functions` fields. These are provider
+contract guarantees, not configuration options.
+
+Environment variables used by the helper and live tests:
 
 | Variable | Purpose | Default |
 |----------|---------|---------|
-| `GENIEX_BASE_URL` | GenieX server base URL | `http://127.0.0.1:18181` |
+| `GENIEX_BASE_URL` | Live-test server base URL | *(none — required for live tests)* |
 | `GENIEX_DATA_DIR` | Server data/model directory | *(none — required)* |
+
+For Tether configuration overrides, use the standard nested setting:
+`TETHER__PROVIDERS__MODEL_REGISTRY__GENIEX__ARGS__BASE_URL`.
 
 ---
 
 ## Running Hardware-Gated Tests
 
-Provider tests require a running GenieX server and are gated behind the
+Live provider tests require a running GenieX server and are gated behind the
 `hardware` marker:
 
 ```powershell
@@ -153,12 +157,15 @@ python -m pytest -m hardware tests/hardware/ -v
 ```
 
 Tests verify:
-- Health check (`GET /v1/`)
-- Model listing and validation
-- Non-stream completion
-- SSE stream parsing (including `data:[DONE]` terminal)
-- Marker tool-call emission and result follow-up
-- Connection-refused → 503 mapping
+- Warm-up health and model validation
+- Typed and legacy SSE streaming
+- Mid-stream generator closure
+- Marker-only prompt generation smoke coverage
+- Provider metadata and lifecycle
+
+Mocked unit/integration tests separately verify exact request fields, SSE
+framing, transport errors, degraded startup, and unavailable-provider 503
+routing without contacting a real server.
 
 ---
 

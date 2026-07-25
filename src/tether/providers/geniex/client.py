@@ -9,7 +9,7 @@ Synthesis: geniex-contract-probe-2026-07-25.md §§3,6,7.
 from __future__ import annotations
 
 import json
-from typing import Any, AsyncIterator, Callable, Dict, List, Optional
+from typing import Any, AsyncIterator, Callable, Dict, List
 
 import httpx
 import structlog
@@ -53,6 +53,8 @@ class GenieXClient:
         self._timeout_seconds = timeout_seconds
         self._connect_timeout_seconds = connect_timeout_seconds
         self._url_validator = url_validator
+        if self._url_validator is not None:
+            self._url_validator(self._base_url)
         self._owns_client = http_client is None
         self._client = http_client or httpx.AsyncClient(
             timeout=httpx.Timeout(
@@ -86,7 +88,7 @@ class GenieXClient:
                 ),
             )
             return resp.status_code == 200
-        except (httpx.ConnectError, httpx.TimeoutException) as exc:
+        except httpx.TransportError as exc:
             _log.debug("geniex.health.failed", error=str(exc))
             return False
 
@@ -106,13 +108,13 @@ class GenieXClient:
             resp.raise_for_status()
             data = resp.json()
             return [m["id"] for m in data.get("data", [])]
-        except httpx.ConnectError as exc:
-            raise TransientProviderError(
-                f"GenieX server unreachable at {self._base_url}: {exc}"
-            ) from exc
         except httpx.TimeoutException as exc:
             raise TransientProviderError(
                 f"GenieX server timeout at {self._base_url}: {exc}"
+            ) from exc
+        except httpx.TransportError as exc:
+            raise TransientProviderError(
+                f"GenieX server unreachable at {self._base_url}: {exc}"
             ) from exc
         except httpx.HTTPStatusError as exc:
             raise TransientProviderError(
@@ -157,13 +159,13 @@ class GenieXClient:
         try:
             req = self._client.build_request("POST", url, json=payload)
             resp = await self._client.send(req, stream=True)
-        except httpx.ConnectError as exc:
-            raise TransientProviderError(
-                f"GenieX server unreachable at {self._base_url}: {exc}"
-            ) from exc
         except httpx.TimeoutException as exc:
             raise TransientProviderError(
                 f"GenieX server timeout at {self._base_url}: {exc}"
+            ) from exc
+        except httpx.TransportError as exc:
+            raise TransientProviderError(
+                f"GenieX server unreachable at {self._base_url}: {exc}"
             ) from exc
 
         try:
@@ -212,6 +214,14 @@ class GenieXClient:
                 content = delta.get("content")
                 if content:
                     yield content
+        except httpx.TimeoutException as exc:
+            raise TransientProviderError(
+                f"GenieX server timeout at {self._base_url}: {exc}"
+            ) from exc
+        except httpx.TransportError as exc:
+            raise TransientProviderError(
+                f"GenieX stream transport failed at {self._base_url}: {exc}"
+            ) from exc
         finally:
             await resp.aclose()
 

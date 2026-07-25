@@ -812,6 +812,19 @@ class Engine:
                     f"warm_up: {type(exc).__name__}: {exc}"
                 )
                 self.providers.pop(pid, None)
+                from tether.providers.hw import HardwareLifecycle
+
+                if not isinstance(prov, HardwareLifecycle):
+                    try:
+                        await prov.aclose()
+                    except Exception as close_exc:  # noqa: BLE001 - defensive
+                        logger.warning(
+                            "provider.demoted_close_failed provider_id=%s "
+                            "error_class=%s error_message=%s",
+                            pid,
+                            type(close_exc).__name__,
+                            str(close_exc),
+                        )
                 if pid == self.default_provider_id and self.providers:
                     new_default = next(iter(self.providers))
                     logger.warning(

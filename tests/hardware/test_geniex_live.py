@@ -24,11 +24,7 @@ from typing import List
 
 import pytest
 
-# Skip if provider code not yet merged
-_geniex_mod = pytest.importorskip(
-    "tether.providers.geniex.provider", reason="GenieXProvider not merged yet"
-)
-GenieXProvider = _geniex_mod.GenieXProvider
+from tether.providers.geniex.provider import GenieXProvider
 
 _BASE_URL = os.environ.get("GENIEX_BASE_URL")
 _MODEL_ID = os.environ.get("GENIEX_MODEL_ID")

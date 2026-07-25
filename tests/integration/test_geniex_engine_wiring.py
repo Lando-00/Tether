@@ -14,21 +14,16 @@ from __future__ import annotations
 
 import logging
 from typing import Any, AsyncGenerator, Dict, List, Optional
+from unittest.mock import AsyncMock
 
 import pytest
 
-# Skip cleanly if provider module not merged yet.
-_geniex_mod = pytest.importorskip(
-    "tether.providers.geniex.provider", reason="GenieXProvider not merged yet"
-)
-GenieXProvider = _geniex_mod.GenieXProvider
-
-from tether import Engine  # noqa: E402, I001
-from tether.config.settings import Settings  # noqa: E402
-from tether.core.errors import ProviderUnhealthyError, UnknownProviderError  # noqa: E402
-from tether.core.interfaces import ModelProvider  # noqa: E402
-from tether.providers.types import ModelDetails, ProviderCapabilities  # noqa: E402
-
+from tether import Engine
+from tether.config.settings import Settings
+from tether.core.errors import ProviderUnhealthyError, UnknownProviderError
+from tether.core.interfaces import ModelProvider
+from tether.providers.geniex.provider import GenieXProvider
+from tether.providers.types import ModelDetails, ProviderCapabilities
 
 # ---------------------------------------------------------------------------
 # Fixtures
@@ -67,6 +62,54 @@ def _settings_dict(tmp_db: str, registry: dict, default: str) -> dict:
 
 class TestDegradedStartup:
     """When GenieX constructor fails (server unreachable), Engine degrades."""
+
+    @pytest.mark.anyio
+    async def test_real_geniex_warmup_failure_becomes_typed_unhealthy(self):
+        """Actual GenieX connection failure is demoted before request routing."""
+        import httpx
+
+        from tether.context.memory_store import MemoryStore
+        from tether.protocol.parsers.sliding import SlidingParser
+        from tether.runtime.hw_watchdog import HardwareWatchdog
+
+        def _unavailable(request: httpx.Request) -> httpx.Response:
+            raise httpx.ConnectError("Connection refused", request=request)
+
+        http_client = httpx.AsyncClient(
+            transport=httpx.MockTransport(_unavailable),
+            base_url="http://test",
+        )
+        provider = GenieXProvider(
+            base_url="http://test",
+            model_id="qwen3-npu",
+            http_client=http_client,
+        )
+        provider._client.aclose = AsyncMock()
+        providers = {"geniex-npu": provider}
+        engine = Engine(
+            providers=providers,
+            default_provider_id="geniex-npu",
+            parser=SlidingParser(),
+            session_store=MemoryStore(),
+            tools={},
+            system_prompt="test",
+            hw_watchdog=HardwareWatchdog(list(providers.values())),
+        )
+
+        await engine._warm_up_providers_degraded()
+
+        assert "geniex-npu" not in engine.providers
+        assert "geniex-npu" in engine._provider_start_failures
+        provider._client.aclose.assert_awaited_once()
+        with pytest.raises(ProviderUnhealthyError):
+            async for _ in engine.chat(
+                session_id="s1",
+                prompt="hi",
+                model_name="qwen3-npu",
+                provider_id="geniex-npu",
+            ):
+                pass
+        await http_client.aclose()
 
     def test_geniex_failure_captured_mlc_still_healthy(self, tmp_path):
         """Engine starts with MLC healthy + GenieX in _provider_start_failures."""

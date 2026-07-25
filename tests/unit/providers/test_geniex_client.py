@@ -16,11 +16,8 @@ from typing import Any, Dict, List
 import httpx
 import pytest
 
-# Skip cleanly if the provider module is not yet merged from the sibling branch.
-GenieXProvider = pytest.importorskip(
-    "tether.providers.geniex.provider", reason="GenieXProvider not merged yet"
-).GenieXProvider
-
+from tether.core.errors import TransientProviderError
+from tether.providers.geniex.provider import GenieXProvider
 
 # ---------------------------------------------------------------------------
 # Helpers
@@ -498,3 +495,35 @@ class TestConnectionErrors:
 
         exc_str = str(exc_info.value).lower()
         assert "timeout" in exc_str or "timed" in exc_str
+
+    @pytest.mark.anyio
+    async def test_midstream_timeout_maps_to_transient_provider_error(self):
+        """Read timeout after response headers remains in the typed taxonomy."""
+
+        class _TimeoutStream(httpx.AsyncByteStream):
+            async def __aiter__(self):
+                yield _sse_frame(_chunk_json("partial")).encode()
+                raise httpx.ReadTimeout("stream timed out")
+
+        def _handler(request: httpx.Request) -> httpx.Response:
+            return httpx.Response(
+                200,
+                stream=_TimeoutStream(),
+                headers={"content-type": "text/event-stream"},
+            )
+
+        transport = httpx.MockTransport(_handler)
+        client = httpx.AsyncClient(transport=transport, base_url="http://test")
+        provider = GenieXProvider(
+            base_url="http://test",
+            model_id="test-model",
+            timeout_seconds=1.0,
+            http_client=client,
+        )
+
+        with pytest.raises(TransientProviderError, match="timeout"):
+            async for _ in provider.stream_typed(
+                model_name="test-model",
+                messages=[{"role": "user", "content": "hi"}],
+            ):
+                pass

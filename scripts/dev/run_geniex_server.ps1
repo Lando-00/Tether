@@ -35,7 +35,7 @@
 
 .EXAMPLE
     .\run_geniex_server.ps1 -DataDir "$env:USERPROFILE\.geniex"
-    .\run_geniex_server.ps1 -DataDir "E:\models\geniex" -Port 18182 -Compute cpu
+    .\run_geniex_server.ps1 -DataDir (Join-Path $HOME ".geniex") -Port 18182 -Compute cpu
 #>
 [CmdletBinding()]
 param(

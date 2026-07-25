@@ -18,7 +18,7 @@
 2. **`src/tether/`** is the canonical package; `tether_service.*` is a deprecation
    alias kept for one release cycle.
 3. **Default hardware backend** is the Adreno X1 **GPU** via OpenCL (MLC). The
-   **NPU** (Hexagon HTP v73) is planned via **GenieX** — an external
+   **NPU** (Hexagon HTP v73) is available via opt-in **GenieX** — an external
    OpenAI-compatible server (`geniex serve`) that Tether connects to as an
    HTTP client. The earlier Direct Genie subprocess approach (ADR-0021,
    `genie-t2t-run.exe`) is **retired**. `NexaProvider` remains a forward-compat
@@ -59,7 +59,7 @@ If you're delegating work to sub-agents (impl + code-review + rubber-duck patter
 | Wire protocol / API specs | [`docs/specs/`](./docs/specs/) (post Phase 8 step 91) |
 | Tool implementations | [`src/tether/tools/`](./src/tether/tools/) |
 | Connector contract (ABC) | [`src/tether/core/interfaces.py`](./src/tether/core/interfaces.py) and [`src/tether/connectors/`](./src/tether/connectors/) |
-| Provider implementations | [`src/tether/providers/`](./src/tether/providers/) (MLC GPU · planned GenieX NPU) |
+| Provider implementations | [`src/tether/providers/`](./src/tether/providers/) (MLC GPU · opt-in GenieX NPU) |
 | Configuration loader | [`src/tether/config/`](./src/tether/config/) |
 | HTTP entry point | [`src/tether/app/http/api.py`](./src/tether/app/http/api.py) and [`src/tether/app/__main__.py`](./src/tether/app/__main__.py) |
 
