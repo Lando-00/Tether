@@ -292,15 +292,19 @@ def test_readyz_overflowed_notebook_cleanup_remains_informational():
 
 
 def test_readyz_store_failure():
-    """Store throws → ready=false, store=false, provider=None.
-    Same shape regardless of watchdog presence."""
+    """Store throws → ready=false, store=false.
+    ADR-0021: provider field tracks registry health (True when the provider
+    is constructed) even when the store is down. Same shape regardless of
+    watchdog presence."""
     client = TestClient(_make_app(_DummyProvider(), _BrokenStore()))
     resp = client.get("/api/v1/readyz")
     assert resp.status_code == 200
     body = resp.json()
     assert body["ready"] is False
     assert body["store"] is False
-    assert body["provider"] is None
+    # ADR-0021: provider tracks any-healthy-provider; True because the Engine
+    # has a healthy provider in its registry even when the store is broken.
+    assert body["provider"] is True
     assert "db connection failed" in body["error"]
 
 
@@ -332,14 +336,19 @@ def test_readyz_with_fake_hw_provider_degraded_is_ready():
 
 
 def test_readyz_with_fake_hw_provider_error():
-    """Provider reporting ``error`` makes /readyz return ready=false."""
+    """Provider reporting ``error`` makes /readyz return ready=false.
+    ADR-0021: ``provider`` bool tracks registry health independent of HW
+    state — the provider IS in the registry and healthy at the registry
+    level even when its HW layer reports error."""
     provider = _FakeHWProvider(HwHealth(status="error", details={"reason": "all engines crashed"}))
     client = TestClient(_make_app(provider, _MinimalStore()))
     resp = client.get("/api/v1/readyz")
     body = resp.json()
     assert body["ready"] is False
     assert body["store"] is True
-    assert body["provider"] is False
+    # ADR-0021: provider=True because the registry has a healthy entry;
+    # HW errors are surfaced via hw_health, not the provider bool.
+    assert body["provider"] is True
     assert body["error"] == "hw_health: error"
     assert body["hw_health"]["overall"] == "error"
 

@@ -30,6 +30,9 @@ API_BASE_URL = _os.environ.get("TETHER_API_URL", "http://127.0.0.1:8080/api/v1")
 # CSRF header name must match Settings.security.csrf_token.header_name.
 _CSRF_HEADER = "X-Tether-CSRF"
 
+# Sentinel from ModelDetails.provider_id for pre-registry single-provider servers.
+_PROVIDER_ID_SENTINEL = "_unwrapped_"
+
 
 class ChatMode(str, Enum):
     """Available server-side orchestrator modes."""
@@ -44,14 +47,18 @@ def _chat_payload(
     prompt: str,
     model_name: str,
     mode: ChatMode,
+    provider_id: Optional[str] = None,
 ) -> dict[str, str]:
     """Build the `/chat/stream` request body."""
-    return {
+    body: dict[str, str] = {
         "session_id": session_id,
         "prompt": prompt,
         "model_name": model_name,
         "mode": mode.value,
     }
+    if provider_id is not None:
+        body["provider_id"] = provider_id
+    return body
 
 
 def _parse_chat_mode(value: str) -> ChatMode:
@@ -346,6 +353,64 @@ def get_available_tools() -> list:
         console.print(f"[red]Could not fetch tools:[/red] {e}")
         return []
 
+
+def get_available_model_details() -> list:
+    """Fetch ``GET /models/details`` and return the list of ModelDetails dicts."""
+    try:
+        response = requests.get(f"{API_BASE_URL}/models/details", timeout=5)
+        response.raise_for_status()
+        return response.json()
+    except requests.RequestException:
+        return []
+
+
+def get_provider_health() -> tuple[Optional[dict], Optional[str]]:
+    """Return ({pid: {healthy, kind, source, error}}, default_provider_id)
+    from /readyz, or (None, None) on connection error.
+    """
+    try:
+        resp = requests.get(f"{API_BASE_URL}/readyz", timeout=5)
+        data = resp.json()
+        providers = data.get("providers")
+        default_pid = data.get("default_provider_id")
+        return providers, default_pid
+    except Exception:
+        return None, None
+
+
+def get_providers_table() -> Optional[Table]:
+    """Build the Rich Table for the ``\\providers`` slash command.
+
+    Returns ``None`` when the server lacks the multi-provider block (older
+    build or single-provider legacy config).
+    """
+    providers, default_pid = get_provider_health()
+    if providers is None:
+        return None
+
+    table = Table(title="Providers", border_style="cyan")
+    table.add_column("ID", style="bold cyan")
+    table.add_column("Kind")
+    table.add_column("Source")
+    table.add_column("Default", justify="center")
+    table.add_column("Health")
+    table.add_column("Error", style="dim")
+
+    for pid, info in sorted(providers.items()):
+        is_default = "★" if pid == default_pid else ""
+        healthy = info.get("healthy", False)
+        health_str = "[green]healthy[/green]" if healthy else "[red]unhealthy[/red]"
+        error = info.get("error") or ""
+        table.add_row(
+            pid,
+            info.get("kind", "?"),
+            info.get("source", "?"),
+            is_default,
+            health_str,
+            error,
+        )
+    return table
+
 def get_sessions() -> list:
     """Fetches the list of active sessions."""
     try:
@@ -539,15 +604,53 @@ def manage_sessions() -> tuple[Optional[str], str]:
         return None, "manage"
 
 
-def select_model(model_name: Optional[str]) -> str:
-    """Guides the user to select a model if one isn't provided."""
+def select_model(
+    model_name: Optional[str],
+    provider: Optional[str] = None,
+) -> tuple[str, Optional[str]]:
+    """Validate or interactively select a model; return ``(model_id, provider_id)``.
+
+    When *model_name* is given:
+    - Exactly one ``/models/details`` row matches → return its id and provider_id.
+    - Multiple rows share the same id (ambiguous; multi-provider):
+      - *provider* is supplied → filter to the matching row.
+      - *provider* is absent → drop into the interactive selector.
+    - No details row matches → fall back to the legacy ``/models`` plain list.
+
+    When *model_name* is ``None``, open the interactive selector.
+    Returns ``(model_id, provider_id_or_None)``.
+    """
+    details = get_available_model_details()
+    if model_name and details:
+        filtered = [d for d in details if d.get("id") == model_name]
+        if len(filtered) == 1:
+            pid = filtered[0].get("provider_id")
+            if pid == _PROVIDER_ID_SENTINEL:
+                pid = None
+            return model_name, pid
+        if len(filtered) > 1 and provider is not None:
+            for d in filtered:
+                if d.get("provider_id") == provider:
+                    pid = d.get("provider_id")
+                    if pid == _PROVIDER_ID_SENTINEL:
+                        pid = None
+                    return model_name, pid
+        if len(filtered) > 1:
+            console.print(
+                f"[yellow]Model '{model_name}' is ambiguous — available on "
+                f"{len(filtered)} providers. Pick one:[/yellow]"
+            )
+            return _interactive_model_select(details=filtered)
     if model_name:
-        # The new API just returns a list of strings, so we just check for existence
         models = get_available_models()
         if model_name in models:
-            return model_name
+            return model_name, None
         console.print(f"[bold red]Error:[/bold red] Model '{model_name}' not found.")
         raise typer.Exit(1)
+
+    # Interactive selection over all models
+    if details:
+        return _interactive_model_select(details=details)
 
     console.print("🔍 Searching for available models...")
     available_models = get_available_models()
@@ -570,7 +673,7 @@ def select_model(model_name: Optional[str]) -> str:
                 choice_str = "1"
             choice = int(choice_str)
             if 1 <= choice <= len(available_models):
-                return available_models[choice - 1]
+                return available_models[choice - 1], None
             else:
                 console.print(
                     "[red]Invalid choice. Please enter a number between "
@@ -578,6 +681,56 @@ def select_model(model_name: Optional[str]) -> str:
                 )
         except ValueError:
             console.print("[red]Invalid input. Please enter a number.[/red]")
+
+
+def _interactive_model_select(
+    *, details: list[dict],
+) -> tuple[str, Optional[str]]:
+    """Render a numbered model selector from /models/details rows."""
+    _, default_pid = get_provider_health()
+
+    show_provider_col = any(
+        r.get("provider_id") and r.get("provider_id") != _PROVIDER_ID_SENTINEL
+        for r in details
+    )
+
+    table = Table(title="Models", border_style="cyan")
+    table.add_column("#", style="bold cyan", justify="right")
+    table.add_column("Model")
+    if show_provider_col:
+        table.add_column("Provider")
+    table.add_column("Source", style="dim")
+    table.add_column("Context", justify="right")
+
+    sorted_details = sorted(
+        details, key=lambda d: (d.get("provider_id", ""), d.get("id", ""))
+    )
+    for i, info in enumerate(sorted_details, 1):
+        pid = info.get("provider_id", "")
+        is_default = info.get("is_default", False)
+        marker = " ★" if is_default else ""
+        row = [str(i), info.get("id", "?") + marker]
+        if show_provider_col:
+            row.append(pid if pid != _PROVIDER_ID_SENTINEL else "—")
+        row.append(info.get("source", "?"))
+        row.append(str(info.get("context_window", "?")))
+        table.add_row(*row)
+    console.print(table)
+
+    while True:
+        choice_str = Prompt.ask("Select model #", default="1")
+        try:
+            choice = int(choice_str.strip() or "1")
+            if 1 <= choice <= len(sorted_details):
+                sel = sorted_details[choice - 1]
+                sel_id = sel.get("id", "?")
+                sel_pid = sel.get("provider_id")
+                if sel_pid == _PROVIDER_ID_SENTINEL:
+                    sel_pid = None
+                return sel_id, sel_pid
+            console.print(f"[red]Pick 1–{len(sorted_details)}.[/red]")
+        except ValueError:
+            console.print("[red]Invalid input.[/red]")
 
 
 @app.callback(invoke_without_command=True)
@@ -610,6 +763,25 @@ def cli(
         help="Orchestrator mode to use: chat or research.",
         case_sensitive=False,
     ),
+    reasoning_effort: Optional[str] = typer.Option(
+        None,
+        "--reasoning-effort",
+        help=(
+            "Initial reasoning effort hint for the chosen model. Use "
+            "'\\reasoning' mid-chat to change. Server returns 422 if "
+            "the model does not advertise support."
+        ),
+    ),
+    provider: Optional[str] = typer.Option(
+        None,
+        "--provider",
+        "-P",
+        help=(
+            "Provider id to route the request to. When omitted, the server "
+            "uses its configured default. Use `\\providers` in the REPL to "
+            "see available ids and health."
+        ),
+    ),
 ):
     """Run chat by default, or choose a subcommand."""
     global API_BASE_URL
@@ -621,6 +793,8 @@ def cli(
             debug=debug,
             show_thinking=show_thinking,
             mode=mode,
+            reasoning_effort=reasoning_effort,
+            provider=provider,
         )
 
 
@@ -798,6 +972,25 @@ def main(
         help="Orchestrator mode to use: chat or research.",
         case_sensitive=False,
     ),
+    reasoning_effort: Optional[str] = typer.Option(
+        None,
+        "--reasoning-effort",
+        help=(
+            "Initial reasoning effort hint for the chosen model. Use "
+            "'\\reasoning' mid-chat to change. Server returns 422 if "
+            "the model does not advertise support."
+        ),
+    ),
+    provider: Optional[str] = typer.Option(
+        None,
+        "--provider",
+        "-P",
+        help=(
+            "Provider id to route the request to. When omitted, the server "
+            "uses its configured default. Use `\\providers` in the REPL to "
+            "see available ids and health."
+        ),
+    ),
 ):
     """
     Main entry point for the Tether CLI.
@@ -815,7 +1008,7 @@ def main(
     ))
 
     model_name_arg = model_name
-    model_name = select_model(model_name_arg)
+    model_name, provider_id = select_model(model_name_arg, provider)
 
     # --- Session Management Loop ---
     session_id = None
@@ -871,6 +1064,10 @@ def main(
         "Type [bold cyan]\\models[/bold cyan] to switch models mid-chat"
     )
     info_table.add_row(
+        f"Provider: {provider_id or 'default'}",
+        "Type [bold cyan]\\providers[/bold cyan] to list providers"
+    )
+    info_table.add_row(
         "",
         "Type [bold cyan]\\exit[/bold cyan] or [bold cyan]\\quit[/bold cyan] to end"
     )
@@ -898,6 +1095,8 @@ def main(
                     debug=debug,
                     show_thinking=show_thinking,
                     mode=current_mode,
+                    reasoning_effort=reasoning_effort,
+                    provider=provider_id,
                 )
                 break # Exit current chat loop to prevent it from continuing after menu
             if stripped_prompt == "\\thinking":
@@ -953,15 +1152,27 @@ def main(
                 console.rule()
                 continue
             if stripped_prompt == "\\models":
-                new_model = select_model(None)
-                if new_model and new_model != model_name:
+                new_model, new_pid = select_model(None)
+                if new_model and (new_model != model_name or new_pid != provider_id):
                     console.print(
                         f"🔄 Switching from [yellow]{model_name}[/yellow] "
                         f"to [bold green]{new_model}[/bold green]"
                     )
                     model_name = new_model
+                    provider_id = new_pid
                 else:
                     console.print(f"[dim]Keeping current model: {model_name}[/dim]")
+                console.rule()
+                continue
+            if stripped_prompt == "\\providers":
+                table = get_providers_table()
+                if table is None:
+                    console.print(
+                        "[yellow]Server does not expose multi-provider metadata; "
+                        "single-provider mode.[/yellow]"
+                    )
+                else:
+                    console.print(table)
                 console.rule()
                 continue
 
@@ -976,6 +1187,7 @@ def main(
                     prompt=user_prompt,
                     model_name=model_name,
                     mode=current_mode,
+                    provider_id=provider_id,
                 ),
                 headers=_mutating_headers({
                     "Accept": "application/x-ndjson; version=1.0",

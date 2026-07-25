@@ -1,5 +1,6 @@
 from typing import List
-from fastapi import APIRouter, Request, HTTPException
+
+from fastapi import APIRouter, HTTPException, Request
 from pydantic import BaseModel, Field
 
 router = APIRouter(prefix="/models", tags=["models"])
@@ -19,6 +20,21 @@ def list_models(request: Request):
     gen_svc = request.app.state.gen_svc
     models = gen_svc.list_models()
     return models
+
+
+@router.get("/details")
+def list_model_details(request: Request):
+    """List rich model metadata from all healthy providers.
+
+    Returns a JSON array of ModelDetails objects, each carrying
+    ``provider_id`` set to the registry key (ADR-0021).
+    """
+    gen_svc = request.app.state.gen_svc
+    try:
+        infos = gen_svc.list_model_info()
+    except Exception:
+        return []
+    return [info.model_dump() for info in infos]
 
 
 @router.post("/unload")

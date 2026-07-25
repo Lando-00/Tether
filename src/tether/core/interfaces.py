@@ -1,8 +1,8 @@
 from abc import ABC, abstractmethod
-from typing import Any, AsyncGenerator, AsyncIterator, Dict, List, Optional, TYPE_CHECKING
+from typing import TYPE_CHECKING, Any, AsyncGenerator, AsyncIterator, Dict, List, Optional
 
 from tether.protocol.parsers.events import ParserEvent
-from tether.providers.types import ProviderCapabilities, ProviderEvent
+from tether.providers.types import ModelDetails, ProviderCapabilities, ProviderEvent
 
 if TYPE_CHECKING:
     from tether.core.types import ToolExecutionContext
@@ -117,6 +117,41 @@ class ModelProvider(ABC):
         providers, ``Engine.aclose`` calls this directly.
         """
         return None
+
+    @property
+    def source(self) -> str:
+        """Provider source classification: ``"local"`` or ``"remote"``.
+
+        Default ``"local"`` (on-device inference). Remote/HTTP providers
+        override to ``"remote"``. Used by :meth:`Engine.list_provider_health`
+        and ``/readyz`` provider map.
+        """
+        return "local"
+
+    def list_model_info(self) -> List[ModelDetails]:
+        """Return rich metadata for all models this provider exposes.
+
+        Default returns a minimal ``ModelDetails`` per model from
+        :meth:`list_models`. Concrete providers override to populate
+        reasoning_efforts, context_window, etc.
+        """
+        return [
+            ModelDetails(
+                id=name,
+                provider_id="_unwrapped_",
+                provider_kind=self.kind if hasattr(self, "kind") else "unknown",
+                source="local",
+                context_window=self.get_context_window(name),
+                supports_thinking=False,
+                supports_reasoning_effort=False,
+            )
+            for name in self.list_models()
+        ]
+
+    def default_model(self) -> Optional[str]:
+        """Return the provider's configured default model name, or None."""
+        models = self.list_models()
+        return models[0] if models else None
 
     async def stream_typed(
         self,

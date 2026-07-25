@@ -1,12 +1,14 @@
 
 import re
+from datetime import datetime, timezone
+from typing import Literal, Optional
+
+import asyncio
+import json
 from fastapi import APIRouter, HTTPException, Request
 from fastapi.responses import StreamingResponse
 from pydantic import BaseModel, Field
-from typing import Literal
-import asyncio
-import json
-from datetime import datetime, timezone
+
 from tether.core.logging import logger
 
 # Compile once at module level for performance.
@@ -78,6 +80,74 @@ class StreamRequest(BaseModel):
             "application/x-ndjson (NDJSON back-compat) responses."
         ),
     )
+    reasoning_effort: Optional[str] = Field(
+        default=None,
+        description=(
+            "Per-request reasoning effort hint for models that advertise "
+            "``supports_reasoning_effort=True`` in ``GET /models/details`` "
+            "(e.g. GitHub Copilot SDK ``gpt-5``). When the chosen model "
+            "does not support reasoning effort, or the supplied value is "
+            "not in the model's accepted ``reasoning_efforts`` list, the "
+            "server responds 422 before any streaming begins. Omit to "
+            "use the provider's default."
+        ),
+        pattern=r"^[A-Za-z0-9._-]{1,32}$",
+    )
+    provider_id: Optional[str] = Field(
+        default=None,
+        description=(
+            "Optional provider routing key. When omitted, the server uses "
+            "providers.default_model_provider. Unknown values return 422; "
+            "known-but-unhealthy values return 503."
+        ),
+        pattern=r"^[A-Za-z0-9._-]{1,64}$",
+    )
+
+
+def _validate_reasoning_effort(
+    engine,
+    model_name: str,
+    reasoning_effort: str,
+    provider_id: Optional[str] = None,
+) -> None:
+    """Reject unsupported ``reasoning_effort`` values BEFORE streaming starts.
+
+    When ``provider_id`` is supplied (ADR-0021), only ``ModelDetails`` rows
+    whose ``provider_id`` matches are considered.
+    """
+    try:
+        details = engine.list_model_info()
+    except Exception as exc:
+        raise HTTPException(
+            status_code=503,
+            detail=f"Could not fetch model metadata: {exc}",
+        )
+    for info in details:
+        if info.id != model_name:
+            continue
+        if provider_id is not None and info.provider_id not in ("_unwrapped_", provider_id):
+            continue
+        if not info.supports_reasoning_effort:
+            raise HTTPException(
+                status_code=422,
+                detail=(
+                    f"Model '{model_name}' does not support reasoning_effort"
+                    + (f" on provider '{provider_id}'" if provider_id else "")
+                    + "; omit the field or pick a model with "
+                    "supports_reasoning_effort=true in /models/details."
+                ),
+            )
+        accepted = info.reasoning_efforts or []
+        if reasoning_effort not in accepted:
+            raise HTTPException(
+                status_code=422,
+                detail=(
+                    f"reasoning_effort='{reasoning_effort}' not accepted by "
+                    f"model '{model_name}'. Accepted values: {accepted}."
+                ),
+            )
+        return
+    return
 
 
 @router.post("/stream")
@@ -119,11 +189,45 @@ async def stream(request: Request, body: StreamRequest):
     logger.info(
         f"/chat/stream called: session_id={body.session_id}, "
         f"model_name={body.model_name}, mode={body.mode}, "
-        f"sse={use_sse}, ndjson_v0_legacy={use_ndjson_v0_legacy}"
+        f"sse={use_sse}, ndjson_v0_legacy={use_ndjson_v0_legacy}, "
+        f"reasoning_effort={body.reasoning_effort}, "
+        f"provider_id={body.provider_id}"
     )
 
     engine = request.app.state.gen_svc
     headers = {"X-Tether-Protocol-Version": "1.0"}
+
+    # --- Provider routing (ADR-0021 Phase 2.B) ---
+    pid: Optional[str] = body.provider_id or getattr(engine, "default_provider_id", None)
+
+    _providers = getattr(engine, "providers", None)
+    if pid is not None and _providers is not None:
+        if pid not in _providers:
+            _failures = getattr(engine, "_provider_start_failures", {})
+            if pid in _failures:
+                logger.error(
+                    "/chat/stream provider unhealthy: "
+                    f"session_id={body.session_id}, provider_id={pid}, "
+                    f"failure={_failures[pid]}"
+                )
+                raise HTTPException(
+                    status_code=503,
+                    detail=(
+                        f"Provider '{pid}' is currently unavailable. "
+                        "Check the server log for details, or query "
+                        "/api/v1/readyz for the per-provider health map."
+                    ),
+                )
+            raise HTTPException(
+                status_code=422,
+                detail=f"Unknown provider_id '{pid}'.",
+            )
+
+    _provider_kwarg: dict = {"provider_id": pid} if pid is not None else {}
+
+    # Validate reasoning_effort against chosen model's metadata BEFORE streaming.
+    if body.reasoning_effort is not None:
+        _validate_reasoning_effort(engine, body.model_name, body.reasoning_effort, provider_id=pid)
 
     # Eagerly resolve the Orchestrator class to return 501 before streaming
     # begins if the mode is a stub (is_implemented=False). Pydantic's Literal
@@ -169,6 +273,8 @@ async def stream(request: Request, body: StreamRequest):
                         model_name=body.model_name,
                         mode=body.mode,
                         cancel_token=cancel_token,
+                        reasoning_effort=body.reasoning_effort,
+                        **_provider_kwarg,
                     ):
                         if await request.is_disconnected():
                             logger.info(
@@ -231,6 +337,8 @@ async def stream(request: Request, body: StreamRequest):
                     model_name=body.model_name,
                     mode=body.mode,
                     cancel_event=cancel_event,
+                    reasoning_effort=body.reasoning_effort,
+                    **_provider_kwarg,
                 ):
                     if await request.is_disconnected():
                         logger.info(
@@ -287,6 +395,8 @@ async def stream(request: Request, body: StreamRequest):
                     model_name=body.model_name,
                     mode=body.mode,
                     cancel_token=cancel_token,
+                    reasoning_effort=body.reasoning_effort,
+                    **_provider_kwarg,
                 ):
                     if await request.is_disconnected():
                         logger.info(

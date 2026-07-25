@@ -38,7 +38,7 @@ CodeLinaro variants WITHOUT further type changes. Verified by code review:
 from __future__ import annotations
 
 from dataclasses import dataclass, field
-from typing import Any, Dict, Literal, Union
+from typing import Any, Dict, List, Literal, Optional, Union
 
 from pydantic import BaseModel, ConfigDict
 
@@ -184,9 +184,78 @@ class ProviderToolCall(BaseModel):
 ProviderEvent = Union[ProviderText, ProviderThink, ProviderToolCall]
 
 
+# ---------- Public model metadata (HTTP /models/details response) ----------
+
+
+class ModelDetails(BaseModel):
+    """Per-model metadata surfaced by ``GET /api/v1/models/details``.
+
+    Companion to the back-compatible ``GET /api/v1/models`` (``list[str]``).
+    Providers build this via :meth:`ModelProvider.list_model_info` so the
+    CLI / clients can render which models support thinking output or
+    reasoning effort and what context window to expect, without changing
+    the legacy endpoint's shape.
+
+    Frozen so consumers can safely treat instances as immutable snapshots
+    (e.g. caching a list at startup). Extra fields forbidden to keep the
+    public contract stable; add fields explicitly when extending.
+    """
+
+    id: str
+    """Model identifier (passed to :meth:`stream` / ``model_name`` in chat)."""
+
+    provider_kind: str
+    """Provider kind that exposes this model (e.g. ``"mlc"``, ``"copilot"``,
+    ``"dummy"``)."""
+
+    source: Literal["local", "remote"]
+    """``"local"`` for on-device inference; ``"remote"`` for hosted
+    providers (GitHub Copilot SDK, Anthropic API, etc.). Lets CLIs hint
+    at network/cost characteristics without inspecting kind."""
+
+    context_window: int
+    """Context window size in tokens for this model."""
+
+    supports_thinking: bool
+    """Whether the model emits a separate reasoning/thinking channel.
+    Mirrors :attr:`ProviderCapabilities.thinking_channel` for the model."""
+
+    supports_reasoning_effort: bool
+    """Whether ``reasoning_effort`` may be passed for this model in a
+    chat request. False means the field MUST be omitted (server returns
+    422 otherwise)."""
+
+    reasoning_efforts: Optional[List[str]] = None
+    """Accepted ``reasoning_effort`` values for this model when
+    :attr:`supports_reasoning_effort` is True (e.g. ``["minimal", "low",
+    "medium", "high"]``). ``None`` when not supported."""
+
+    is_default: bool = False
+    """Whether this is the provider's configured default model (the
+    server's ``providers.model.args.model``). Clients may pre-select it
+    in selection UIs."""
+
+    provider_id: str = "_unwrapped_"
+    """Provider routing key from ``settings.providers.model_registry``
+    (e.g. ``"mlc-local"``, ``"copilot-gpt5"``).
+
+    Phase 12 (ADR-0021): :meth:`Engine.list_model_info` wraps each
+    provider's bare :class:`ModelDetails` via
+    ``info.model_copy(update={"provider_id": pid})`` so callers always
+    see the registry-scoped id. Providers themselves do not know their
+    own registry key; the sentinel ``"_unwrapped_"`` flags rows that
+    bypassed the engine wrap (e.g. direct unit tests of a bare provider).
+    Required with a default sentinel rather than ``Optional[str]`` so the
+    field is always serialisable and clients never see ``null`` for the
+    routing key on the wire."""
+
+    model_config = ConfigDict(frozen=True, extra="forbid")
+
+
 __all__ = [
     "ProviderCapabilities",
     "ModelInfo",
+    "ModelDetails",
     "ProviderText",
     "ProviderThink",
     "ProviderToolCall",

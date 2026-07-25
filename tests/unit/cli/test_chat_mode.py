@@ -41,7 +41,7 @@ def cli_harness(monkeypatch: pytest.MonkeyPatch) -> tuple[io.StringIO, Mock]:
         "console",
         Console(file=stream, force_terminal=False, width=120),
     )
-    monkeypatch.setattr(cli_main, "select_model", lambda _model_name: "model-a")
+    monkeypatch.setattr(cli_main, "select_model", lambda _model_name, _provider=None, **kw: ("model-a", None))
     monkeypatch.setattr(cli_main, "manage_sessions", lambda: ("s1", "resume"))
     monkeypatch.setattr(cli_main, "get_session_history", lambda _session_id: [])
     monkeypatch.setattr(cli_main, "display_history", lambda _history: None)
@@ -143,9 +143,9 @@ def test_models_command_is_not_treated_as_mode_toggle(
     prompts = iter(["\\models", "hello", "\\exit"])
     selected: list[object] = []
 
-    def select_model(model_name):
+    def select_model(model_name, _provider=None, **kw):
         selected.append(model_name)
-        return "model-a"
+        return ("model-a", None)
 
     monkeypatch.setattr(cli_main, "select_model", select_model)
     monkeypatch.setattr(cli_main, "ptk_prompt", lambda *args, **kwargs: next(prompts))

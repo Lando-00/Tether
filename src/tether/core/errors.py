@@ -138,6 +138,33 @@ class ConfigError(TetherError):
     """
 
 
+class UnknownProviderError(KeyError):
+    """``provider_id`` is not a key of ``Engine.providers`` and not a known
+    failed registry entry.
+
+    Maps to HTTP 422 at the chat router boundary (ADR-0021 contract §8).
+    Subclasses :class:`KeyError` so existing call sites that catch
+    ``KeyError`` for missing-provider conditions keep working.
+    """
+
+    def __init__(self, provider_id: str):
+        super().__init__(provider_id)
+        self.provider_id = provider_id
+
+
+class ProviderUnhealthyError(RuntimeError):
+    """``provider_id`` is a known registry entry but its construction or
+    warm-up failed; the engine cannot route requests to it.
+
+    Maps to HTTP 503 at the chat router boundary (ADR-0021 contract §8).
+    """
+
+    def __init__(self, provider_id: str, message: str):
+        super().__init__(f"Provider {provider_id!r} unhealthy: {message}")
+        self.provider_id = provider_id
+        self.message = message
+
+
 __all__ = [
     "TetherError",
     "FatalProviderError",
@@ -148,4 +175,6 @@ __all__ = [
     "ConnectorNotConfiguredError",
     "ConnectorAuthError",
     "ConfigError",
+    "UnknownProviderError",
+    "ProviderUnhealthyError",
 ]
