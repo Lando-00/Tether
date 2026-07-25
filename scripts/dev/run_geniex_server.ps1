@@ -16,7 +16,7 @@
     Path to the GenieX data directory containing downloaded models.
     Falls back to $env:GENIEX_DATA_DIR if not supplied.
 
-.PARAMETER Host
+.PARAMETER BindHost
     Listen address. Default: 127.0.0.1
 
 .PARAMETER Port
@@ -35,7 +35,7 @@
 
 .EXAMPLE
     .\run_geniex_server.ps1 -DataDir "$env:USERPROFILE\.geniex"
-    .\run_geniex_server.ps1 -DataDir (Join-Path $HOME ".geniex") -Port 18182 -Compute cpu
+    .\run_geniex_server.ps1 -DataDir (Join-Path $HOME ".geniex") -BindHost 127.0.0.1 -Port 18182 -Compute cpu
 #>
 [CmdletBinding()]
 param(
@@ -43,7 +43,7 @@ param(
     [string]$DataDir,
 
     [Parameter()]
-    [string]$Host = "127.0.0.1",
+    [string]$BindHost = "127.0.0.1",
 
     [Parameter()]
     [int]$Port = 18181,
@@ -93,7 +93,7 @@ Ensure it is installed and on PATH, or pass -GenieXPath <full-path>.
 Write-Host "GenieX server (foreground)" -ForegroundColor Cyan
 Write-Host "  Executable : $($geniexCmd.Source)"
 Write-Host "  DataDir    : $DataDir"
-Write-Host "  Listen     : http://${Host}:${Port}"
+Write-Host "  Listen     : http://${BindHost}:${Port}"
 Write-Host "  Compute    : $Compute"
 Write-Host "  KeepAlive  : $KeepAlive"
 Write-Host ""
@@ -108,7 +108,7 @@ try {
     $env:GENIEX_DATA_DIR = $DataDir
 
     & $GenieXPath serve `
-        --host $Host `
+        --host $BindHost `
         --port $Port `
         --compute $Compute `
         --keep-alive $KeepAlive

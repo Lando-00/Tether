@@ -1,6 +1,6 @@
 # GenieX External Provider — Operator Runbook
 
-> **Status**: Implemented as an opt-in provider; live hardware validation is separate.
+> **Status**: Implemented and live-hardware validated as an opt-in provider.
 > MLC remains the default GPU provider. GenieX is opt-in via configuration.
 
 ---
@@ -84,7 +84,7 @@ connection-refused error (`httpx.ConnectError`). The provider should:
 Launch manually using the dev helper:
 
 ```powershell
-.\scripts\dev\run_geniex_server.ps1 -DataDir $env:GENIEX_DATA_DIR
+.\scripts\dev\run_geniex_server.ps1 -DataDir $env:GENIEX_DATA_DIR -BindHost 127.0.0.1
 ```
 
 Or directly:
@@ -162,6 +162,10 @@ Tests verify:
 - Mid-stream generator closure
 - Marker-only prompt generation smoke coverage
 - Provider metadata and lifecycle
+
+The 2026-07-25 live validation passed all 16 hardware tests. It also confirmed
+the marker path executed exactly once, unavailable-provider routing degraded to
+HTTP 503, and the operator-owned validation server process was stopped.
 
 Mocked unit/integration tests separately verify exact request fields, SSE
 framing, transport errors, degraded startup, and unavailable-provider 503
