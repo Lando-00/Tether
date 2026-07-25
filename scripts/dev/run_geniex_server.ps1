@@ -26,9 +26,9 @@
     Compute backend. Default: npu
     Valid values: npu, cpu
 
-.PARAMETER KeepAlive
-    Keep-alive duration string (e.g. "5m", "0" to disable).
-    Default: 5m
+.PARAMETER KeepAliveSeconds
+    Keep-alive duration in seconds. Use 0 to disable.
+    Default: 300
 
 .PARAMETER GenieXPath
     Path to the geniex executable. Default: "geniex" (assumes on PATH).
@@ -53,7 +53,8 @@ param(
     [string]$Compute = "npu",
 
     [Parameter()]
-    [string]$KeepAlive = "5m",
+    [ValidateRange(0, [int]::MaxValue)]
+    [int]$KeepAliveSeconds = 300,
 
     [Parameter()]
     [string]$GenieXPath = "geniex"
@@ -95,7 +96,7 @@ Write-Host "  Executable : $($geniexCmd.Source)"
 Write-Host "  DataDir    : $DataDir"
 Write-Host "  Listen     : http://${BindHost}:${Port}"
 Write-Host "  Compute    : $Compute"
-Write-Host "  KeepAlive  : $KeepAlive"
+Write-Host "  KeepAlive  : $KeepAliveSeconds seconds"
 Write-Host ""
 Write-Host "Press Ctrl+C to stop." -ForegroundColor Yellow
 Write-Host ""
@@ -108,10 +109,9 @@ try {
     $env:GENIEX_DATA_DIR = $DataDir
 
     & $GenieXPath serve `
-        --host $BindHost `
-        --port $Port `
+        --host "${BindHost}:$Port" `
         --compute $Compute `
-        --keep-alive $KeepAlive
+        --keepalive $KeepAliveSeconds
 }
 finally {
     $env:GENIEX_DATA_DIR = $originalDataDir

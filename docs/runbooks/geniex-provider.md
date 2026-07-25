@@ -91,7 +91,7 @@ Or directly:
 
 ```powershell
 $env:GENIEX_DATA_DIR = "<your-data-directory>"
-geniex serve --host 127.0.0.1 --port 18181 --compute npu --keep-alive 5m
+geniex serve --host 127.0.0.1:18181 --compute npu --keepalive 300
 ```
 
 Verify health:
