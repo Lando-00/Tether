@@ -7,14 +7,14 @@ invalid or malicious values never reach the orchestrator or provider.
 Bounds (per acceptance criteria A2):
   - prompt: min_length=1, max_length=32768
   - session_id: pattern=^[A-Za-z0-9_-]{1,128}$
-  - model_name: pattern=^[A-Za-z0-9._-]{1,128}$ (no slashes/backslashes/colons)
+  - model_name: safe local names plus one ``org/repo`` namespace and optional
+    ``:quant`` suffix; traversal/path syntax remains rejected.
 """
 
 import pytest
 from pydantic import ValidationError
 
 from tether.app.http.routers.chat import StreamRequest
-
 
 # ---------------------------------------------------------------------------
 # Direct Pydantic validation (no HTTP layer needed for most checks)
@@ -98,13 +98,18 @@ def test_session_id_valid_accepted(good_session_id):
 
 @pytest.mark.parametrize("bad_model_name", [
     "",                        # empty
-    "a" * 129,                 # too long
+    "a" * 257,                 # too long
     "../etc/passwd",           # path traversal
     "..\\windows",             # backslash traversal
     "/etc/passwd",             # absolute path
     "has space",               # space
-    "has:colon",               # colon
-    "has/slash",               # forward slash
+    "has\\backslash",          # backslash
+    "org//repo",               # empty namespace segment
+    "org/repo/extra",          # more than one namespace separator
+    "org/../repo",             # traversal segment
+    ":quant",                  # missing model segment
+    "model:",                  # missing quant segment
+    "model::quant",            # duplicate quant separator
     "has@at",                  # @
     "has!excl",                # !
 ])
@@ -120,6 +125,9 @@ def test_model_name_invalid_rejected(bad_model_name):
     "my-model",
     "model123",
     "a" * 128,
+    "unsloth/Qwen3-1.7B-GGUF:Q4_0",
+    "org/repo",
+    "model:Q4_0",
 ])
 def test_model_name_valid_accepted(good_model_name):
     """Valid model names must pass."""
@@ -133,6 +141,7 @@ def test_model_name_valid_accepted(good_model_name):
 def _make_test_app():
     """Build a minimal FastAPI app that mounts only the chat router."""
     from fastapi import FastAPI
+
     from tether.app.http.routers.chat import router as chat_router
 
     app = FastAPI()
@@ -204,4 +213,18 @@ def test_http_valid_request_reaches_handler():
         "model_name": "Qwen3-4B-q4f16_0-MLC",
     })
     # 200 means the handler was reached (our stub returns 200)
+    assert resp.status_code == 200
+
+
+def test_http_namespaced_quantized_model_reaches_handler():
+    """A GenieX org/repo:quant identifier is safe and reaches the handler."""
+    from fastapi.testclient import TestClient
+
+    app = _make_test_app()
+    client = TestClient(app)
+    resp = client.post("/api/v1/chat/stream", json={
+        "session_id": "session-123",
+        "prompt": "Hello",
+        "model_name": "unsloth/Qwen3-1.7B-GGUF:Q4_0",
+    })
     assert resp.status_code == 200

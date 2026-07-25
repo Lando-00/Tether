@@ -283,6 +283,27 @@ def test_explicit_provider_id_routes_correctly():
         assert engine.captured_chat_provider_ids == ["b"]
 
 
+def test_namespaced_quantized_model_id_routes_correctly():
+    """A GenieX ``org/repo:quant`` model ID passes HTTP validation unchanged."""
+    provider_a = _SimpleProvider("a", _make_reasoning_infos("a", supports=True))
+    provider_b = _SimpleProvider("b", _make_reasoning_infos("b", supports=False))
+    engine = _FakeEngine(
+        {"a": provider_a, "geniex": provider_b},
+        default_pid="a",
+    )
+    with TestClient(_build_app(engine)) as client:
+        resp = client.post(
+            "/api/v1/chat/stream",
+            json=_chat_body(
+                model_name="unsloth/Qwen3-1.7B-GGUF:Q4_0",
+                provider_id="geniex",
+            ),
+        )
+        assert resp.status_code == 200
+        _ = resp.text
+        assert engine.captured_chat_provider_ids == ["geniex"]
+
+
 def test_unknown_provider_id_returns_422():
     """provider_id not in engine.providers and not in failures → 422 before streaming."""
     provider_a = _SimpleProvider("a", _make_reasoning_infos("a", supports=True))
@@ -355,4 +376,3 @@ def test_reasoning_effort_validated_against_chosen_provider():
         detail = resp_fail.json()["detail"]
         assert "does not support reasoning_effort" in detail
         assert "provider 'b'" in detail
-

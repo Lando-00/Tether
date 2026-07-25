@@ -1,10 +1,10 @@
 
+import asyncio
+import json
 import re
 from datetime import datetime, timezone
 from typing import Literal, Optional
 
-import asyncio
-import json
 from fastapi import APIRouter, HTTPException, Request
 from fastapi.responses import StreamingResponse
 from pydantic import BaseModel, Field
@@ -66,7 +66,12 @@ class StreamRequest(BaseModel):
     model_name: str = Field(
         ...,
         description="The name of the model to use for this generation.",
-        pattern=r"^[A-Za-z0-9._-]{1,128}$",
+        pattern=(
+            r"^[A-Za-z0-9][A-Za-z0-9._-]*"
+            r"(?:/[A-Za-z0-9][A-Za-z0-9._-]*)?"
+            r"(?::[A-Za-z0-9][A-Za-z0-9._-]*)?$"
+        ),
+        max_length=256,
     )
     mode: Literal["chat", "research"] = Field(
         default="chat",
