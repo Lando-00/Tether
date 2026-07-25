@@ -102,17 +102,10 @@ Write-Host "Press Ctrl+C to stop." -ForegroundColor Yellow
 Write-Host ""
 
 # --- Launch in foreground (blocking) ---
-# Use process-scoped env for GENIEX_DATA_DIR so we don't mutate the user's
-# persistent environment.  The original value is restored on script exit.
-$originalDataDir = $env:GENIEX_DATA_DIR
-try {
-    $env:GENIEX_DATA_DIR = $DataDir
-
-    & $GenieXPath serve `
-        --host "${BindHost}:$Port" `
-        --compute $Compute `
-        --keepalive $KeepAliveSeconds
-}
-finally {
-    $env:GENIEX_DATA_DIR = $originalDataDir
-}
+# GenieX uses the global --data-dir flag (or GENIEX_DATADIR), not this helper's
+# optional GENIEX_DATA_DIR convenience variable. Pass the path explicitly so
+# the server sees the models selected above without mutating any environment.
+& $GenieXPath --skip-update --data-dir $DataDir serve `
+    --host "${BindHost}:$Port" `
+    --compute $Compute `
+    --keepalive $KeepAliveSeconds
