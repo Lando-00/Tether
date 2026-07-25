@@ -112,8 +112,8 @@ class GenieXProvider(ModelProvider):
 
     @property
     def source(self) -> str:
-        """External HTTP inference server."""
-        return "remote"
+        """Locally hosted on-device inference server."""
+        return "local"
 
     def default_model(self) -> str | None:
         return self._model_id

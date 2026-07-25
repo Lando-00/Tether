@@ -324,8 +324,8 @@ class TestCapabilities:
         )
         assert provider.kind == "geniex"
 
-    def test_source_is_remote(self):
-        """GenieX is an external HTTP server — source must be 'remote'."""
+    def test_source_is_local(self):
+        """GenieX serves on-device NPU inference through a local HTTP endpoint."""
         transport = _make_transport()
         client = httpx.AsyncClient(transport=transport, base_url="http://test")
         provider = GenieXProvider(
@@ -333,7 +333,7 @@ class TestCapabilities:
             model_id="test-model",
             http_client=client,
         )
-        assert provider.source == "remote"
+        assert provider.source == "local"
 
     def test_capabilities_marker_only(self):
         """GenieX supports marker-based tool calling, NOT native."""
@@ -406,7 +406,7 @@ class TestCapabilities:
         assert isinstance(info, ModelDetails)
         assert info.id == "test-model"
         assert info.provider_kind == "geniex"
-        assert info.source == "remote"
+        assert info.source == "local"
         assert info.context_window == 4096
         assert info.supports_thinking is False
 

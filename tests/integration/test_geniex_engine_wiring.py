@@ -287,7 +287,7 @@ class TestModelDetails:
         assert len(geniex_infos) >= 1
         for info in geniex_infos:
             assert info.provider_kind == "geniex"
-            assert info.source == "remote"
+            assert info.source == "local"
             assert info.supports_thinking is False
 
 
@@ -361,7 +361,7 @@ class _FakeGenieXProvider(ModelProvider):
 
     @property
     def source(self) -> str:
-        return "remote"
+        return "local"
 
     @property
     def capabilities(self) -> ProviderCapabilities:
@@ -398,7 +398,7 @@ class _FakeGenieXProvider(ModelProvider):
                 id="qwen3-npu",
                 provider_id="_unwrapped_",
                 provider_kind="geniex",
-                source="remote",
+                source="local",
                 context_window=4096,
                 supports_thinking=False,
                 supports_reasoning_effort=False,

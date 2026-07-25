@@ -71,7 +71,7 @@ class TestLiveHealth:
     def test_kind_and_source(self, provider):
         """Provider reports correct kind and source."""
         assert provider.kind == "geniex"
-        assert provider.source == "remote"
+        assert provider.source == "local"
 
 
 class TestLiveStreaming:
