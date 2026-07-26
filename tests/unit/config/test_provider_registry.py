@@ -85,6 +85,22 @@ def test_default_not_in_registry_raises():
         )
 
 
+@pytest.mark.parametrize(
+    "provider_id",
+    ["contains/slash", "contains space", "", "x" * 65, "_unwrapped_"],
+)
+def test_registry_rejects_non_requestable_provider_ids(provider_id: str):
+    with pytest.raises(ConfigError, match="invalid provider id"):
+        ProvidersSettings.model_validate(
+            {
+                "model_registry": {provider_id: _SPEC_A},
+                "default_model_provider": provider_id,
+                "parser": _PARSER,
+                "session_store": _STORE,
+            }
+        )
+
+
 def test_legacy_load_warning_message_mentions_adr():
     with pytest.warns(DeprecationWarning, match="ADR-0021"):
         ProvidersSettings.model_validate(

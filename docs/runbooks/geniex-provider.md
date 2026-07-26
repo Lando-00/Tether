@@ -132,6 +132,20 @@ The provider always sends top-level `enable_think: false` and never sends
 native `tools`, `tool_choice`, or `functions` fields. These are provider
 contract guarantees, not configuration options.
 
+### Selecting GenieX from the CLI
+
+Choose the provider explicitly, then provide a model that it advertises:
+
+```powershell
+tether-cli --provider geniex --model "unsloth/Qwen3-1.7B-GGUF:Q4_0"
+```
+
+Use `\providers` to inspect provider health and `\models` to choose a model
+within the current provider. Tether rejects a model that belongs to another
+provider rather than silently switching backends. API callers may omit
+`provider_id` only when exactly one healthy provider advertises the model;
+duplicate model IDs require an explicit provider selection.
+
 Environment variables used by the helper and live tests:
 
 | Variable | Purpose | Default |

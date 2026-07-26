@@ -136,6 +136,22 @@ class _HealthyProvider(ModelProvider):
         return 4096
 
 
+class _ProviderAwareErrorWatchdog:
+    """Reports a hardware error for one provider without affecting another."""
+
+    async def health_summary(self) -> Dict[str, Any]:
+        return {
+            "providers": [
+                {
+                    "provider_id": "bad-hardware",
+                    "status": "error",
+                    "details": {"reason": "synthetic driver error"},
+                }
+            ],
+            "overall": "error",
+        }
+
+
 def _build_app(
     providers: Dict[str, ModelProvider],
     default_pid: str,
@@ -206,6 +222,23 @@ def test_readyz_ready_true_with_one_provider_down():
     app = _build_app(providers, default_pid="good", failures={"dead": "boom"})
     body = TestClient(app).get("/api/v1/readyz").json()
     assert body["ready"] is True
+
+
+def test_readyz_isolates_hardware_failure_to_its_provider():
+    providers = {
+        "good": _HealthyProvider(),
+        "bad-hardware": _HealthyProvider(),
+    }
+    app = _build_app(providers, default_pid="good", failures={})
+    app.state.gen_svc.hw_watchdog = _ProviderAwareErrorWatchdog()
+
+    body = TestClient(app).get("/api/v1/readyz").json()
+
+    assert body["ready"] is True
+    assert body["provider"] is True
+    assert body["providers"]["good"]["healthy"] is True
+    assert body["providers"]["bad-hardware"]["healthy"] is False
+    assert body["providers"]["bad-hardware"]["error"] == "hardware health: error"
 
 
 def test_readyz_ready_false_when_all_providers_down():

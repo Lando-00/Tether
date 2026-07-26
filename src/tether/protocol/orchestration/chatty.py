@@ -204,6 +204,7 @@ class ChattyAgentOrchestrator(OrchestratorABC):
         config: OrchestratorConfig,
         tool_runner: ToolRunner,
         hw_watchdog: Optional["HardwareWatchdog"] = None,
+        provider_id: Optional[str] = None,
         confirm_intent_classifier: "ConfirmIntentClassifier | None" = None,
         audit_store_args: bool = False,
     ):
@@ -215,6 +216,7 @@ class ChattyAgentOrchestrator(OrchestratorABC):
         self.config = config
         self.tool_runner = tool_runner
         self.hw_watchdog = hw_watchdog
+        self.provider_id = provider_id
         # Phase 7 step 74: when True, raw args_json is stored in tool_audit
         # alongside the SHA-256 hash. Default False (privacy-preserving).
         # Synthesis §3.6 + B5 step 7.
@@ -387,7 +389,9 @@ class ChattyAgentOrchestrator(OrchestratorABC):
                         ):
                             try:
                                 recovered = await self.hw_watchdog.reset_after(
-                                    stream_error, model_name=model_name
+                                    stream_error,
+                                    model_name=model_name,
+                                    provider_id=self.provider_id,
                                 )
                             except Exception as wd_err:
                                 logger.exception(

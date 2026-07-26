@@ -1,6 +1,7 @@
 """
 A modern CLI for interacting with the Tether service.
 """
+
 import json
 
 # --- Configuration ---
@@ -123,7 +124,6 @@ def _mutating_headers(extra: Optional[dict] = None) -> dict:
     if token is not None and _CSRF_HEADER not in headers:
         headers[_CSRF_HEADER] = token
     return headers
-
 
 
 # --- Rich Console Initialization ---
@@ -325,6 +325,7 @@ def _print_connector_health(connector: str) -> None:
 
 # --- API Interaction Functions ---
 
+
 def get_available_models() -> list:
     """Fetches the list of available models from the service."""
     try:
@@ -411,6 +412,7 @@ def get_providers_table() -> Optional[Table]:
         )
     return table
 
+
 def get_sessions() -> list:
     """Fetches the list of active sessions."""
     try:
@@ -419,6 +421,7 @@ def get_sessions() -> list:
         return response.json()
     except requests.RequestException:
         return []
+
 
 def create_session() -> Optional[str]:
     """Creates a new session and returns its ID."""
@@ -432,6 +435,7 @@ def create_session() -> Optional[str]:
         console.print(f"[bold red]Error:[/bold red] Could not create session: {e}")
         return None
 
+
 def delete_session(session_id: str):
     """Deletes a specific session."""
     try:
@@ -440,6 +444,7 @@ def delete_session(session_id: str):
         console.print(f"✅ {response.json().get('detail', 'Session deleted.')}")
     except requests.RequestException as e:
         console.print(f"[bold red]Error deleting session {session_id}:[/bold red] {e}")
+
 
 def delete_all_sessions():
     """Deletes all sessions on the server."""
@@ -450,6 +455,7 @@ def delete_all_sessions():
     except requests.RequestException as e:
         console.print(f"[bold red]Error deleting all sessions:[/bold red] {e}")
 
+
 def get_session_history(session_id: str) -> list:
     """Fetches the message history for a given session."""
     try:
@@ -459,6 +465,7 @@ def get_session_history(session_id: str) -> list:
     except requests.RequestException as e:
         console.print(f"[bold red]Error fetching history for session {session_id}:[/bold red] {e}")
         return []
+
 
 def unload_all_models():
     """Calls the endpoint to unload all models from the cache."""
@@ -544,10 +551,10 @@ def manage_sessions() -> tuple[Optional[str], str]:
     if sessions:
         table.add_section()
         for i, s in enumerate(sessions):
-            session_id = s.get('session_id', 'N/A')
-            created_at = s.get('created_at', 'N/A')
-            table.add_row(str(i+1), f"Resume session from {created_at} ([yellow]{session_id[:8]}...[/yellow])")
-            choices[str(i+1)] = f"Resume session {session_id}"
+            session_id = s.get("session_id", "N/A")
+            created_at = s.get("created_at", "N/A")
+            table.add_row(str(i + 1), f"Resume session from {created_at} ([yellow]{session_id[:8]}...[/yellow])")
+            choices[str(i + 1)] = f"Resume session {session_id}"
         table.add_section()
         table.add_row("d", "Delete a session")
         table.add_row("da", "Delete ALL sessions")
@@ -577,9 +584,9 @@ def manage_sessions() -> tuple[Optional[str], str]:
         confirm = Prompt.ask(
             "[bold yellow]Are you sure you want to delete all sessions? (y/n)[/bold yellow]",
             choices=["y", "n"],
-            default="n"
+            default="n",
         )
-        if confirm.lower() == 'y':
+        if confirm.lower() == "y":
             delete_all_sessions()
         return None, "manage"
     elif action == "d":
@@ -591,11 +598,11 @@ def manage_sessions() -> tuple[Optional[str], str]:
             choices=[str(i + 1) for i in range(len(sessions))],
             show_choices=False,
         )
-        session_to_delete = sessions[del_choice - 1]['session_id']
+        session_to_delete = sessions[del_choice - 1]["session_id"]
         delete_session(session_to_delete)
         return None, "manage"
     elif action.isdigit() and sessions and 0 < int(action) <= len(sessions):
-        session_id = sessions[int(action) - 1]['session_id']
+        session_id = sessions[int(action) - 1]["session_id"]
         return session_id, "resume"
     elif action == "q":
         return None, "quit"
@@ -611,6 +618,8 @@ def select_model(
     """Validate or interactively select a model; return ``(model_id, provider_id)``.
 
     When *model_name* is given:
+    - When *provider* is supplied, the model must be advertised by that
+      provider; no other provider may be selected implicitly.
     - Exactly one ``/models/details`` row matches → return its id and provider_id.
     - Multiple rows share the same id (ambiguous; multi-provider):
       - *provider* is supplied → filter to the matching row.
@@ -623,18 +632,19 @@ def select_model(
     details = get_available_model_details()
     if model_name and details:
         filtered = [d for d in details if d.get("id") == model_name]
+        if provider is not None:
+            selected = [detail for detail in filtered if detail.get("provider_id") == provider]
+            if len(selected) == 1:
+                return model_name, provider
+            console.print(
+                f"[bold red]Error:[/bold red] Model '{model_name}' is not available on provider '{provider}'."
+            )
+            raise typer.Exit(1)
         if len(filtered) == 1:
             pid = filtered[0].get("provider_id")
             if pid == _PROVIDER_ID_SENTINEL:
                 pid = None
             return model_name, pid
-        if len(filtered) > 1 and provider is not None:
-            for d in filtered:
-                if d.get("provider_id") == provider:
-                    pid = d.get("provider_id")
-                    if pid == _PROVIDER_ID_SENTINEL:
-                        pid = None
-                    return model_name, pid
         if len(filtered) > 1:
             console.print(
                 f"[yellow]Model '{model_name}' is ambiguous — available on "
@@ -642,6 +652,13 @@ def select_model(
             )
             return _interactive_model_select(details=filtered)
     if model_name:
+        if provider is not None:
+            console.print(
+                "[bold red]Error:[/bold red] Cannot validate "
+                f"model '{model_name}' for provider '{provider}' because "
+                "/models/details is unavailable."
+            )
+            raise typer.Exit(1)
         models = get_available_models()
         if model_name in models:
             return model_name, None
@@ -650,6 +667,11 @@ def select_model(
 
     # Interactive selection over all models
     if details:
+        if provider is not None:
+            details = [detail for detail in details if detail.get("provider_id") == provider]
+            if not details:
+                console.print(f"[bold red]Error:[/bold red] Provider '{provider}' has no available models.")
+                raise typer.Exit(1)
         return _interactive_model_select(details=details)
 
     console.print("🔍 Searching for available models...")
@@ -661,14 +683,11 @@ def select_model(
 
     console.print("\nAvailable Models:")
     for i, name in enumerate(available_models):
-        console.print(f"  [bold cyan][{i+1}][/bold cyan] {name}")
+        console.print(f"  [bold cyan][{i + 1}][/bold cyan] {name}")
 
     while True:
         try:
-            choice_str = Prompt.ask(
-                "\nPlease enter the number of the model you want to use",
-                default="1"
-            )
+            choice_str = Prompt.ask("\nPlease enter the number of the model you want to use", default="1")
             if not choice_str.strip():
                 choice_str = "1"
             choice = int(choice_str)
@@ -676,23 +695,20 @@ def select_model(
                 return available_models[choice - 1], None
             else:
                 console.print(
-                    "[red]Invalid choice. Please enter a number between "
-                    f"1 and {len(available_models)}.[/red]"
+                    f"[red]Invalid choice. Please enter a number between 1 and {len(available_models)}.[/red]"
                 )
         except ValueError:
             console.print("[red]Invalid input. Please enter a number.[/red]")
 
 
 def _interactive_model_select(
-    *, details: list[dict],
+    *,
+    details: list[dict],
 ) -> tuple[str, Optional[str]]:
     """Render a numbered model selector from /models/details rows."""
     _, default_pid = get_provider_health()
 
-    show_provider_col = any(
-        r.get("provider_id") and r.get("provider_id") != _PROVIDER_ID_SENTINEL
-        for r in details
-    )
+    show_provider_col = any(r.get("provider_id") and r.get("provider_id") != _PROVIDER_ID_SENTINEL for r in details)
 
     table = Table(title="Models", border_style="cyan")
     table.add_column("#", style="bold cyan", justify="right")
@@ -702,9 +718,7 @@ def _interactive_model_select(
     table.add_column("Source", style="dim")
     table.add_column("Context", justify="right")
 
-    sorted_details = sorted(
-        details, key=lambda d: (d.get("provider_id", ""), d.get("id", ""))
-    )
+    sorted_details = sorted(details, key=lambda d: (d.get("provider_id", ""), d.get("id", "")))
     for i, info in enumerate(sorted_details, 1):
         pid = info.get("provider_id", "")
         is_default = info.get("is_default", False)
@@ -777,9 +791,10 @@ def cli(
         "--provider",
         "-P",
         help=(
-            "Provider id to route the request to. When omitted, the server "
-            "uses its configured default. Use `\\providers` in the REPL to "
-            "see available ids and health."
+            "Provider id to route the request to. The selected model must "
+            "belong to this provider. Omit only to use the server's unique "
+            "model-name routing. Use `\\providers` in the REPL to see ids "
+            "and health."
         ),
     ),
 ):
@@ -986,9 +1001,10 @@ def main(
         "--provider",
         "-P",
         help=(
-            "Provider id to route the request to. When omitted, the server "
-            "uses its configured default. Use `\\providers` in the REPL to "
-            "see available ids and health."
+            "Provider id to route the request to. The selected model must "
+            "belong to this provider. Omit only to use the server's unique "
+            "model-name routing. Use `\\providers` in the REPL to see ids "
+            "and health."
         ),
     ),
 ):
@@ -1001,14 +1017,18 @@ def main(
     global API_BASE_URL
     API_BASE_URL = api_url
 
-    console.print(Panel.fit(
-        "[bold blue]Welcome to the Tether CLI![/bold blue]\n"
-        f"[dim]API: {API_BASE_URL}[/dim]",
-        style="bold blue"
-    ))
+    console.print(
+        Panel.fit(
+            f"[bold blue]Welcome to the Tether CLI![/bold blue]\n[dim]API: {API_BASE_URL}[/dim]", style="bold blue"
+        )
+    )
 
     model_name_arg = model_name
     model_name, provider_id = select_model(model_name_arg, provider)
+    # Keep the user's command-line choice distinct from the provider inferred
+    # for a uniquely owned model. The latter routes the current request, but
+    # must not prevent `\models` from offering other providers later.
+    provider_constraint = provider
 
     # --- Session Management Loop ---
     session_id = None
@@ -1030,57 +1050,39 @@ def main(
                 console.print("[red]Error: Tried to resume a session without an ID.[/red]")
                 continue
         elif action == "manage":
-            continue # Loop back to the management screen
+            continue  # Loop back to the management screen
         elif action == "quit":
             raise typer.Exit()
 
     current_mode = mode
-    console.print(
-        f"🤖 Starting chat with [bold green]{model_name}[/bold green] "
-        f"in {_mode_label(current_mode)} mode..."
-    )
+    console.print(f"🤖 Starting chat with [bold green]{model_name}[/bold green] in {_mode_label(current_mode)} mode...")
 
     info_table = Table.grid(padding=1, expand=True)
     info_table.add_column()
     info_table.add_column(justify="right")
     info_table.add_row(
         f"Debug mode: {'[bold green]enabled[/bold green]' if debug else '[dim]disabled[/dim]'}",
-        "Type [bold cyan]\\menu[/bold cyan] for session management"
+        "Type [bold cyan]\\menu[/bold cyan] for session management",
     )
     info_table.add_row(
         f"Show thinking: {'[bold green]enabled[/bold green]' if show_thinking else '[dim]disabled[/dim]'}",
-        "Type [bold cyan]\\thinking[/bold cyan] to toggle thinking"
+        "Type [bold cyan]\\thinking[/bold cyan] to toggle thinking",
     )
     info_table.add_row(
-        f"Mode: {_mode_label(current_mode)}",
-        "Type [bold cyan]\\mode[/bold cyan] to switch chat/research"
+        f"Mode: {_mode_label(current_mode)}", "Type [bold cyan]\\mode[/bold cyan] to switch chat/research"
     )
+    info_table.add_row("", "Type [bold cyan]\\tools[/bold cyan] to list available tools")
+    info_table.add_row("", "Type [bold cyan]\\models[/bold cyan] to switch models mid-chat")
     info_table.add_row(
-        "",
-        "Type [bold cyan]\\tools[/bold cyan] to list available tools"
+        f"Provider: {provider_id or 'default'}", "Type [bold cyan]\\providers[/bold cyan] to list providers"
     )
-    info_table.add_row(
-        "",
-        "Type [bold cyan]\\models[/bold cyan] to switch models mid-chat"
-    )
-    info_table.add_row(
-        f"Provider: {provider_id or 'default'}",
-        "Type [bold cyan]\\providers[/bold cyan] to list providers"
-    )
-    info_table.add_row(
-        "",
-        "Type [bold cyan]\\exit[/bold cyan] or [bold cyan]\\quit[/bold cyan] to end"
-    )
+    info_table.add_row("", "Type [bold cyan]\\exit[/bold cyan] or [bold cyan]\\quit[/bold cyan] to end")
     console.print(Panel(info_table, title="Chat Info", border_style="dim"))
-
 
     # --- Main chat loop ---
     while True:
         try:
-            prompt_message = [
-                ('bold cyan', 'You '),
-                ('', '(Alt+Enter for newline)\n')
-            ]
+            prompt_message = [("bold cyan", "You "), ("", "(Alt+Enter for newline)\n")]
             user_prompt = ptk_prompt(FormattedText(prompt_message), multiline=True)
 
             stripped_prompt = user_prompt.strip().lower()
@@ -1096,15 +1098,15 @@ def main(
                     show_thinking=show_thinking,
                     mode=current_mode,
                     reasoning_effort=reasoning_effort,
-                    provider=provider_id,
+                    provider=provider_constraint,
                 )
-                break # Exit current chat loop to prevent it from continuing after menu
+                break  # Exit current chat loop to prevent it from continuing after menu
             if stripped_prompt == "\\thinking":
                 show_thinking = not show_thinking
                 thinking_status = "[bold green]enabled[/bold green]" if show_thinking else "[dim]disabled[/dim]"
                 console.print(f"Show thinking is now {thinking_status}.")
                 console.rule()
-                continue # Go to next prompt
+                continue  # Go to next prompt
             if stripped_prompt in {"\\chat", "\\research", "\\mode"} or stripped_prompt.startswith("\\mode "):
                 try:
                     if stripped_prompt == "\\chat":
@@ -1152,11 +1154,10 @@ def main(
                 console.rule()
                 continue
             if stripped_prompt == "\\models":
-                new_model, new_pid = select_model(None)
+                new_model, new_pid = select_model(None, provider=provider_constraint)
                 if new_model and (new_model != model_name or new_pid != provider_id):
                     console.print(
-                        f"🔄 Switching from [yellow]{model_name}[/yellow] "
-                        f"to [bold green]{new_model}[/bold green]"
+                        f"🔄 Switching from [yellow]{model_name}[/yellow] to [bold green]{new_model}[/bold green]"
                     )
                     model_name = new_model
                     provider_id = new_pid
@@ -1168,8 +1169,7 @@ def main(
                 table = get_providers_table()
                 if table is None:
                     console.print(
-                        "[yellow]Server does not expose multi-provider metadata; "
-                        "single-provider mode.[/yellow]"
+                        "[yellow]Server does not expose multi-provider metadata; single-provider mode.[/yellow]"
                     )
                 else:
                     console.print(table)
@@ -1189,9 +1189,11 @@ def main(
                     mode=current_mode,
                     provider_id=provider_id,
                 ),
-                headers=_mutating_headers({
-                    "Accept": "application/x-ndjson; version=1.0",
-                }),
+                headers=_mutating_headers(
+                    {
+                        "Accept": "application/x-ndjson; version=1.0",
+                    }
+                ),
                 stream=True,
             ) as response:
                 response.raise_for_status()
@@ -1277,8 +1279,7 @@ def main(
                                 output_str = str(result)
                                 console.print(
                                     Panel(
-                                        f"Tool [bold yellow]{tool_name}[/bold yellow] "
-                                        f"output: {output_str[:150]}...",
+                                        f"Tool [bold yellow]{tool_name}[/bold yellow] output: {output_str[:150]}...",
                                         title="Tool Output",
                                         expand=False,
                                         border_style="dim yellow",
@@ -1292,8 +1293,7 @@ def main(
                                     console.print()
                                 console.print(
                                     Panel(
-                                        f"Tool [bold red]{tool_name}[/bold red] "
-                                        f"error{kind_str}: {error}",
+                                        f"Tool [bold red]{tool_name}[/bold red] error{kind_str}: {error}",
                                         title="Tool Error",
                                         border_style="red",
                                     )
@@ -1322,10 +1322,7 @@ def main(
                         elif evt_type == "notebook_phase_progress":
                             phase = event.get("phase", "?")
                             elapsed_ms = int(event.get("elapsed_ms") or 0)
-                            console.print(
-                                f"[dim]Research: {phase} still running "
-                                f"({elapsed_ms / 1000:.0f}s)...[/dim]"
-                            )
+                            console.print(f"[dim]Research: {phase} still running ({elapsed_ms / 1000:.0f}s)...[/dim]")
 
                         elif evt_type == "notebook_fact_added":
                             if debug:
@@ -1346,9 +1343,7 @@ def main(
                             if debug:
                                 query = str(event.get("query", ""))
                                 depth = event.get("queue_depth", "?")
-                                console.print(
-                                    f"[dim]Research query queued ({depth}): {query}[/dim]"
-                                )
+                                console.print(f"[dim]Research query queued ({depth}): {query}[/dim]")
 
                         elif evt_type == "notebook_limit_reached":
                             kind = event.get("limit_kind", "limit")

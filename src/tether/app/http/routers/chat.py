@@ -1,4 +1,3 @@
-
 import asyncio
 import json
 import re
@@ -9,7 +8,14 @@ from fastapi import APIRouter, HTTPException, Request
 from fastapi.responses import StreamingResponse
 from pydantic import BaseModel, Field
 
+from tether.core.errors import (
+    AmbiguousModelError,
+    ProviderUnhealthyError,
+    UnknownModelError,
+    UnknownProviderError,
+)
 from tether.core.logging import logger
+from tether.core.provider_ids import PROVIDER_ID_PATTERN
 
 # Compile once at module level for performance.
 # (?![\w.]) is a negative lookahead: next char must not be a word character
@@ -49,7 +55,9 @@ def _has_version_0(accept_lower: str) -> bool:
     """
     return bool(_VERSION_0_RE.search(accept_lower))
 
+
 router = APIRouter(prefix="/chat", tags=["chat"])
+
 
 class StreamRequest(BaseModel):
     session_id: str = Field(
@@ -101,11 +109,12 @@ class StreamRequest(BaseModel):
     provider_id: Optional[str] = Field(
         default=None,
         description=(
-            "Optional provider routing key. When omitted, the server uses "
-            "providers.default_model_provider. Unknown values return 422; "
-            "known-but-unhealthy values return 503."
+            "Optional explicit provider routing key. When omitted, the "
+            "server routes only if exactly one healthy provider advertises "
+            "the model. Unknown or ambiguous models return 422; a "
+            "known-but-unhealthy provider returns 503."
         ),
-        pattern=r"^[A-Za-z0-9._-]{1,64}$",
+        pattern=PROVIDER_ID_PATTERN,
     )
 
 
@@ -155,6 +164,69 @@ def _validate_reasoning_effort(
     return
 
 
+def _resolve_provider_id(
+    engine,
+    *,
+    model_name: str,
+    requested_provider_id: Optional[str],
+) -> Optional[str]:
+    """Resolve a request before streaming so route errors keep HTTP status."""
+    resolver = getattr(engine, "resolve_provider_id", None)
+    if callable(resolver):
+        try:
+            return resolver(model_name, provider_id=requested_provider_id)
+        except ProviderUnhealthyError as exc:
+            logger.error(
+                "/chat/stream provider unhealthy: provider_id=%s",
+                exc.provider_id,
+            )
+            raise HTTPException(
+                status_code=503,
+                detail=(
+                    f"Provider '{exc.provider_id}' is currently unavailable. "
+                    "Check the server log for details, or query "
+                    "/api/v1/readyz for the per-provider health map."
+                ),
+            ) from exc
+        except UnknownProviderError as exc:
+            raise HTTPException(
+                status_code=422,
+                detail=f"Unknown provider_id '{exc.provider_id}'.",
+            ) from exc
+        except UnknownModelError as exc:
+            suffix = f" on provider '{exc.provider_id}'" if exc.provider_id is not None else ""
+            raise HTTPException(
+                status_code=422,
+                detail=f"Model '{exc.model_name}' is not available{suffix}.",
+            ) from exc
+        except AmbiguousModelError as exc:
+            raise HTTPException(
+                status_code=422,
+                detail=(f"Model '{exc.model_name}' is available from multiple providers; specify provider_id."),
+            ) from exc
+
+    # Compatibility for older Engine implementations that predate the
+    # provider/model resolver. New Engines always take the branch above.
+    provider_id = requested_provider_id or getattr(engine, "default_provider_id", None)
+    providers = getattr(engine, "providers", None)
+    if provider_id is not None and providers is not None and provider_id not in providers:
+        failures = getattr(engine, "_provider_start_failures", {})
+        if provider_id in failures:
+            raise HTTPException(
+                status_code=503,
+                detail=(
+                    f"Provider '{provider_id}' is currently unavailable. "
+                    "Check the server log for details, or query "
+                    "/api/v1/readyz for the per-provider health map."
+                ),
+            )
+        raise HTTPException(
+            status_code=422,
+            detail=f"Unknown provider_id '{provider_id}'.",
+        )
+    return provider_id
+
+
 @router.post("/stream")
 async def stream(request: Request, body: StreamRequest):
     """Stream chat events. Content negotiation via Accept header:
@@ -185,11 +257,7 @@ async def stream(request: Request, body: StreamRequest):
     #   anything else (incl. application/x-ndjson;    -> NDJSON v2 (NEW DEFAULT)
     #       version=1.0 or no Accept header)
     use_sse = "text/event-stream" in accept_lower
-    use_ndjson_v0_legacy = (
-        not use_sse
-        and "application/x-ndjson" in accept_lower
-        and _has_version_0(accept_lower)
-    )
+    use_ndjson_v0_legacy = not use_sse and "application/x-ndjson" in accept_lower and _has_version_0(accept_lower)
 
     logger.info(
         f"/chat/stream called: session_id={body.session_id}, "
@@ -202,32 +270,11 @@ async def stream(request: Request, body: StreamRequest):
     engine = request.app.state.gen_svc
     headers = {"X-Tether-Protocol-Version": "1.0"}
 
-    # --- Provider routing (ADR-0021 Phase 2.B) ---
-    pid: Optional[str] = body.provider_id or getattr(engine, "default_provider_id", None)
-
-    _providers = getattr(engine, "providers", None)
-    if pid is not None and _providers is not None:
-        if pid not in _providers:
-            _failures = getattr(engine, "_provider_start_failures", {})
-            if pid in _failures:
-                logger.error(
-                    "/chat/stream provider unhealthy: "
-                    f"session_id={body.session_id}, provider_id={pid}, "
-                    f"failure={_failures[pid]}"
-                )
-                raise HTTPException(
-                    status_code=503,
-                    detail=(
-                        f"Provider '{pid}' is currently unavailable. "
-                        "Check the server log for details, or query "
-                        "/api/v1/readyz for the per-provider health map."
-                    ),
-                )
-            raise HTTPException(
-                status_code=422,
-                detail=f"Unknown provider_id '{pid}'.",
-            )
-
+    pid = _resolve_provider_id(
+        engine,
+        model_name=body.model_name,
+        requested_provider_id=body.provider_id,
+    )
     _provider_kwarg: dict = {"provider_id": pid} if pid is not None else {}
 
     # Validate reasoning_effort against chosen model's metadata BEFORE streaming.
@@ -242,12 +289,18 @@ async def stream(request: Request, body: StreamRequest):
         UnknownOrchestratorMode,
         resolve_orchestrator_class,
     )
+
     try:
         orchestrator_cls = resolve_orchestrator_class(
-            body.mode, getattr(engine, "_orchestrator_registry", {
-                "chat": "tether.protocol.orchestration.chatty.ChattyAgentOrchestrator",
-                "research": "tether.protocol.orchestration.notebook.NotebookOrchestrator",
-            })
+            body.mode,
+            getattr(
+                engine,
+                "_orchestrator_registry",
+                {
+                    "chat": "tether.protocol.orchestration.chatty.ChattyAgentOrchestrator",
+                    "research": "tether.protocol.orchestration.notebook.NotebookOrchestrator",
+                },
+            ),
         )
     except UnknownOrchestratorMode as exc:
         # Defensive: Pydantic Literal rejects unknowns at validation time,
@@ -271,6 +324,7 @@ async def stream(request: Request, body: StreamRequest):
         async def sse_generator():
             cancel_token = AsyncEventCancelToken()
             try:
+
                 async def cancellable_chat():
                     async for event in engine.chat(
                         session_id=body.session_id,
@@ -282,9 +336,7 @@ async def stream(request: Request, body: StreamRequest):
                         **_provider_kwarg,
                     ):
                         if await request.is_disconnected():
-                            logger.info(
-                                f"Client disconnected (SSE): session_id={body.session_id}"
-                            )
+                            logger.info(f"Client disconnected (SSE): session_id={body.session_id}")
                             cancel_token.set()
                             break
                         yield event
@@ -298,9 +350,7 @@ async def stream(request: Request, body: StreamRequest):
                     "message": f"Streaming error: {str(e)}",
                     "error_type": type(e).__name__,
                 }
-                yield (
-                    f"event: error\ndata: {json.dumps(error_payload)}\n\n"
-                ).encode("utf-8")
+                yield (f"event: error\ndata: {json.dumps(error_payload)}\n\n").encode("utf-8")
                 # Phase 5 followups F7: synthesize a terminal MessageStop
                 # frame so SSE consumers don't block on a missing terminal
                 # event after a fatal streaming exception.
@@ -308,9 +358,7 @@ async def stream(request: Request, body: StreamRequest):
                     "type": "message_stop",
                     "stop_reason": "error",
                 }
-                yield (
-                    f"event: message_stop\ndata: {json.dumps(stop_payload)}\n\n"
-                ).encode("utf-8")
+                yield (f"event: message_stop\ndata: {json.dumps(stop_payload)}\n\n").encode("utf-8")
 
         return StreamingResponse(
             sse_generator(),
@@ -328,7 +376,7 @@ async def stream(request: Request, body: StreamRequest):
             **headers,
             "Warning": (
                 '299 - "Tether NDJSON v0 vocabulary is deprecated; '
-                'use Accept: application/x-ndjson; version=1.0 (or omit '
+                "use Accept: application/x-ndjson; version=1.0 (or omit "
                 'the version parameter for the new v2 default)"'
             ),
         }
@@ -346,9 +394,7 @@ async def stream(request: Request, body: StreamRequest):
                     **_provider_kwarg,
                 ):
                     if await request.is_disconnected():
-                        logger.info(
-                            f"Client disconnected (NDJSON v0 legacy): session_id={body.session_id}"
-                        )
+                        logger.info(f"Client disconnected (NDJSON v0 legacy): session_id={body.session_id}")
                         cancel_event.set()
                         break
                     yield chunk
@@ -393,6 +439,7 @@ async def stream(request: Request, body: StreamRequest):
     async def ndjson_v2_generator():
         cancel_token = AsyncEventCancelToken()
         try:
+
             async def cancellable_chat():
                 async for event in engine.chat(
                     session_id=body.session_id,
@@ -404,9 +451,7 @@ async def stream(request: Request, body: StreamRequest):
                     **_provider_kwarg,
                 ):
                     if await request.is_disconnected():
-                        logger.info(
-                            f"Client disconnected (NDJSON v2): session_id={body.session_id}"
-                        )
+                        logger.info(f"Client disconnected (NDJSON v2): session_id={body.session_id}")
                         cancel_token.set()
                         break
                     yield event

@@ -1,8 +1,8 @@
-# ADR-0021 — Phase 2 contract stubs
+# ADR-0021 — Phase 2 contract stubs (historical)
 
-Operational reference for the multi-provider registry rollout. Phase 2
-sub-agents copy from this document; deviations require an ADR amendment.
-Companion to `0021-multi-provider-registry.md`.
+Historical operational reference for the multi-provider registry rollout.
+The reconciliation amendment below is authoritative where it differs from the
+original Phase-2 snippets. Companion to `0021-multi-provider-registry.md`.
 
 > **Invariants that bound every signature below**
 >
@@ -14,6 +14,32 @@ Companion to `0021-multi-provider-registry.md`.
 >   `_terminate_bounded` are frozen.
 > - StrictModel (`extra='forbid'`, frozen) applies to every Pydantic
 >   settings model touched below.
+
+## Reconciliation amendment (2026-07-26, authoritative)
+
+The original Phase-2 contract assumed a default-provider fallback and encoded
+provider IDs into duplicate `/models` values. Those rules conflict with
+namespaced GenieX IDs and can silently select the wrong backend. The following
+rules supersede the corresponding snippets below:
+
+1. `model_registry` keys must match `[A-Za-z0-9._-]{1,64}` and cannot use the
+   reserved `_unwrapped_` sentinel.
+2. A supplied `provider_id` is authoritative: it must be healthy and advertise
+   the requested raw model ID. Unknown provider/model pairs return 422; a known
+   unhealthy provider returns 503 before streaming.
+3. With no `provider_id`, the Engine selects only a uniquely advertising
+   healthy provider. Unknown and duplicate model names return 422; registry
+   declaration order and default-provider fallback are never routing policies.
+4. `default_model_provider` is immutable. Its legacy `engine.provider` shim
+   may point at a healthy provider for old callers, but it must not alter
+   request routing or hide a 503.
+5. `/models` returns de-duplicated raw model IDs. `/models/details` is the
+   canonical `(provider_id, id)` selection surface; provider IDs are never
+   embedded into model strings.
+6. Hardware watchdog health and recovery are provider-ID-aware. One provider's
+   hardware failure does not make another healthy provider unready, and an
+   unscoped fatal reset is refused for keyed provider mappings. Legacy raw-list
+   callers retain their historical fan-out recovery behavior.
 
 ## 1. Settings (`src/tether/config/settings.py`)
 
@@ -144,7 +170,9 @@ self.default_provider_id: str = default_provider_id
 self._provider_start_failures: Dict[str, str] = dict(provider_start_failures or {})
 # Back-compat shim for one cycle. Marked private to discourage new use;
 # legacy tests / callers reading `engine.provider` keep working.
-self.provider: ModelProvider = self.providers[self.default_provider_id]
+self.provider: ModelProvider = self.providers.get(
+    self.default_provider_id, next(iter(self.providers.values()))
+)
 ```
 
 `self.provider` MUST NOT be removed in this phase. It is the deprecation
@@ -205,28 +233,26 @@ async def stream(
 Resolution rule (both methods):
 
 ```python
-pid = provider_id or self.default_provider_id
-if pid not in self.providers:
-    if pid in self._provider_start_failures:
-        raise ProviderUnhealthyError(pid, self._provider_start_failures[pid])
-    raise UnknownProviderError(pid)
+pid = self.resolve_provider_id(model_name, provider_id=provider_id)
 provider = self.providers[pid]
 # Pass `provider=` (not `self.provider`) into the orchestrator construction.
 ```
 
-Both new exceptions live in `tether.core.errors`. The HTTP layer maps
-`UnknownProviderError → 422` and `ProviderUnhealthyError → 503`.
+`resolve_provider_id` validates an explicit provider/model pair. Without a
+provider ID it chooses only a uniquely advertising healthy provider; unknown
+and duplicate names raise typed 422-mapped errors. The HTTP layer maps
+`UnknownProviderError`, `UnknownModelError`, and `AmbiguousModelError` to 422,
+and `ProviderUnhealthyError` to 503.
 
 ### Model introspection
 
 ```python
 def list_models(self) -> List[str]:
-    """Merged union across HEALTHY providers.
+    """De-duplicated raw IDs across HEALTHY providers.
 
-    Rule: if the same model_name appears in two providers, both entries
-    are included, disambiguated as ``"<provider_id>/<model_name>"`` in the
-    legacy list. Non-duplicates remain bare model_names (back-compat).
-    This is the ONLY shape change to /api/v1/models — still list[str].
+    Provider IDs are never embedded in names because model IDs may contain
+    slashes. `/models/details` supplies the requestable `(provider_id, id)`
+    pair when a model occurs in multiple providers.
     """
 
 def list_model_info(self) -> List[ModelDetails]:
@@ -244,11 +270,8 @@ def list_model_info(self) -> List[ModelDetails]:
 def unload_model(self, model_name: str, *, provider_id: Optional[str] = None) -> bool:
     """Route to a specific provider.
 
-    Resolution:
-      - if provider_id is given, dispatch directly.
-      - else, dispatch to every healthy provider that lists model_name;
-        return True if ANY returned True. (Engine-level fan-out is
-        cheap because providers' unload_model is sync + idempotent.)
+    Resolve with the same provider/model resolver as chat. Duplicate names
+    require provider_id; unloading never fans out across providers.
     """
 ```
 
@@ -279,18 +302,11 @@ def from_settings(cls, settings: Settings, *, watchdog_mode=...) -> "Engine":
         )
 
     default_pid = settings.providers.default_model_provider
-    if default_pid not in providers:
-        # Default provider itself failed. Fall back to first healthy id
-        # in declaration order. Loud warning — operator must fix config.
-        original = default_pid
-        default_pid = next(iter(providers))
-        logger.warning(
-            "provider.default_unhealthy_fallback",
-            requested=original, fallback=default_pid,
-        )
+    # Preserve the configured default even if it is in `failures`.
+    # Routing an explicitly selected failed default returns 503.
 
     hw_watchdog = HardwareWatchdog(
-        list(providers.values()), mode=watchdog_mode,
+        providers, mode=watchdog_mode,
     )
 
     engine = cls(
@@ -304,14 +320,12 @@ def from_settings(cls, settings: Settings, *, watchdog_mode=...) -> "Engine":
 
 ## 3. HardwareWatchdog (`src/tether/runtime/hw_watchdog.py`)
 
-**Constructor: UNCHANGED.** `HardwareWatchdog(providers: List[Any], *,
-mode=..., shutdown_budget_sec=...)`. Internal `isinstance(p,
-HardwareLifecycle)` filter already does the right thing for a mixed list
-(MLC + Copilot + Dummy).
-
-`health_summary()`, `reset_after()`, `shutdown_all()`: unchanged. The
-daemon-thread GC invariant (`daemon_thread_call`, `_terminate_bounded`) is
-not touched by this phase.
+`HardwareWatchdog` accepts either a legacy list or an Engine
+`{provider_id: provider}` mapping. The Engine uses the mapping so
+`health_summary()` annotates hardware entries with `provider_id` and
+`reset_after(..., provider_id=...)` can reset only the provider that served
+the failed request. The daemon-thread GC invariant (`daemon_thread_call`,
+`_terminate_bounded`) remains untouched.
 
 Phase 2 regression test: with `providers=[CopilotProvider(), DummyProvider()]`
 (no HardwareLifecycle entries), `health_summary()` returns
@@ -331,9 +345,10 @@ class StreamRequest(BaseModel):
     provider_id: Optional[str] = Field(
         default=None,
         description=(
-            "Optional provider routing key. When omitted, the server uses "
-            "providers.default_model_provider. Unknown values return 422; "
-            "known-but-unhealthy values return 503."
+            "Optional explicit provider routing key. When omitted, the "
+            "server routes only if exactly one healthy provider advertises "
+            "the model. Unknown or ambiguous models return 422; a "
+            "known-but-unhealthy provider returns 503."
         ),
         # Same alphabet as model_name; provider ids are config-controlled
         # and never user-typed at runtime, but keep the validator tight.
@@ -344,11 +359,10 @@ class StreamRequest(BaseModel):
 ### `/api/v1/chat/stream` flow
 
 1. Pydantic validates field shape. Unknown shape → 422.
-2. Resolve provider_id: `pid = body.provider_id or engine.default_provider_id`.
-3. If `pid` not in `engine.providers`:
-   - if in `engine._provider_start_failures`: **503**, body
-     `{"detail": f"Provider '{pid}' unhealthy: {error}"}`.
-   - else: **422**, body `{"detail": f"Unknown provider_id '{pid}'."}`.
+2. Resolve the provider/model pair with
+   `engine.resolve_provider_id(body.model_name, provider_id=body.provider_id)`.
+   A selected failed provider returns **503**; unknown or ambiguous
+   provider/model selection returns **422**.
 4. If `body.reasoning_effort is not None`: run
    `_validate_reasoning_effort(engine, body.model_name, body.reasoning_effort,
    provider_id=pid)` — looks up `ModelDetails` filtered by `provider_id`. **422**
@@ -358,15 +372,10 @@ class StreamRequest(BaseModel):
 
 ### `/api/v1/models` (response shape unchanged: `list[str]`)
 
-Values: union across **healthy** providers. Duplicate model_names are
-disambiguated as `"<provider_id>/<model_name>"`; unique names remain bare.
-Order: providers iterated in declaration order from `model_registry`; within
-each provider, in the order returned by `provider.list_models()`.
-
-Rationale for prefix-on-collision (rather than precedence + de-dup):
-clients selecting a model by string never silently get routed to a
-different provider when configuration changes. The bare-when-unique rule
-keeps single-provider deployments visually identical to today.
+Values: de-duplicated raw IDs across **healthy** providers. Provider IDs are
+not encoded into model strings because namespaced IDs such as
+`org/repo:quant` already contain slashes. `/models/details` is the canonical
+selection surface for duplicates.
 
 ### `/api/v1/models/details` (response shape: `List[ModelDetails]`)
 
@@ -419,14 +428,14 @@ Ready computation:
 ```python
 ready = (
     store_ok
-    and (hw_health_overall != "error")
     and any(p["healthy"] for p in providers_block.values())
     and not connector_start_failures
 )
 ```
 
-The legacy top-level `provider: bool` continues to mean "≥1 provider is
-healthy"; supervisors keying on it keep working.
+Provider-ID-aware hardware errors mark only their own provider unhealthy
+before this computation. The legacy top-level `provider: bool` continues to
+mean "≥1 provider is healthy"; supervisors keying on it keep working.
 
 ## 5. `ModelDetails` extension (`src/tether/providers/types.py`)
 
@@ -465,9 +474,9 @@ Root callback and `chat` subcommand both gain:
 provider: Optional[str] = typer.Option(
     None, "--provider", "-P",
     help=(
-        "Provider id to route the request to. When omitted, the server "
-        "uses its configured default. Use `\\providers` in the REPL to "
-        "see available ids and health."
+        "Provider id to route the request to. The selected model must "
+        "belong to this provider. Omit only to use unique model-name "
+        "routing. Use `\\providers` in the REPL to see ids and health."
     ),
 )
 ```

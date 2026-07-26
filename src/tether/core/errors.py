@@ -165,6 +165,39 @@ class ProviderUnhealthyError(RuntimeError):
         self.message = message
 
 
+class UnknownModelError(ValueError):
+    """A requested model is not advertised by the selected provider.
+
+    Maps to HTTP 422 before streaming begins. ``provider_id`` is ``None`` when
+    the model was not advertised by any healthy provider.
+    """
+
+    def __init__(self, model_name: str, provider_id: str | None = None):
+        if provider_id is None:
+            message = f"Unknown model {model_name!r}."
+        else:
+            message = f"Model {model_name!r} is not available on provider {provider_id!r}."
+        super().__init__(message)
+        self.model_name = model_name
+        self.provider_id = provider_id
+
+
+class AmbiguousModelError(ValueError):
+    """A model name is advertised by more than one healthy provider.
+
+    The caller must choose one explicitly with ``provider_id`` rather than
+    relying on registry declaration order.
+    """
+
+    def __init__(self, model_name: str, provider_ids: list[str]):
+        super().__init__(
+            f"Model {model_name!r} is available on multiple providers: "
+            f"{sorted(provider_ids)!r}. Specify provider_id."
+        )
+        self.model_name = model_name
+        self.provider_ids = tuple(provider_ids)
+
+
 __all__ = [
     "TetherError",
     "FatalProviderError",
@@ -177,4 +210,6 @@ __all__ = [
     "ConfigError",
     "UnknownProviderError",
     "ProviderUnhealthyError",
+    "UnknownModelError",
+    "AmbiguousModelError",
 ]

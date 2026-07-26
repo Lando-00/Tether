@@ -52,6 +52,20 @@ def _operational_health_block() -> dict:
     }
 
 
+def _apply_hardware_health(
+    providers_block: Dict[str, Dict[str, Any]],
+    hardware_health: Dict[str, Any],
+) -> None:
+    """Overlay provider-ID-aware hardware failures onto Engine health state."""
+    for entry in hardware_health.get("providers", []):
+        provider_id = entry.get("provider_id")
+        if provider_id not in providers_block:
+            continue
+        if entry.get("status") == "error":
+            providers_block[provider_id]["healthy"] = False
+            providers_block[provider_id]["error"] = "hardware health: error"
+
+
 @router.get("/readyz")
 async def readyz(request: Request):
     """Readiness probe: verifies store and provider(s) are functional.
@@ -148,6 +162,22 @@ async def readyz(request: Request):
         if getattr(svc, "hw_watchdog", None) is not None:
             health = await svc.hw_watchdog.health_summary()
             body["hw_health"] = health
+            has_provider_ids = any(
+                entry.get("provider_id") is not None
+                for entry in health.get("providers", [])
+            )
+            if providers_block and has_provider_ids:
+                _apply_hardware_health(providers_block, health)
+                any_healthy_provider = any(
+                    provider.get("healthy")
+                    for provider in providers_block.values()
+                )
+                body["providers"] = providers_block
+                body["provider"] = any_healthy_provider
+                body["ready"] = (
+                    any_healthy_provider and not connector_start_failures
+                )
+                return body
             if health["overall"] == "error":
                 body["ready"] = False
                 body["provider"] = any_healthy_provider

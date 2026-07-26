@@ -29,6 +29,12 @@ from tether.app.http.api import lifespan
 from tether.app.http.routers.chat import router as chat_router
 from tether.app.http.routers.health import router as health_router
 from tether.app.http.routers.models import router as models_router
+from tether.core.errors import (
+    AmbiguousModelError,
+    ProviderUnhealthyError,
+    UnknownModelError,
+    UnknownProviderError,
+)
 from tether.core.interfaces import ModelProvider
 from tether.providers.types import ModelDetails
 
@@ -113,6 +119,36 @@ class _FakeEngine:
 
     def unload_model(self, model_name: str) -> bool:
         return False
+
+    def resolve_provider_id(
+        self,
+        model_name: str,
+        *,
+        provider_id: Optional[str] = None,
+    ) -> str:
+        if provider_id is not None:
+            provider = self.providers.get(provider_id)
+            if provider is None:
+                if provider_id in self._provider_start_failures:
+                    raise ProviderUnhealthyError(
+                        provider_id,
+                        self._provider_start_failures[provider_id],
+                    )
+                raise UnknownProviderError(provider_id)
+            if model_name not in provider.list_models():
+                raise UnknownModelError(model_name, provider_id)
+            return provider_id
+
+        owners = [
+            provider_id
+            for provider_id, provider in self.providers.items()
+            if model_name in provider.list_models()
+        ]
+        if len(owners) == 1:
+            return owners[0]
+        if len(owners) > 1:
+            raise AmbiguousModelError(model_name, owners)
+        raise UnknownModelError(model_name)
 
     async def chat(
         self,
@@ -202,10 +238,15 @@ class _SimpleProvider(ModelProvider):
         return 4096
 
 
-def _make_reasoning_infos(pid: str, *, supports: bool) -> List[ModelDetails]:
+def _make_reasoning_infos(
+    pid: str,
+    *,
+    supports: bool,
+    model_id: str = "smart-model",
+) -> List[ModelDetails]:
     return [
         ModelDetails(
-            id="smart-model",
+            id=model_id,
             provider_id=pid,
             provider_kind="fake-simple",
             source="local",
@@ -248,9 +289,12 @@ def _chat_body(**overrides) -> dict:
 # ---------------------------------------------------------------------------
 
 
-def test_missing_provider_id_uses_default():
-    """Omitting provider_id → the default_provider_id is forwarded to engine.chat."""
-    provider_a = _SimpleProvider("a", _make_reasoning_infos("a", supports=True))
+def test_missing_provider_id_routes_unique_model_owner():
+    """Omitting provider_id routes by the unique provider that owns the model."""
+    provider_a = _SimpleProvider(
+        "a",
+        _make_reasoning_infos("a", supports=True, model_id="a-only"),
+    )
     provider_b = _SimpleProvider("b", _make_reasoning_infos("b", supports=False))
     engine = _FakeEngine(
         {"a": provider_a, "b": provider_b},
@@ -260,8 +304,7 @@ def test_missing_provider_id_uses_default():
         resp = client.post("/api/v1/chat/stream", json=_chat_body())
         assert resp.status_code == 200
         _ = resp.text
-        # HTTP layer must have forwarded default_provider_id to chat().
-        assert engine.captured_chat_provider_ids == ["a"]
+        assert engine.captured_chat_provider_ids == ["b"]
 
 
 def test_explicit_provider_id_routes_correctly():
@@ -285,8 +328,15 @@ def test_explicit_provider_id_routes_correctly():
 
 def test_namespaced_quantized_model_id_routes_correctly():
     """A GenieX ``org/repo:quant`` model ID passes HTTP validation unchanged."""
-    provider_a = _SimpleProvider("a", _make_reasoning_infos("a", supports=True))
-    provider_b = _SimpleProvider("b", _make_reasoning_infos("b", supports=False))
+    model_id = "unsloth/Qwen3-1.7B-GGUF:Q4_0"
+    provider_a = _SimpleProvider(
+        "a",
+        _make_reasoning_infos("a", supports=True, model_id="a-only"),
+    )
+    provider_b = _SimpleProvider(
+        "b",
+        _make_reasoning_infos("b", supports=False, model_id=model_id),
+    )
     engine = _FakeEngine(
         {"a": provider_a, "geniex": provider_b},
         default_pid="a",
@@ -295,13 +345,46 @@ def test_namespaced_quantized_model_id_routes_correctly():
         resp = client.post(
             "/api/v1/chat/stream",
             json=_chat_body(
-                model_name="unsloth/Qwen3-1.7B-GGUF:Q4_0",
+                model_name=model_id,
                 provider_id="geniex",
             ),
         )
         assert resp.status_code == 200
         _ = resp.text
         assert engine.captured_chat_provider_ids == ["geniex"]
+
+
+def test_model_not_owned_by_explicit_provider_returns_422():
+    provider_a = _SimpleProvider(
+        "a",
+        _make_reasoning_infos("a", supports=True, model_id="a-only"),
+    )
+    provider_b = _SimpleProvider(
+        "b",
+        _make_reasoning_infos("b", supports=False, model_id="b-only"),
+    )
+    engine = _FakeEngine({"a": provider_a, "b": provider_b}, default_pid="a")
+    with TestClient(_build_app(engine)) as client:
+        response = client.post(
+            "/api/v1/chat/stream",
+            json=_chat_body(model_name="b-only", provider_id="a"),
+        )
+
+    assert response.status_code == 422
+    assert "not available on provider 'a'" in response.json()["detail"]
+    assert engine.captured_chat_provider_ids == []
+
+
+def test_ambiguous_model_without_provider_returns_422():
+    provider_a = _SimpleProvider("a", _make_reasoning_infos("a", supports=True))
+    provider_b = _SimpleProvider("b", _make_reasoning_infos("b", supports=False))
+    engine = _FakeEngine({"a": provider_a, "b": provider_b}, default_pid="a")
+    with TestClient(_build_app(engine)) as client:
+        response = client.post("/api/v1/chat/stream", json=_chat_body())
+
+    assert response.status_code == 422
+    assert "multiple providers" in response.json()["detail"]
+    assert engine.captured_chat_provider_ids == []
 
 
 def test_unknown_provider_id_returns_422():

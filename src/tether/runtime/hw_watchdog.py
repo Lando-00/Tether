@@ -18,9 +18,11 @@ takes over ``shutdown_provider_with_timeout`` + holds the watchdog state.
 
 Synthesis §4 Phase 3 steps 29-30; B6 step 1-2.
 """
+
 from __future__ import annotations
 
 import logging
+from collections.abc import Mapping
 from typing import Any, Dict, List, Optional
 
 from tether.providers.hw import (
@@ -43,9 +45,10 @@ class HardwareWatchdog:
 
     Construction is via ``HardwareWatchdog(providers, mode=...)`` where:
 
-    * ``providers``: a list of any objects (NOT all need to implement
-      ``HardwareLifecycle``); we filter at construction time so callers
-      can pass the engine's full provider set.
+    * ``providers``: a provider-ID mapping or a list of any objects (NOT all
+      need to implement ``HardwareLifecycle``); we filter at construction
+      time so callers can pass the engine's full provider set. Engine uses a
+      mapping, which lets health and recovery remain scoped to one provider.
     * ``mode``: :attr:`WatchdogMode.LIBRARY` (caller manages signals) or
       :attr:`WatchdogMode.SERVER` (signal handlers installed externally
       by :class:`tether.runtime.signal_supervisor.SignalSupervisor`;
@@ -64,23 +67,29 @@ class HardwareWatchdog:
 
     def __init__(
         self,
-        providers: List[Any],
+        providers: Mapping[str, Any] | List[Any],
         *,
         mode: WatchdogMode = WatchdogMode.LIBRARY,
         shutdown_budget_sec: Optional[float] = None,
     ) -> None:
-        # Filter to only providers that implement HardwareLifecycle.
-        # DummyProvider, future stateless HTTP providers, etc. don't need
-        # this watchdog and are silently skipped.
-        self._hw_providers: List[HardwareLifecycle] = [
-            p for p in providers if isinstance(p, HardwareLifecycle)
+        # Preserve a list for existing callers/tests while also retaining the
+        # Engine's provider IDs. A raw list remains supported for direct,
+        # single-provider use and intentionally has no reset routing key.
+        if isinstance(providers, Mapping):
+            entries = list(providers.items())
+            self._provider_ids_are_available = True
+        else:
+            entries = [(None, provider) for provider in providers]
+            self._provider_ids_are_available = False
+        self._hw_provider_entries: list[tuple[Optional[str], HardwareLifecycle]] = [
+            (provider_id, provider) for provider_id, provider in entries if isinstance(provider, HardwareLifecycle)
         ]
+        self._hw_providers: List[HardwareLifecycle] = [provider for _, provider in self._hw_provider_entries]
+        self._hw_providers_by_id: Dict[str, HardwareLifecycle] = {
+            provider_id: provider for provider_id, provider in self._hw_provider_entries if provider_id is not None
+        }
         self._mode = mode
-        self._budget_sec = (
-            shutdown_budget_sec
-            if shutdown_budget_sec is not None
-            else self._compute_budget()
-        )
+        self._budget_sec = shutdown_budget_sec if shutdown_budget_sec is not None else self._compute_budget()
         logger.info(
             "HardwareWatchdog: %d HW provider(s), mode=%s, budget=%.2fs",
             len(self._hw_providers),
@@ -124,19 +133,26 @@ class HardwareWatchdog:
 
         results: List[Dict[str, Any]] = []
         statuses: List[str] = []
-        for p in self._hw_providers:
+        for provider_id, p in self._hw_provider_entries:
             try:
                 h = await p.hw_health()
-                results.append({"status": h.status, "details": h.details})
+                result: Dict[str, Any] = {
+                    "status": h.status,
+                    "details": h.details,
+                }
                 statuses.append(h.status)
             except Exception as e:
                 logger.exception(
-                    "HardwareWatchdog.health_summary: provider %s health check failed: %s",
+                    "HardwareWatchdog.health_summary: provider_id=%s provider %s health check failed: %s",
+                    provider_id,
                     type(p).__name__,
                     e,
                 )
-                results.append({"status": "error", "details": {"error": str(e)}})
+                result = {"status": "error", "details": {"error": str(e)}}
                 statuses.append("error")
+            if provider_id is not None:
+                result["provider_id"] = provider_id
+            results.append(result)
 
         # Overall = worst of all
         if "error" in statuses:
@@ -149,16 +165,23 @@ class HardwareWatchdog:
         return {"providers": results, "overall": overall}
 
     async def reset_after(
-        self, exc: BaseException, *, model_name: str
+        self,
+        exc: BaseException,
+        *,
+        model_name: str,
+        provider_id: Optional[str] = None,
     ) -> bool:
-        """Per Phase 3 step 36: classify the exception against each HW
-        provider; if any classifies it as ``FATAL_RECOVERABLE``, call the
-        provider's ``hw_reset(model_name)``.
+        """Classify and recover only the hardware provider that served a turn.
 
         Used by the orchestrator's exception handler — replaces the
         substring-grep ``is_fatal`` pattern at orchestrator.py:202-205. The
         orchestrator update itself is ``p3-loop-recovery``'s job, not this
         PR's.
+
+        ``provider_id`` is required for an Engine's keyed provider mapping.
+        Raw-list construction retains the historical behavior of classifying
+        every hardware provider because it has no identity information to
+        safely scope recovery.
 
         Returns:
             ``True`` if a reset was performed (provider was corrupted,
@@ -167,25 +190,42 @@ class HardwareWatchdog:
 
         Synthesis §4 Phase 3 step 36; B6 step 7.
         """
+        if provider_id is not None:
+            provider = self._hw_providers_by_id.get(provider_id)
+            if provider is None:
+                return False
+            candidates = [provider]
+        elif not self._provider_ids_are_available:
+            candidates = self._hw_providers
+        else:
+            logger.warning(
+                "HardwareWatchdog.reset_after: refusing unscoped reset across %d hardware providers",
+                len(self._hw_providers),
+            )
+            return False
+
         any_reset = False
-        for p in self._hw_providers:
-            cls = p.hw_classify(exc)
-            if cls == HwErrorClass.FATAL_RECOVERABLE:
-                logger.warning(
-                    "HardwareWatchdog.reset_after: provider %s classified %s "
-                    "as FATAL_RECOVERABLE; running hw_reset(%s)",
-                    type(p).__name__,
-                    type(exc).__name__,
-                    model_name,
+        for provider in candidates:
+            cls = provider.hw_classify(exc)
+            if cls != HwErrorClass.FATAL_RECOVERABLE:
+                continue
+            logger.warning(
+                "HardwareWatchdog.reset_after: provider_id=%s provider=%s "
+                "classified %s as FATAL_RECOVERABLE; running hw_reset(%s)",
+                provider_id,
+                type(provider).__name__,
+                type(exc).__name__,
+                model_name,
+            )
+            try:
+                await provider.hw_reset(model_name)
+                any_reset = True
+            except Exception as reset_exc:
+                logger.exception(
+                    "HardwareWatchdog.reset_after: provider_id=%s reset failed: %s",
+                    provider_id,
+                    reset_exc,
                 )
-                try:
-                    await p.hw_reset(model_name)
-                    any_reset = True
-                except Exception as reset_exc:
-                    logger.exception(
-                        "HardwareWatchdog.reset_after: hw_reset failed: %s",
-                        reset_exc,
-                    )
         return any_reset
 
     def shutdown_all(self) -> None:
@@ -215,11 +255,7 @@ class HardwareWatchdog:
             # Snapshot the callable at this scope to avoid late-binding bugs;
             # if the provider lacks ``shutdown_all`` (rare — most do), the
             # daemon thread runs a no-op.
-            shutdown_callable = (
-                p.shutdown_all
-                if hasattr(p, "shutdown_all")
-                else (lambda: None)
-            )
+            shutdown_callable = p.shutdown_all if hasattr(p, "shutdown_all") else (lambda: None)
             try:
                 daemon_thread_call(
                     shutdown_callable,
@@ -229,8 +265,7 @@ class HardwareWatchdog:
                 )
             except TimeoutError:
                 logger.warning(
-                    "HardwareWatchdog.shutdown_all: provider %s shutdown "
-                    "timed out (budget=%.2fs); abandoning",
+                    "HardwareWatchdog.shutdown_all: provider %s shutdown timed out (budget=%.2fs); abandoning",
                     type(p).__name__,
                     provider_budget,
                 )

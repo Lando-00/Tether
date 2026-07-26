@@ -499,10 +499,37 @@
     },
     "ProvidersSettings": {
       "additionalProperties": false,
-      "description": "``providers:`` section — model / parser / session_store implementations.",
+      "description": "``providers:`` section — multi-provider registry + parser/store.\n\nTwo shapes are accepted on load:\n\n  (NEW)    model_registry: { id: ProviderSpec, ... }\n           default_model_provider: str\n  (LEGACY) model: ProviderSpec\n           -> synthesised into model_registry={\"default\": <spec>} with\n              default_model_provider=\"default\". DeprecationWarning logged.\n\nSetting BOTH 'model' and 'model_registry' raises ConfigError.",
       "properties": {
+        "default_model_provider": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Default Model Provider"
+        },
         "model": {
-          "$ref": "#/$defs/ProviderSpec"
+          "anyOf": [
+            {
+              "$ref": "#/$defs/ProviderSpec"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null
+        },
+        "model_registry": {
+          "additionalProperties": {
+            "$ref": "#/$defs/ProviderSpec"
+          },
+          "title": "Model Registry",
+          "type": "object"
         },
         "parser": {
           "$ref": "#/$defs/ProviderSpec"
@@ -512,7 +539,6 @@
         }
       },
       "required": [
-        "model",
         "parser",
         "session_store"
       ],

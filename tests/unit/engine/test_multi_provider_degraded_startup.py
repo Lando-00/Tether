@@ -4,7 +4,7 @@ Covers the contract clauses in `docs/adr/0021-contract-stubs.md` §2:
 
   - `from_settings` degraded construction (try/except per registry entry).
   - All-failing entries raises ConfigError.
-  - Default-provider failure falls back to first healthy id (warning logged).
+  - Default-provider failure remains visible instead of silently switching.
   - HardwareWatchdog receives the full provider list (post-filter to HW only).
   - `chat(...)` rejects unknown provider_ids with UnknownProviderError.
   - `chat(...)` rejects unhealthy provider_ids with ProviderUnhealthyError.
@@ -15,18 +15,22 @@ constructor raises for failing entries. Settings are routed through
 """
 from __future__ import annotations
 
-import logging
 from typing import Any
+from unittest.mock import MagicMock
 
 import pytest
 
 from tether import Engine
 from tether.config.settings import Settings
 from tether.core.errors import (
+    AmbiguousModelError,
     ConfigError,
     ProviderUnhealthyError,
+    UnknownModelError,
     UnknownProviderError,
 )
+from tether.core.interfaces import ModelProvider
+from tether.protocol.parsers.sliding import SlidingParser
 
 
 # Module-level marker so factory.load can instantiate it via dotted path.
@@ -36,6 +40,43 @@ class _FailingProvider:
 
     def __init__(self, **kwargs: Any) -> None:
         raise RuntimeError("synthetic boot failure")
+
+
+class _StaticProvider(ModelProvider):
+    """Small in-memory provider for resolver-only contract tests."""
+
+    def __init__(self, models: list[str]) -> None:
+        self._models = models
+
+    async def stream(self, model_name, messages, tools=None, *, request_id=None):
+        if False:
+            yield ""
+
+    def list_models(self) -> list[str]:
+        return list(self._models)
+
+    def unload_model(self, model_name: str) -> bool:
+        return False
+
+    def get_context_window(self, model_name: str) -> int:
+        return 4096
+
+
+def _direct_engine(
+    providers: dict[str, ModelProvider],
+    *,
+    default: str,
+    failures: dict[str, str] | None = None,
+) -> Engine:
+    return Engine(
+        providers=providers,
+        default_provider_id=default,
+        provider_start_failures=failures,
+        parser=SlidingParser(),
+        session_store=MagicMock(),
+        tools={},
+        system_prompt="test",
+    )
 
 
 def _settings_dict(tmp_db: str, registry: dict, default: str) -> dict:
@@ -123,11 +164,10 @@ def test_all_failing_raises_config_error(
     assert "failed to construct" in str(exc_info.value)
 
 
-def test_default_provider_unhealthy_falls_back_to_first_healthy(
-    tmp_path, healthy_provider_impl, failing_provider_impl, caplog
+def test_default_provider_unhealthy_remains_unavailable(
+    tmp_path, healthy_provider_impl, failing_provider_impl
 ):
-    """default_model_provider points at a failing entry → fall back to
-    first healthy in declaration order (with a logger.warning)."""
+    """A failed configured default never silently becomes another backend."""
     db = tmp_path / "engine.db"
     s_dict = _settings_dict(
         str(db),
@@ -139,14 +179,13 @@ def test_default_provider_unhealthy_falls_back_to_first_healthy(
         default="bad",
     )
     settings = Settings.model_validate(s_dict)
-    with caplog.at_level(logging.WARNING, logger="tether.engine"):
-        engine = Engine.from_settings(settings)
-    assert engine.default_provider_id == "good"
-    # Loud warning emitted.
-    assert any(
-        "default_unhealthy_fallback" in rec.message
-        for rec in caplog.records
-    )
+    engine = Engine.from_settings(settings)
+    assert engine.default_provider_id == "bad"
+    # Legacy singular-provider readers still receive a usable object, but
+    # it is not the configured routing default.
+    assert engine.provider is engine.providers["good"]
+    with pytest.raises(ProviderUnhealthyError):
+        engine.resolve_provider_id("dummy-model-1", provider_id="bad")
 
 
 def test_watchdog_receives_all_providers_pre_filter(
@@ -232,6 +271,49 @@ async def test_unhealthy_provider_id_raises_in_chat(
         )
     assert exc_info.value.provider_id == "bad"
     assert "synthetic boot failure" in exc_info.value.message
+
+
+def test_automatic_routing_uses_the_unique_model_owner():
+    engine = _direct_engine(
+        {
+            "mlc": _StaticProvider(["mlc-model"]),
+            "geniex": _StaticProvider(["unsloth/Qwen3-4B-GGUF:Q4_0"]),
+        },
+        default="mlc",
+    )
+
+    assert (
+        engine.resolve_provider_id("unsloth/Qwen3-4B-GGUF:Q4_0")
+        == "geniex"
+    )
+
+
+def test_automatic_routing_rejects_duplicate_model_names():
+    engine = _direct_engine(
+        {
+            "mlc": _StaticProvider(["shared-model"]),
+            "geniex": _StaticProvider(["shared-model"]),
+        },
+        default="mlc",
+    )
+
+    with pytest.raises(AmbiguousModelError) as exc_info:
+        engine.resolve_provider_id("shared-model")
+    assert set(exc_info.value.provider_ids) == {"mlc", "geniex"}
+
+
+def test_explicit_provider_rejects_another_provider_model():
+    engine = _direct_engine(
+        {
+            "mlc": _StaticProvider(["mlc-model"]),
+            "geniex": _StaticProvider(["geniex-model"]),
+        },
+        default="mlc",
+    )
+
+    with pytest.raises(UnknownModelError) as exc_info:
+        engine.resolve_provider_id("geniex-model", provider_id="mlc")
+    assert exc_info.value.provider_id == "mlc"
 
 
 @pytest.fixture

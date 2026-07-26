@@ -2,6 +2,7 @@
 
 ADR-0021 Phase 2.C — CLI disambiguation.
 """
+
 from __future__ import annotations
 
 import io
@@ -116,9 +117,7 @@ def test_provider_flag_passed_to_post_body(
         mode=ChatMode.chat,
         provider_id="copilot-gpt5",
     )
-    assert body.get("provider_id") == "copilot-gpt5", (
-        f"provider_id missing or wrong in payload: {body}"
-    )
+    assert body.get("provider_id") == "copilot-gpt5", f"provider_id missing or wrong in payload: {body}"
 
 
 # ---------------------------------------------------------------------------
@@ -143,10 +142,7 @@ def test_no_provider_flag_omits_field_from_body(
         mode=ChatMode.chat,
         provider_id=None,
     )
-    assert "provider_id" not in body, (
-        f"provider_id should be absent from payload when provider is None; "
-        f"got: {body}"
-    )
+    assert "provider_id" not in body, f"provider_id should be absent from payload when provider is None; got: {body}"
 
 
 # ---------------------------------------------------------------------------
@@ -194,9 +190,7 @@ def test_providers_slash_command_renders_table(
 
     assert table is not None, "get_providers_table() returned None; expected a Rich Table"
     assert isinstance(table, Table)
-    assert table.row_count == 3, (
-        f"Expected 3 provider rows; got {table.row_count}"
-    )
+    assert table.row_count == 3, f"Expected 3 provider rows; got {table.row_count}"
 
 
 # ---------------------------------------------------------------------------
@@ -229,9 +223,7 @@ def test_ambiguous_model_without_provider_lists_options(
 
     assert name == "gpt-5"
     # Rows are sorted by (provider_id, id), so "copilot-primary" comes first.
-    assert pid == "copilot-primary", (
-        f"Expected first sorted provider ('copilot-primary'); got {pid!r}"
-    )
+    assert pid == "copilot-primary", f"Expected first sorted provider ('copilot-primary'); got {pid!r}"
     # Verify the ambiguity warning was printed.
     output = quiet_console.getvalue()
     assert "ambiguous" in output.lower() or "provider" in output.lower(), (
@@ -264,3 +256,58 @@ def test_ambiguous_model_with_provider_disambiguates(
     assert name == "gpt-5"
     assert pid == "copilot-primary", f"Expected 'copilot-primary'; got {pid!r}"
     prompt_spy.ask.assert_not_called()
+
+
+def test_provider_flag_rejects_model_owned_by_another_provider(
+    monkeypatch: pytest.MonkeyPatch,
+    quiet_console: io.StringIO,
+) -> None:
+    details = [
+        _model_detail("mlc-model", "mlc"),
+        _model_detail("geniex-model", "geniex"),
+    ]
+    monkeypatch.setattr(cli_main, "get_available_model_details", lambda: details)
+
+    with pytest.raises(cli_main.typer.Exit):
+        cli_main.select_model("geniex-model", provider="mlc")
+
+    assert "not available on provider 'mlc'" in quiet_console.getvalue()
+
+
+def test_provider_flag_filters_interactive_model_selection(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    details = [
+        _model_detail("mlc-model", "mlc"),
+        _model_detail("geniex-model", "geniex"),
+    ]
+    monkeypatch.setattr(cli_main, "get_available_model_details", lambda: details)
+    monkeypatch.setattr(cli_main, "get_provider_health", lambda: ({}, None))
+    prompt_spy = Mock()
+    prompt_spy.ask = Mock(return_value="1")
+    monkeypatch.setattr(cli_main, "Prompt", prompt_spy)
+
+    model_name, provider_id = cli_main.select_model(None, provider="geniex")
+
+    assert (model_name, provider_id) == ("geniex-model", "geniex")
+
+
+def test_unconstrained_interactive_selection_includes_all_providers(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Without an explicit provider, the selector continues to show all rows."""
+    details = [
+        _model_detail("mlc-model", "mlc"),
+        _model_detail("geniex-model", "geniex"),
+    ]
+    monkeypatch.setattr(cli_main, "get_available_model_details", lambda: details)
+    monkeypatch.setattr(cli_main, "get_provider_health", lambda: ({}, None))
+    prompt_spy = Mock()
+    prompt_spy.ask = Mock(side_effect=["1", "2"])
+    monkeypatch.setattr(cli_main, "Prompt", prompt_spy)
+
+    first_model, first_provider = cli_main.select_model(None, provider=None)
+    second_model, second_provider = cli_main.select_model(None, provider=None)
+
+    assert (first_model, first_provider) == ("geniex-model", "geniex")
+    assert (second_model, second_provider) == ("mlc-model", "mlc")

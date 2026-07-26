@@ -24,6 +24,7 @@ from pydantic_settings import BaseSettings, SettingsConfigDict
 
 from tether.config._strict import StrictModel
 from tether.core.errors import ConfigError
+from tether.core.provider_ids import is_valid_provider_id
 
 # ---------------------------------------------------------------------------
 # Sub-models
@@ -106,6 +107,18 @@ class ProvidersSettings(StrictModel):
             raise ConfigError(
                 "providers.model_registry is empty (and providers.model "
                 "is unset). At least one provider is required."
+            )
+        invalid_provider_ids = [
+            provider_id
+            for provider_id in self.model_registry
+            if not is_valid_provider_id(provider_id)
+        ]
+        if invalid_provider_ids:
+            raise ConfigError(
+                "providers.model_registry contains invalid provider id(s): "
+                f"{sorted(invalid_provider_ids)!r}. Provider IDs must match "
+                "[A-Za-z0-9._-]{1,64} and cannot use the reserved "
+                "'_unwrapped_' sentinel."
             )
         # 4. Resolve default_model_provider.
         if self.default_model_provider is None:

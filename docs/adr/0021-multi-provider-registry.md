@@ -56,11 +56,16 @@ singular `providers.model` shape.
 ### 1. Routing API (locked)
 
 `StreamRequest` gains an optional field `provider_id: Optional[str]`. When
-omitted, the server uses `settings.providers.default_model_provider`. Unknown
-provider_id → 422; known-but-unhealthy provider_id → 503. The provider_id is
-a stable identifier set by config (registry key), NOT the provider's `.kind`
-property — multiple providers of the same kind are permitted (e.g. two
-Copilot accounts under different ids).
+supplied, the selected provider must be healthy and advertise the requested
+model. Unknown provider_id → 422; known-but-unhealthy provider_id → 503; a
+model owned by another provider → 422.
+
+When omitted, the Engine routes only if exactly one healthy provider advertises
+the raw model name. Unknown names and duplicate ownership return 422 rather
+than relying on registry order or silently falling back to the configured
+default. The provider_id is a stable identifier set by config (registry key),
+NOT the provider's `.kind` property — multiple providers of the same kind are
+permitted (e.g. two Copilot accounts under different ids).
 
 ### 2. Failure isolation: degraded mode (locked)
 
@@ -72,7 +77,9 @@ recorded in `engine._provider_start_failures: Dict[str, str]` (id → repr of
 exception). Successful providers are stored in `engine.providers: Dict[str,
 ModelProvider]`.
 
-The engine is considered "up" as long as at least one provider is healthy.
+The configured `default_model_provider` remains immutable when it fails; it
+is never replaced by another provider behind the caller's back. The engine is
+considered "up" as long as at least one provider is healthy.
 `/readyz` reports per-provider health additively; the store check remains
 the gating signal for `ready=False`. `/models` and `/models/details` hide
 unhealthy providers' models. `/chat/stream` with a failed `provider_id`
@@ -88,13 +95,14 @@ either.
 
 - New `--provider / -P` typer Option on the root `cli` callback AND the
   `chat` subcommand. Forwarded as `provider_id` in the POST body.
-- The `\models` slash command grows a `provider_id` column.
+- The `\models` slash command grows a `provider_id` column and filters models
+  to the selected provider when one is supplied.
 - New `\providers` slash command lists the configured registry with health
   status.
-- When `--model X` is ambiguous across providers (the same model_name
-  exists under two provider_ids) and `--provider` was not supplied, the CLI
-  drops into the existing `\models` selector with the ambiguous rows
-  pre-filtered.
+- When `--model X` is ambiguous across providers (the same model_name exists
+  under two provider_ids) and `--provider` was not supplied, the CLI drops
+  into the existing `\models` selector with the ambiguous rows pre-filtered.
+  A selected provider is never replaced by a different provider's model.
 
 ### 4. Back-compat (locked)
 

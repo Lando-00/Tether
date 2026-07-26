@@ -12,7 +12,6 @@ and a minimal inline GenieXProvider mock for the healthy case.
 """
 from __future__ import annotations
 
-import logging
 from typing import Any, AsyncGenerator, Dict, List, Optional
 from unittest.mock import AsyncMock
 
@@ -162,8 +161,8 @@ class TestDegradedStartup:
                "connect" in health["geniex-npu"]["error"].lower() or \
                "refused" in health["geniex-npu"]["error"].lower()
 
-    def test_default_fallback_when_geniex_is_default(self, tmp_path, caplog):
-        """If geniex is default but fails, Engine falls back to MLC."""
+    def test_failed_geniex_default_remains_unavailable(self, tmp_path):
+        """A failed configured default is not silently replaced by MLC."""
         db = str(tmp_path / "engine.db")
         registry = {
             "geniex-npu": {
@@ -178,14 +177,12 @@ class TestDegradedStartup:
         settings = Settings.model_validate(
             _settings_dict(db, registry, default="geniex-npu")
         )
-        with caplog.at_level(logging.WARNING, logger="tether.engine"):
-            engine = Engine.from_settings(settings)
+        engine = Engine.from_settings(settings)
 
-        assert engine.default_provider_id == "mlc-local"
-        assert any(
-            "default_unhealthy_fallback" in rec.message
-            for rec in caplog.records
-        )
+        assert engine.default_provider_id == "geniex-npu"
+        assert engine.provider is engine.providers["mlc-local"]
+        with pytest.raises(ProviderUnhealthyError):
+            engine.resolve_provider_id("some-model", provider_id="geniex-npu")
 
 
 # ---------------------------------------------------------------------------

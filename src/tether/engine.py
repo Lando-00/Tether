@@ -58,6 +58,7 @@ class Engine:
         providers: Optional[Dict[str, ModelProvider]] = None,
         default_provider_id: Optional[str] = None,
         provider_start_failures: Optional[Dict[str, str]] = None,
+        strict_model_routing: Optional[bool] = None,
         provider: Optional[ModelProvider] = None,
         parser: Optional[StreamParser] = None,
         parser_factory: Optional[Callable[[], StreamParser]] = None,
@@ -144,22 +145,29 @@ class Engine:
                     "Engine: default_provider_id required when "
                     "providers= is passed"
                 )
-            if default_provider_id not in providers:
+            failures = dict(provider_start_failures or {})
+            if (
+                default_provider_id not in providers
+                and default_provider_id not in failures
+            ):
                 raise ValueError(
                     f"Engine: default_provider_id "
-                    f"{default_provider_id!r} not in providers "
-                    f"(known: {sorted(providers)}). The default must be a "
-                    "healthy provider; if its construction failed, fall "
-                    "back to a healthy id before constructing the Engine."
+                    f"{default_provider_id!r} not in providers or "
+                    f"provider_start_failures (known healthy: "
+                    f"{sorted(providers)}, known failed: {sorted(failures)})."
                 )
             self.providers: Dict[str, ModelProvider] = dict(providers)
             self.default_provider_id: str = default_provider_id
-            self._provider_start_failures: Dict[str, str] = dict(
-                provider_start_failures or {}
+            self._provider_start_failures = failures
+            self._strict_model_routing = (
+                True if strict_model_routing is None else strict_model_routing
             )
-            self.provider: ModelProvider = self.providers[
-                self.default_provider_id
-            ]
+            # `provider` is a legacy singular-provider compatibility shim.
+            # It must remain usable for old callers, but it must not change
+            # default_provider_id or influence multi-provider routing.
+            self.provider = self.providers.get(
+                self.default_provider_id, next(iter(self.providers.values()))
+            )
         elif provider is not None:
             # Legacy singular-provider construction path. Synthesise the
             # one-entry registry so the rest of Engine has the same
@@ -168,11 +176,22 @@ class Engine:
             self.default_provider_id = "default"
             self._provider_start_failures = dict(provider_start_failures or {})
             self.provider = provider
+            self._strict_model_routing = (
+                False if strict_model_routing is None else strict_model_routing
+            )
         else:
             raise ValueError(
                 "Engine requires either providers= (dict) or "
                 "provider= (legacy singular)"
             )
+        # Cache model inventories before a warm-up failure removes a provider
+        # from the healthy routing map. Healthy routes always refresh this
+        # cache, while failed providers use it only to surface a typed 503 for
+        # a previously known model.
+        self._known_models_by_provider: Dict[str, set[str]] = {}
+        if self._strict_model_routing:
+            for pid, registered_provider in self.providers.items():
+                self._remember_provider_models(pid, registered_provider)
         # ``self.parser`` is retained for back-compat reads (tests +
         # introspection). It's the parser produced by the factory at
         # construction time; new code should call ``self._parser_factory()``
@@ -218,6 +237,101 @@ class Engine:
         # can take action; populated by the awaited start loop in
         # __aenter__ and consumed by app.http.routers.health.
         self._connector_start_failures: List[str] = []
+
+    def _remember_provider_models(
+        self,
+        provider_id: str,
+        provider: ModelProvider,
+    ) -> list[str]:
+        """Refresh the model inventory for a healthy provider.
+
+        A listing failure must not silently route to another provider. The
+        empty result makes automatic resolution reject the model until the
+        provider can advertise it again.
+        """
+        try:
+            models = list(provider.list_models())
+        except Exception as exc:  # noqa: BLE001 - provider introspection guard
+            logger.warning(
+                "provider.list_models_failed provider_id=%s error_class=%s "
+                "error_message=%s",
+                provider_id,
+                type(exc).__name__,
+                str(exc),
+            )
+            return []
+        self._known_models_by_provider[provider_id] = set(models)
+        return models
+
+    def _healthy_provider(self, provider_id: str) -> ModelProvider:
+        """Return a selected healthy provider or raise the typed route error."""
+        from tether.core.errors import (
+            ProviderUnhealthyError,
+            UnknownProviderError,
+        )
+
+        provider = self.providers.get(provider_id)
+        if provider is not None:
+            return provider
+        if provider_id in self._provider_start_failures:
+            raise ProviderUnhealthyError(
+                provider_id, self._provider_start_failures[provider_id]
+            )
+        raise UnknownProviderError(provider_id)
+
+    def resolve_provider_id(
+        self,
+        model_name: str,
+        *,
+        provider_id: Optional[str] = None,
+    ) -> str:
+        """Resolve a request to one provider without implicit fallback.
+
+        An explicit provider must advertise the requested model. Without an
+        explicit provider, only a uniquely advertising healthy provider may be
+        selected. Duplicate names require the caller to choose a provider.
+        """
+        from tether.core.errors import (
+            AmbiguousModelError,
+            ProviderUnhealthyError,
+            UnknownModelError,
+        )
+
+        if provider_id is not None:
+            provider = self._healthy_provider(provider_id)
+            if not self._strict_model_routing:
+                return provider_id
+            if model_name not in self._remember_provider_models(
+                provider_id, provider
+            ):
+                raise UnknownModelError(model_name, provider_id)
+            return provider_id
+
+        if not self._strict_model_routing:
+            self._healthy_provider(self.default_provider_id)
+            return self.default_provider_id
+
+        owners = [
+            pid
+            for pid, provider in self.providers.items()
+            if model_name in self._remember_provider_models(pid, provider)
+        ]
+        if len(owners) == 1:
+            return owners[0]
+        if len(owners) > 1:
+            raise AmbiguousModelError(model_name, owners)
+
+        failed_owners = [
+            pid
+            for pid, models in self._known_models_by_provider.items()
+            if pid in self._provider_start_failures and model_name in models
+        ]
+        if len(failed_owners) == 1:
+            pid = failed_owners[0]
+            raise ProviderUnhealthyError(
+                pid, self._provider_start_failures[pid]
+            )
+        raise UnknownModelError(model_name)
 
     @classmethod
     def from_settings(
@@ -305,18 +419,11 @@ class Engine:
                 f"{provider_failures!r}"
             )
 
+        # Keep the configured default stable even if that provider failed.
+        # The Engine retains a healthy singular `provider` shim for legacy
+        # readers, but request routing must return 503 for the failed default
+        # rather than silently switching backends.
         default_pid = default_pid_requested
-        if default_pid not in providers:
-            # Default provider itself failed. Fall back to first healthy
-            # id in declaration order. Loud warning — operator must fix
-            # config.
-            original = default_pid
-            default_pid = next(iter(providers))
-            logger.warning(
-                "provider.default_unhealthy_fallback requested=%s fallback=%s",
-                original,
-                default_pid,
-            )
 
         parser_spec = settings.providers.parser
 
@@ -407,7 +514,7 @@ class Engine:
         tool_runner = ToolRunner(tools, timeout_sec=settings.limits.tool_timeout_sec,
                                  result_max_bytes=settings.security.tool_result_max_bytes)
 
-        hw_watchdog = HardwareWatchdog(list(providers.values()), mode=watchdog_mode)
+        hw_watchdog = HardwareWatchdog(providers, mode=watchdog_mode)
 
         # Phase 5 followups F6 (rubber-duck review): validate the orchestrator
         # registry at boot rather than letting a typo surface as a 500
@@ -486,6 +593,7 @@ class Engine:
             providers=providers,
             default_provider_id=default_pid,
             provider_start_failures=provider_failures,
+            strict_model_routing=settings.providers.model is None,
             parser_factory=_new_parser,
             session_store=store,
             tools=tools,
@@ -574,24 +682,15 @@ class Engine:
         to ``self._orchestrator_default_mode`` ("chat") when None.
         Briefing §2 Seam B item 4; synthesis §3.5.
         """
-        # ADR-0021 P2.A: resolve provider routing FIRST so unknown /
-        # unhealthy ids surface as typed errors before any orchestrator
-        # work. HTTP layer (Phase 2.B) maps these to 422 / 503.
-        from tether.core.errors import (
-            ProviderUnhealthyError,
-            UnknownProviderError,
-        )
+        # Resolve model ownership before any orchestrator work. The HTTP
+        # boundary invokes the same resolver eagerly so typed 422/503 errors
+        # are returned before streaming starts; this second call protects
+        # library consumers.
         from tether.protocol.orchestration.registry import (
             resolve_orchestrator_class,
         )
 
-        pid = provider_id or self.default_provider_id
-        if pid not in self.providers:
-            if pid in self._provider_start_failures:
-                raise ProviderUnhealthyError(
-                    pid, self._provider_start_failures[pid]
-                )
-            raise UnknownProviderError(pid)
+        pid = self.resolve_provider_id(model_name, provider_id=provider_id)
         provider = self.providers[pid]
 
         effective_mode = mode if mode is not None else self._orchestrator_default_mode
@@ -624,6 +723,7 @@ class Engine:
             config=self.orchestrator_config,
             tool_runner=self.tool_runner,
             hw_watchdog=self.hw_watchdog,
+            provider_id=pid,
             audit_store_args=self._audit_store_args,
             confirm_intent_classifier=self._confirm_intent_classifier,
             # ADR-0020 R3: NotebookOrchestrator uses `tool_registry` (alias
@@ -671,25 +771,19 @@ class Engine:
         return await self.store.delete_all_sessions()
 
     def list_models(self) -> List[str]:
-        """Merged model list across all healthy providers.
+        """Return a de-duplicated discovery list of healthy raw model IDs.
 
-        Duplicate model names across providers get ``pid/model_name``
-        disambiguation prefixes; unique names remain bare.
+        Provider IDs are deliberately not encoded into model names because
+        GenieX names already contain slashes. Clients needing a requestable
+        pair use :meth:`list_model_info` and send ``provider_id`` separately.
         """
-        seen: Dict[str, List[str]] = {}  # model_name -> [provider_ids]
-        for pid, prov in self.providers.items():
-            try:
-                for m in prov.list_models():
-                    seen.setdefault(m, []).append(pid)
-            except Exception:  # noqa: BLE001 - defensive
-                pass
         result: List[str] = []
-        for model_name, pids in seen.items():
-            if len(pids) == 1:
-                result.append(model_name)
-            else:
-                for pid in pids:
-                    result.append(f"{pid}/{model_name}")
+        seen: set[str] = set()
+        for pid, prov in self.providers.items():
+            for model_name in self._remember_provider_models(pid, prov):
+                if model_name not in seen:
+                    result.append(model_name)
+                    seen.add(model_name)
         return result
 
     def list_model_info(self) -> List:
@@ -706,30 +800,9 @@ class Engine:
         return result
 
     def unload_model(self, model_name: str, *, provider_id: Optional[str] = None) -> bool:
-        """Unload a model, optionally scoped to a specific provider."""
-        if provider_id is not None:
-            from tether.core.errors import (
-                ProviderUnhealthyError,
-                UnknownProviderError,
-            )
-            if provider_id not in self.providers:
-                if provider_id in self._provider_start_failures:
-                    raise ProviderUnhealthyError(
-                        provider_id,
-                        self._provider_start_failures[provider_id],
-                    )
-                raise UnknownProviderError(provider_id)
-            return self.providers[provider_id].unload_model(model_name)
-        any_unloaded = False
-        for prov in self.providers.values():
-            try:
-                models = prov.list_models()
-            except Exception:  # noqa: BLE001 - defensive
-                models = []
-            if model_name in models:
-                if prov.unload_model(model_name):
-                    any_unloaded = True
-        return any_unloaded
+        """Unload a model only from its resolved owning provider."""
+        pid = self.resolve_provider_id(model_name, provider_id=provider_id)
+        return self.providers[pid].unload_model(model_name)
 
     def list_provider_health(self) -> Dict[str, Dict[str, Any]]:
         """Per-provider snapshot for ``/readyz``.
@@ -773,9 +846,9 @@ class Engine:
         ADR-0021 P2.A: failures are non-fatal. The failing provider is
         demoted (moved from ``self.providers`` to
         ``self._provider_start_failures``) so routing rejects it with
-        ProviderUnhealthyError (HTTP 503). If the demoted id was the
-        default, fall back to the first remaining healthy id with a
-        warning.
+        ProviderUnhealthyError (HTTP 503). The configured default is never
+        replaced; its legacy singular-provider shim may point at another
+        healthy provider without affecting request routing.
         """
         if not self.providers:
             return
@@ -797,6 +870,7 @@ class Engine:
                 model = models[0] if models else None
             if not model:
                 continue
+            self._known_models_by_provider.setdefault(pid, set()).add(model)
             try:
                 await prov.warm_up(model)
             except Exception as exc:  # noqa: BLE001 - degraded warm-up
@@ -825,16 +899,14 @@ class Engine:
                             type(close_exc).__name__,
                             str(close_exc),
                         )
-                if pid == self.default_provider_id and self.providers:
-                    new_default = next(iter(self.providers))
+                if self.provider is prov and self.providers:
+                    new_legacy_provider = next(iter(self.providers.values()))
                     logger.warning(
-                        "provider.default_demoted_fallback "
-                        "previous=%s fallback=%s",
+                        "provider.legacy_shim_reassigned "
+                        "failed_provider_id=%s",
                         pid,
-                        new_default,
                     )
-                    self.default_provider_id = new_default
-                    self.provider = self.providers[new_default]
+                    self.provider = new_legacy_provider
 
     async def __aenter__(self) -> "Engine":
         """Phase 4 step 41: run startup() on every tool concurrently.

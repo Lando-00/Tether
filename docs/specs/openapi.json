@@ -93,7 +93,8 @@
           },
           "model_name": {
             "description": "The name of the model to use for this generation.",
-            "pattern": "^[A-Za-z0-9._-]{1,128}$",
+            "maxLength": 256,
+            "pattern": "^[A-Za-z0-9][A-Za-z0-9._-]*(?:/[A-Za-z0-9][A-Za-z0-9._-]*)?(?::[A-Za-z0-9][A-Za-z0-9._-]*)?$",
             "title": "Model Name",
             "type": "string"
           },
@@ -103,6 +104,32 @@
             "minLength": 1,
             "title": "Prompt",
             "type": "string"
+          },
+          "provider_id": {
+            "anyOf": [
+              {
+                "pattern": "^[A-Za-z0-9._-]{1,64}$",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Optional explicit provider routing key. When omitted, the server routes only if exactly one healthy provider advertises the model. Unknown or ambiguous models return 422; a known-but-unhealthy provider returns 503.",
+            "title": "Provider Id"
+          },
+          "reasoning_effort": {
+            "anyOf": [
+              {
+                "pattern": "^[A-Za-z0-9._-]{1,32}$",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Per-request reasoning effort hint for models that advertise ``supports_reasoning_effort=True`` in ``GET /models/details`` (e.g. GitHub Copilot SDK ``gpt-5``). When the chosen model does not support reasoning effort, or the supplied value is not in the model's accepted ``reasoning_efforts`` list, the server responds 422 before any streaming begins. Omit to use the provider's default.",
+            "title": "Reasoning Effort"
           },
           "session_id": {
             "description": "The unique identifier for the session.",
@@ -125,6 +152,19 @@
             "description": "The name of the model to unload.",
             "title": "Model Name",
             "type": "string"
+          },
+          "provider_id": {
+            "anyOf": [
+              {
+                "pattern": "^[A-Za-z0-9._-]{1,64}$",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Optional explicit provider routing key. Required when multiple providers advertise the same model.",
+            "title": "Provider Id"
           }
         },
         "required": [
@@ -657,7 +697,7 @@
     },
     "/api/v1/models": {
       "get": {
-        "description": "List available models.",
+        "description": "List de-duplicated raw model IDs from healthy providers.\n\nUse ``/models/details`` to pair an ID with its provider when the same\nmodel is available from multiple providers.",
         "operationId": "list_models_api_v1_models_get",
         "responses": {
           "200": {
@@ -676,6 +716,26 @@
           }
         },
         "summary": "List Models",
+        "tags": [
+          "models"
+        ]
+      }
+    },
+    "/api/v1/models/details": {
+      "get": {
+        "description": "List rich model metadata from all healthy providers.\n\nReturns a JSON array of ModelDetails objects, each carrying\n``provider_id`` set to the registry key (ADR-0021).",
+        "operationId": "list_model_details_api_v1_models_details_get",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            },
+            "description": "Successful Response"
+          }
+        },
+        "summary": "List Model Details",
         "tags": [
           "models"
         ]
@@ -769,7 +829,7 @@
     },
     "/api/v1/readyz": {
       "get": {
-        "description": "Readiness probe: verifies store and provider are functional.\n\nPhase 3 step 37 (synthesis §6 row 2 / B6 §1.2 #4 / §4 Phase 3): the\nprovider check is now driven by ``HardwareWatchdog.health_summary()``,\nwhich aggregates ``HardwareLifecycle.hw_health()`` across providers.\n\nBehavior:\n  - Store: read history for a sentinel session (exercises DB connectivity).\n  - Provider (HW path): when ``engine.hw_watchdog`` is present (always\n    true for engines built via ``Engine.from_settings``), aggregate health\n    across HW providers. ``error`` → ready=false. ``healthy`` /\n    ``degraded`` → ready=true (cold-cache MLC providers report\n    ``degraded`` until a model is loaded; that's normal).\n  - Provider (fallback): no watchdog (engine constructed directly without\n    ``from_settings``) → fall back to ``list_models()``.\n  - Connectors (Phase 4.5 step 47e): when ``engine.connector_registry``\n    is present, append a ``connectors`` array with each connector's\n    ``{id, state, detail}`` snapshot. Connector failures do NOT flip\n    ``ready`` — connectors in UNCONFIGURED / LOGGED_OUT / ERROR are an\n    expected steady state until the user runs the login flow (connector\n    spec §3.3).\n  - Connector start failures (P0-F / Tribunal P0-07 / A2-F2): when a\n    connector that was READY at config time raised from ``start()``\n    during ``Engine.__aenter__``, the failing id is included in the\n    ``connector_start_failures`` array and ``ready`` is set to false\n    so process supervisors can take action. The response remains 200.\n  - Operational health: ``operational_health.notebook_cleanup`` reports\n    bounded abandoned-task tracking for diagnostics only. Its state never\n    changes readiness or initiates recovery.\n\nA streaming probe is still avoided: MLC engines may take 5–60s on cold\ncache. Health is reported by counting cached entries, not loading.",
+        "description": "Readiness probe: verifies store and provider(s) are functional.\n\nADR-0021 P2.A: response is additive. New top-level keys:\n\n  - ``providers``: ``{pid: {healthy, kind, source, error}}`` from\n    ``engine.list_provider_health()``.\n  - ``default_provider_id``: the engine's current default.\n\nLegacy keys preserved on every response path:\n\n  - ``ready`` — overall flag; now also requires ≥1 healthy provider.\n  - ``store`` — DB connectivity.\n  - ``provider`` — True iff ≥1 healthy provider.\n  - ``hw_health`` — HW watchdog summary (or absent when no watchdog).\n  - ``connectors`` / ``connector_start_failures`` — connector layer.",
         "operationId": "readyz_api_v1_readyz_get",
         "responses": {
           "200": {

@@ -5,12 +5,14 @@ Covers:
   - /models returns the merged list[str] union from all healthy providers
   - /models/details rows carry provider_id (not the sentinel "_unwrapped_")
   - unhealthy-provider models are hidden from both endpoints
-  - duplicate model names across providers get "pid/model_name" prefixes in /models
+  - duplicate model names across providers remain raw and are disambiguated by
+    ``provider_id`` in /models/details
 
 Uses the same minimal-app + fake-Engine pattern as test_chat_provider_routing.py.
 Phase 2.A guarantees engine.providers / engine.default_provider_id /
 engine._provider_start_failures; simulated here by setting them post-construction.
 """
+
 from __future__ import annotations
 
 from typing import Any, AsyncGenerator, Dict, List, Optional
@@ -71,7 +73,7 @@ class _SimpleProvider(ModelProvider):
         ]
 
     def unload_model(self, model_name: str) -> bool:
-        return False
+        return model_name in self._models
 
     def get_context_window(self, model_name: str) -> int:
         return 4096
@@ -87,57 +89,20 @@ def _build_multi_provider_engine(
     default_pid: str,
     failures: Optional[Dict[str, str]] = None,
 ) -> Engine:
-    """Build an Engine with Phase 2.A multi-provider attributes set.
-
-    The Engine's list_models / list_model_info are patched to respect the
-    multi-provider contract (merging healthy providers, disambiguating
-    duplicates) since Phase 2.A hasn't merged yet.
-    """
-    first_provider = next(iter(providers.values()))
+    """Build a real multi-provider Engine for endpoint integration tests."""
+    failures = failures or {}
+    healthy_providers = {
+        provider_id: provider for provider_id, provider in providers.items() if provider_id not in failures
+    }
     engine = Engine(
-        provider=first_provider,
+        providers=healthy_providers,
+        default_provider_id=default_pid,
+        provider_start_failures=failures,
         parser=SlidingParser(),
         session_store=AsyncMock(),
         tools={},
         system_prompt="You are a helpful assistant.",
     )
-    engine.providers = providers  # type: ignore[attr-defined]
-    engine.default_provider_id = default_pid  # type: ignore[attr-defined]
-    engine._provider_start_failures = failures or {}  # type: ignore[attr-defined]
-
-    # Patch list_models + list_model_info to simulate Phase 2.A merging logic.
-    _failures_ref = engine._provider_start_failures
-
-    def _merged_list_models() -> List[str]:
-        """Merge model lists from HEALTHY providers, disambiguating duplicates."""
-        seen: Dict[str, List[str]] = {}  # model_name -> [provider_ids]
-        for pid, provider in providers.items():
-            if pid in _failures_ref:
-                continue
-            for m in provider.list_models():
-                seen.setdefault(m, []).append(pid)
-        result = []
-        for model_name, pids in seen.items():
-            if len(pids) == 1:
-                result.append(model_name)
-            else:
-                for pid in pids:
-                    result.append(f"{pid}/{model_name}")
-        return result
-
-    def _merged_list_model_info() -> List[ModelDetails]:
-        """Merge ModelDetails from HEALTHY providers, wrapping with provider_id."""
-        result = []
-        for pid, provider in providers.items():
-            if pid in _failures_ref:
-                continue
-            for info in provider.list_model_info():
-                result.append(info.model_copy(update={"provider_id": pid}))
-        return result
-
-    engine.list_models = _merged_list_models  # type: ignore[method-assign]
-    engine.list_model_info = _merged_list_model_info  # type: ignore[method-assign]
-
     return engine
 
 
@@ -221,8 +186,8 @@ def test_models_hides_unhealthy_provider_models():
         assert ("a", "model-a1") in detail_ids
 
 
-def test_models_duplicate_names_disambiguated():
-    """When the same model_name exists in two providers, /models uses pid/name prefix for both."""
+def test_models_duplicate_names_are_disambiguated_in_details():
+    """Duplicate names remain raw; /models/details carries the provider ID."""
     provider_a = _SimpleProvider("a", ["shared-model", "unique-a"])
     provider_b = _SimpleProvider("b", ["shared-model", "unique-b"])
     engine = _build_multi_provider_engine(
@@ -234,10 +199,8 @@ def test_models_duplicate_names_disambiguated():
         assert resp.status_code == 200
         models = resp.json()
         model_set = set(models)
-        # Duplicates get prefixed; unique names remain bare.
-        assert "a/shared-model" in model_set
-        assert "b/shared-model" in model_set
-        assert "shared-model" not in model_set  # bare form should NOT appear
+        assert "shared-model" in model_set
+        assert list(models).count("shared-model") == 1
         assert "unique-a" in model_set
         assert "unique-b" in model_set
 
@@ -248,3 +211,39 @@ def test_models_duplicate_names_disambiguated():
         assert len(shared_rows) == 2
         provider_ids_for_shared = {r["provider_id"] for r in shared_rows}
         assert provider_ids_for_shared == {"a", "b"}
+
+
+def test_unload_duplicate_model_requires_provider_id():
+    provider_a = _SimpleProvider("a", ["shared-model"])
+    provider_b = _SimpleProvider("b", ["shared-model"])
+    engine = _build_multi_provider_engine(
+        {"a": provider_a, "b": provider_b},
+        default_pid="a",
+    )
+
+    with TestClient(_build_app(engine)) as client:
+        response = client.post(
+            "/api/v1/models/unload",
+            json={"model_name": "shared-model"},
+        )
+
+    assert response.status_code == 422
+    assert "multiple providers" in response.json()["detail"]
+
+
+def test_unload_duplicate_model_honors_explicit_provider():
+    provider_a = _SimpleProvider("a", ["shared-model"])
+    provider_b = _SimpleProvider("b", ["shared-model"])
+    engine = _build_multi_provider_engine(
+        {"a": provider_a, "b": provider_b},
+        default_pid="a",
+    )
+
+    with TestClient(_build_app(engine)) as client:
+        response = client.post(
+            "/api/v1/models/unload",
+            json={"model_name": "shared-model", "provider_id": "a"},
+        )
+
+    assert response.status_code == 200
+    assert response.json()["provider_id"] == "a"
