@@ -56,6 +56,9 @@ class NexaProvider(ModelProvider):
         model_name: str,
         messages: List[Dict[str, Any]],
         tools: Optional[List[Dict[str, Any]]] = None,
+        *,
+        request_id: Optional[str] = None,
+        reasoning_effort: Optional[str] = None,
     ) -> AsyncGenerator[Any, None]:
         raise NotImplementedError(
             "NexaProvider is a stub for forward-compatibility verification only. "

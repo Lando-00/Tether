@@ -204,6 +204,7 @@ class ChattyAgentOrchestrator(OrchestratorABC):
         config: OrchestratorConfig,
         tool_runner: ToolRunner,
         hw_watchdog: Optional["HardwareWatchdog"] = None,
+        provider_id: Optional[str] = None,
         confirm_intent_classifier: "ConfirmIntentClassifier | None" = None,
         audit_store_args: bool = False,
     ):
@@ -215,6 +216,7 @@ class ChattyAgentOrchestrator(OrchestratorABC):
         self.config = config
         self.tool_runner = tool_runner
         self.hw_watchdog = hw_watchdog
+        self.provider_id = provider_id
         # Phase 7 step 74: when True, raw args_json is stored in tool_audit
         # alongside the SHA-256 hash. Default False (privacy-preserving).
         # Synthesis §3.6 + B5 step 7.
@@ -234,6 +236,7 @@ class ChattyAgentOrchestrator(OrchestratorABC):
         prompt: str,
         model_name: str,
         cancel_token: Optional[CancelToken] = None,
+        reasoning_effort: Optional[str] = None,
     ) -> AsyncIterator[WireEvent]:
         """Run one turn of the model→parser→tool-execution loop.
 
@@ -337,6 +340,7 @@ class ChattyAgentOrchestrator(OrchestratorABC):
                     session_id=session_id,
                     model_name=model_name,
                     cancel_token=cancel_token,
+                    reasoning_effort=reasoning_effort,
                     envelope_factory=_envelope,
                     turn_state=turn_state,
                 ):
@@ -387,7 +391,9 @@ class ChattyAgentOrchestrator(OrchestratorABC):
                         ):
                             try:
                                 recovered = await self.hw_watchdog.reset_after(
-                                    stream_error, model_name=model_name
+                                    stream_error,
+                                    model_name=model_name,
+                                    provider_id=self.provider_id,
                                 )
                             except Exception as wd_err:
                                 logger.exception(
@@ -741,6 +747,7 @@ class ChattyAgentOrchestrator(OrchestratorABC):
         session_id: str,
         model_name: str,
         cancel_token: Optional[CancelToken],
+        reasoning_effort: Optional[str],
         envelope_factory,
         turn_state: Dict[str, Any],
     ) -> AsyncIterator[WireEvent]:
@@ -786,13 +793,16 @@ class ChattyAgentOrchestrator(OrchestratorABC):
         _plog.info("provider.stream.start", model_id=model_name)
 
         try:
+            stream_kwargs: Dict[str, Any] = {
+                "model_name": model_name,
+                "messages": messages,
+                "tools": tool_schemas,
+                "request_id": _caller_rid,
+            }
+            if reasoning_effort is not None:
+                stream_kwargs["reasoning_effort"] = reasoning_effort
             async with aclosing(
-                self.provider.stream(
-                    model_name=model_name,
-                    messages=messages,
-                    tools=tool_schemas,
-                    request_id=_caller_rid,
-                )
+                self.provider.stream(**stream_kwargs)
             ) as provider_stream:
                 async for chunk in provider_stream:
                     _stream_chunks += 1

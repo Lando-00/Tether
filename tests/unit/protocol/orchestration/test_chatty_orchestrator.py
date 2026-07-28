@@ -11,12 +11,13 @@ Verifies:
 """
 from __future__ import annotations
 
-import asyncio
 from datetime import datetime, timezone
 from typing import Any, AsyncGenerator, Dict, List, Optional
+from unittest.mock import AsyncMock, MagicMock
 
 import pytest
 
+from tests.golden.conftest import MinimalMemoryStore
 from tether.core.interfaces import ModelProvider, SessionStore, StreamParser
 from tether.core.types import OrchestratorConfig
 from tether.protocol.orchestration.cancel import AsyncEventCancelToken
@@ -29,7 +30,6 @@ from tether.protocol.orchestration.tool_runner import ToolRunner
 from tether.protocol.parsers.events import (
     PText,
     PToolCallParsed,
-    ParserEvent,
 )
 from tether.protocol.parsers.sliding import SlidingParser
 from tether.protocol.wire.events import (
@@ -38,8 +38,6 @@ from tether.protocol.wire.events import (
     TextDelta,
     WireEvent,
 )
-
-from tests.golden.conftest import MinimalMemoryStore
 
 
 @pytest.fixture
@@ -86,6 +84,31 @@ class _ScriptedProvider(ModelProvider):
         return 4096
 
 
+class _FailingProvider(ModelProvider):
+    """Provider that fails immediately so recovery routing can be asserted."""
+
+    async def stream(
+        self,
+        model_name: str,
+        messages: List[Dict[str, Any]],
+        tools: Optional[List[Dict[str, Any]]] = None,
+        *,
+        request_id: Optional[str] = None,
+    ) -> AsyncGenerator[str, None]:
+        raise RuntimeError("synthetic stream failure")
+        if False:
+            yield ""
+
+    def list_models(self) -> List[str]:
+        return ["failing"]
+
+    def unload_model(self, model_name: str) -> bool:
+        return False
+
+    def get_context_window(self, model_name: str) -> int:
+        return 4096
+
+
 def _config(**overrides) -> OrchestratorConfig:
     defaults = dict(
         max_tool_loops=3,
@@ -106,6 +129,8 @@ def _build_orch(
     parser: Optional[StreamParser] = None,
     tools: Optional[Dict[str, Any]] = None,
     config: Optional[OrchestratorConfig] = None,
+    hw_watchdog: Any = None,
+    provider_id: Optional[str] = None,
 ) -> ChattyAgentOrchestrator:
     tools = tools or {}
     return ChattyAgentOrchestrator(
@@ -116,6 +141,8 @@ def _build_orch(
         system_prompt="You are helpful.",
         config=config or _config(),
         tool_runner=ToolRunner(tools, timeout_sec=5),
+        hw_watchdog=hw_watchdog,
+        provider_id=provider_id,
     )
 
 
@@ -141,6 +168,28 @@ def test_orchestrator_class_rejects_missing_required():
     """Missing any required kwarg raises TypeError (Python ``__init__``)."""
     with pytest.raises(TypeError):
         ChattyAgentOrchestrator()  # type: ignore[call-arg]
+
+
+@pytest.mark.anyio
+async def test_orchestrator_scopes_watchdog_recovery_to_provider_id():
+    watchdog = MagicMock()
+    watchdog.reset_after = AsyncMock(return_value=False)
+    orch = _build_orch(
+        provider=_FailingProvider(),
+        config=_config(auto_reload_on_fatal_error=True),
+        hw_watchdog=watchdog,
+        provider_id="mlc",
+    )
+
+    async for _ in orch.run(
+        session_id="scope-reset",
+        prompt="hi",
+        model_name="failing",
+    ):
+        pass
+
+    watchdog.reset_after.assert_awaited_once()
+    assert watchdog.reset_after.await_args.kwargs["provider_id"] == "mlc"
 
 
 # ---------------------------------------------------------------------------
@@ -184,7 +233,11 @@ async def test_orchestrator_run_yields_wire_event():
         events.append(evt)
 
     assert len(events) >= 2  # MessageStart + at least 1 TextDelta + MessageStop
-    assert all(isinstance(e, WireEvent.__args__[0].__args__[0].__class__.__base__.__base__) or isinstance(e, (MessageStart, MessageStop, TextDelta)) for e in events)
+    assert all(
+        isinstance(e, WireEvent.__args__[0].__args__[0].__class__.__base__.__base__)
+        or isinstance(e, (MessageStart, MessageStop, TextDelta))
+        for e in events
+    )
     # Tighter check: no event is a raw bytes / dict.
     for e in events:
         assert not isinstance(e, (bytes, dict))
@@ -424,4 +477,3 @@ async def test_orchestrator_cancel_before_first_loop():
 
     assert isinstance(events[-1], MessageStop)
     assert events[-1].stop_reason == "cancelled"
-

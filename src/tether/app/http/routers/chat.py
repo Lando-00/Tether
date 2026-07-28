@@ -1,13 +1,21 @@
-
+import asyncio
+import json
 import re
+from datetime import datetime, timezone
+from typing import Literal, Optional
+
 from fastapi import APIRouter, HTTPException, Request
 from fastapi.responses import StreamingResponse
 from pydantic import BaseModel, Field
-from typing import Literal
-import asyncio
-import json
-from datetime import datetime, timezone
+
+from tether.core.errors import (
+    AmbiguousModelError,
+    ProviderUnhealthyError,
+    UnknownModelError,
+    UnknownProviderError,
+)
 from tether.core.logging import logger
+from tether.core.provider_ids import PROVIDER_ID_PATTERN
 
 # Compile once at module level for performance.
 # (?![\w.]) is a negative lookahead: next char must not be a word character
@@ -47,7 +55,9 @@ def _has_version_0(accept_lower: str) -> bool:
     """
     return bool(_VERSION_0_RE.search(accept_lower))
 
+
 router = APIRouter(prefix="/chat", tags=["chat"])
+
 
 class StreamRequest(BaseModel):
     session_id: str = Field(
@@ -64,7 +74,12 @@ class StreamRequest(BaseModel):
     model_name: str = Field(
         ...,
         description="The name of the model to use for this generation.",
-        pattern=r"^[A-Za-z0-9._-]{1,128}$",
+        pattern=(
+            r"^[A-Za-z0-9][A-Za-z0-9._-]*"
+            r"(?:/[A-Za-z0-9][A-Za-z0-9._-]*)?"
+            r"(?::[A-Za-z0-9][A-Za-z0-9._-]*)?$"
+        ),
+        max_length=256,
     )
     mode: Literal["chat", "research"] = Field(
         default="chat",
@@ -78,6 +93,187 @@ class StreamRequest(BaseModel):
             "application/x-ndjson (NDJSON back-compat) responses."
         ),
     )
+    reasoning_effort: Optional[str] = Field(
+        default=None,
+        description=(
+            "Per-request reasoning effort hint for models that advertise "
+            "``supports_reasoning_effort=True`` in ``GET /models/details`` "
+            "(e.g. GitHub Copilot SDK ``gpt-5``). When the chosen model "
+            "does not support reasoning effort, or the supplied value is "
+            "not in the model's accepted ``reasoning_efforts`` list, the "
+            "server responds 422 before any streaming begins. Omit to "
+            "use the provider's default."
+        ),
+        pattern=r"^[A-Za-z0-9._-]{1,32}$",
+    )
+    provider_id: Optional[str] = Field(
+        default=None,
+        description=(
+            "Optional explicit provider routing key. When omitted, the "
+            "server routes only if exactly one healthy provider advertises "
+            "the model. Unknown or ambiguous models return 422; a "
+            "known-but-unhealthy provider returns 503."
+        ),
+        pattern=PROVIDER_ID_PATTERN,
+    )
+
+
+def _validate_reasoning_effort(
+    engine,
+    model_name: str,
+    reasoning_effort: str,
+    provider_id: Optional[str] = None,
+    *,
+    details=None,
+) -> None:
+    """Reject unsupported ``reasoning_effort`` values BEFORE streaming starts.
+
+    When ``provider_id`` is supplied (ADR-0021), only ``ModelDetails`` rows
+    whose ``provider_id`` matches are considered.
+    """
+    if details is None:
+        try:
+            details = engine.list_model_info()
+        except Exception as exc:
+            raise HTTPException(
+                status_code=503,
+                detail=f"Could not fetch model metadata: {exc}",
+            ) from exc
+
+    matching = [
+        info
+        for info in details
+        if info.id == model_name
+        and (
+            provider_id is None
+            or info.provider_id in ("_unwrapped_", provider_id)
+        )
+    ]
+    if len(matching) != 1:
+        suffix = f" on provider '{provider_id}'" if provider_id else ""
+        raise HTTPException(
+            status_code=503,
+            detail=(
+                f"Could not fetch model metadata for '{model_name}'{suffix}. "
+                "Retry when the provider is healthy."
+            ),
+        )
+
+    info = matching[0]
+    if not info.supports_reasoning_effort:
+        raise HTTPException(
+            status_code=422,
+            detail=(
+                f"Model '{model_name}' does not support reasoning_effort"
+                + (f" on provider '{provider_id}'" if provider_id else "")
+                + "; omit the field or pick a model with "
+                "supports_reasoning_effort=true in /models/details."
+            ),
+        )
+    accepted = info.reasoning_efforts or []
+    if reasoning_effort not in accepted:
+        raise HTTPException(
+            status_code=422,
+            detail=(
+                f"reasoning_effort='{reasoning_effort}' not accepted by "
+                f"model '{model_name}'. Accepted values: {accepted}."
+            ),
+        )
+
+
+def _reasoning_models_for_request(
+    engine,
+    *,
+    mode: str,
+    model_name: str,
+) -> tuple[str, ...]:
+    """Return every model that receives a request-scoped reasoning effort."""
+    if mode != "research":
+        return (model_name,)
+
+    research_settings = getattr(engine, "_research_settings", None)
+    phase_models = (
+        getattr(research_settings, "planner_model", None) or model_name,
+        getattr(research_settings, "extractor_model", None) or model_name,
+        getattr(research_settings, "synthesizer_model", None) or model_name,
+    )
+    return tuple(dict.fromkeys(phase_models))
+
+
+def _resolve_provider_id(
+    engine,
+    *,
+    model_name: str,
+    requested_provider_id: Optional[str],
+    mode: str,
+) -> Optional[str]:
+    """Resolve a request before streaming so route errors keep HTTP status."""
+    resolver = getattr(engine, "resolve_provider_id", None)
+    if callable(resolver):
+        try:
+            provider_id = resolver(
+                model_name,
+                provider_id=requested_provider_id,
+            )
+            if mode == "research":
+                validate_overrides = getattr(
+                    engine,
+                    "validate_research_model_overrides",
+                    None,
+                )
+                if callable(validate_overrides):
+                    validate_overrides(provider_id)
+            return provider_id
+        except ProviderUnhealthyError as exc:
+            logger.error(
+                "/chat/stream provider unhealthy: provider_id=%s",
+                exc.provider_id,
+            )
+            raise HTTPException(
+                status_code=503,
+                detail=(
+                    f"Provider '{exc.provider_id}' is currently unavailable. "
+                    "Check the server log for details, or query "
+                    "/api/v1/readyz for the per-provider health map."
+                ),
+            ) from exc
+        except UnknownProviderError as exc:
+            raise HTTPException(
+                status_code=422,
+                detail=f"Unknown provider_id '{exc.provider_id}'.",
+            ) from exc
+        except UnknownModelError as exc:
+            suffix = f" on provider '{exc.provider_id}'" if exc.provider_id is not None else ""
+            raise HTTPException(
+                status_code=422,
+                detail=f"Model '{exc.model_name}' is not available{suffix}.",
+            ) from exc
+        except AmbiguousModelError as exc:
+            raise HTTPException(
+                status_code=422,
+                detail=(f"Model '{exc.model_name}' is available from multiple providers; specify provider_id."),
+            ) from exc
+
+    # Compatibility for older Engine implementations that predate the
+    # provider/model resolver. New Engines always take the branch above.
+    provider_id = requested_provider_id or getattr(engine, "default_provider_id", None)
+    providers = getattr(engine, "providers", None)
+    if provider_id is not None and providers is not None and provider_id not in providers:
+        failures = getattr(engine, "_provider_start_failures", {})
+        if provider_id in failures:
+            raise HTTPException(
+                status_code=503,
+                detail=(
+                    f"Provider '{provider_id}' is currently unavailable. "
+                    "Check the server log for details, or query "
+                    "/api/v1/readyz for the per-provider health map."
+                ),
+            )
+        raise HTTPException(
+            status_code=422,
+            detail=f"Unknown provider_id '{provider_id}'.",
+        )
+    return provider_id
 
 
 @router.post("/stream")
@@ -110,20 +306,53 @@ async def stream(request: Request, body: StreamRequest):
     #   anything else (incl. application/x-ndjson;    -> NDJSON v2 (NEW DEFAULT)
     #       version=1.0 or no Accept header)
     use_sse = "text/event-stream" in accept_lower
-    use_ndjson_v0_legacy = (
-        not use_sse
-        and "application/x-ndjson" in accept_lower
-        and _has_version_0(accept_lower)
-    )
+    use_ndjson_v0_legacy = not use_sse and "application/x-ndjson" in accept_lower and _has_version_0(accept_lower)
 
     logger.info(
         f"/chat/stream called: session_id={body.session_id}, "
         f"model_name={body.model_name}, mode={body.mode}, "
-        f"sse={use_sse}, ndjson_v0_legacy={use_ndjson_v0_legacy}"
+        f"sse={use_sse}, ndjson_v0_legacy={use_ndjson_v0_legacy}, "
+        f"reasoning_effort={body.reasoning_effort}, "
+        f"provider_id={body.provider_id}"
     )
 
     engine = request.app.state.gen_svc
     headers = {"X-Tether-Protocol-Version": "1.0"}
+
+    pid = _resolve_provider_id(
+        engine,
+        model_name=body.model_name,
+        requested_provider_id=body.provider_id,
+        mode=body.mode,
+    )
+    _provider_kwarg: dict = {"provider_id": pid} if pid is not None else {}
+    if (
+        pid is not None
+        and callable(getattr(engine, "resolve_provider_id", None))
+    ):
+        _provider_kwarg["_resolved_provider_id"] = pid
+
+    # Validate reasoning_effort against chosen model's metadata BEFORE streaming.
+    if body.reasoning_effort is not None:
+        try:
+            details = engine.list_model_info()
+        except Exception as exc:
+            raise HTTPException(
+                status_code=503,
+                detail=f"Could not fetch model metadata: {exc}",
+            ) from exc
+        for reasoning_model in _reasoning_models_for_request(
+            engine,
+            mode=body.mode,
+            model_name=body.model_name,
+        ):
+            _validate_reasoning_effort(
+                engine,
+                reasoning_model,
+                body.reasoning_effort,
+                provider_id=pid,
+                details=details,
+            )
 
     # Eagerly resolve the Orchestrator class to return 501 before streaming
     # begins if the mode is a stub (is_implemented=False). Pydantic's Literal
@@ -133,12 +362,18 @@ async def stream(request: Request, body: StreamRequest):
         UnknownOrchestratorMode,
         resolve_orchestrator_class,
     )
+
     try:
         orchestrator_cls = resolve_orchestrator_class(
-            body.mode, getattr(engine, "_orchestrator_registry", {
-                "chat": "tether.protocol.orchestration.chatty.ChattyAgentOrchestrator",
-                "research": "tether.protocol.orchestration.notebook.NotebookOrchestrator",
-            })
+            body.mode,
+            getattr(
+                engine,
+                "_orchestrator_registry",
+                {
+                    "chat": "tether.protocol.orchestration.chatty.ChattyAgentOrchestrator",
+                    "research": "tether.protocol.orchestration.notebook.NotebookOrchestrator",
+                },
+            ),
         )
     except UnknownOrchestratorMode as exc:
         # Defensive: Pydantic Literal rejects unknowns at validation time,
@@ -162,6 +397,7 @@ async def stream(request: Request, body: StreamRequest):
         async def sse_generator():
             cancel_token = AsyncEventCancelToken()
             try:
+
                 async def cancellable_chat():
                     async for event in engine.chat(
                         session_id=body.session_id,
@@ -169,11 +405,11 @@ async def stream(request: Request, body: StreamRequest):
                         model_name=body.model_name,
                         mode=body.mode,
                         cancel_token=cancel_token,
+                        reasoning_effort=body.reasoning_effort,
+                        **_provider_kwarg,
                     ):
                         if await request.is_disconnected():
-                            logger.info(
-                                f"Client disconnected (SSE): session_id={body.session_id}"
-                            )
+                            logger.info(f"Client disconnected (SSE): session_id={body.session_id}")
                             cancel_token.set()
                             break
                         yield event
@@ -187,9 +423,7 @@ async def stream(request: Request, body: StreamRequest):
                     "message": f"Streaming error: {str(e)}",
                     "error_type": type(e).__name__,
                 }
-                yield (
-                    f"event: error\ndata: {json.dumps(error_payload)}\n\n"
-                ).encode("utf-8")
+                yield (f"event: error\ndata: {json.dumps(error_payload)}\n\n").encode("utf-8")
                 # Phase 5 followups F7: synthesize a terminal MessageStop
                 # frame so SSE consumers don't block on a missing terminal
                 # event after a fatal streaming exception.
@@ -197,9 +431,7 @@ async def stream(request: Request, body: StreamRequest):
                     "type": "message_stop",
                     "stop_reason": "error",
                 }
-                yield (
-                    f"event: message_stop\ndata: {json.dumps(stop_payload)}\n\n"
-                ).encode("utf-8")
+                yield (f"event: message_stop\ndata: {json.dumps(stop_payload)}\n\n").encode("utf-8")
 
         return StreamingResponse(
             sse_generator(),
@@ -217,7 +449,7 @@ async def stream(request: Request, body: StreamRequest):
             **headers,
             "Warning": (
                 '299 - "Tether NDJSON v0 vocabulary is deprecated; '
-                'use Accept: application/x-ndjson; version=1.0 (or omit '
+                "use Accept: application/x-ndjson; version=1.0 (or omit "
                 'the version parameter for the new v2 default)"'
             ),
         }
@@ -231,11 +463,11 @@ async def stream(request: Request, body: StreamRequest):
                     model_name=body.model_name,
                     mode=body.mode,
                     cancel_event=cancel_event,
+                    reasoning_effort=body.reasoning_effort,
+                    **_provider_kwarg,
                 ):
                     if await request.is_disconnected():
-                        logger.info(
-                            f"Client disconnected (NDJSON v0 legacy): session_id={body.session_id}"
-                        )
+                        logger.info(f"Client disconnected (NDJSON v0 legacy): session_id={body.session_id}")
                         cancel_event.set()
                         break
                     yield chunk
@@ -280,6 +512,7 @@ async def stream(request: Request, body: StreamRequest):
     async def ndjson_v2_generator():
         cancel_token = AsyncEventCancelToken()
         try:
+
             async def cancellable_chat():
                 async for event in engine.chat(
                     session_id=body.session_id,
@@ -287,11 +520,11 @@ async def stream(request: Request, body: StreamRequest):
                     model_name=body.model_name,
                     mode=body.mode,
                     cancel_token=cancel_token,
+                    reasoning_effort=body.reasoning_effort,
+                    **_provider_kwarg,
                 ):
                     if await request.is_disconnected():
-                        logger.info(
-                            f"Client disconnected (NDJSON v2): session_id={body.session_id}"
-                        )
+                        logger.info(f"Client disconnected (NDJSON v2): session_id={body.session_id}")
                         cancel_token.set()
                         break
                     yield event

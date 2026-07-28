@@ -10,8 +10,6 @@ from __future__ import annotations
 import json
 from datetime import datetime, timezone
 
-import pytest
-
 from tether.protocol.orchestration.emitter import (
     NdjsonEmitter,
     v0_compat_serialize,

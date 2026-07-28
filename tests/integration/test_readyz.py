@@ -6,22 +6,24 @@ Phase 3 step 37 (synthesis §6 row 2 / B6 §1.2 #4 / §4 Phase 3):
 engine carries a watchdog (always true via ``Engine.from_settings``); falls
 back to ``provider.list_models()`` otherwise.
 """
-import pytest
-from fastapi import FastAPI, APIRouter
-from fastapi.testclient import TestClient
+
 from typing import Any, AsyncGenerator, Dict, List, Optional
+
+import pytest
+from fastapi import APIRouter, FastAPI
+from fastapi.testclient import TestClient
 
 from tether.app.http.routers.health import router as health_router
 from tether.core.interfaces import ModelProvider, SessionStore
 from tether.engine import Engine
 from tether.providers.hw import HardwareLifecycle, HwErrorClass, HwHealth
-from tether.runtime.hw_watchdog import HardwareWatchdog
 from tether.runtime.abandoned_tasks import get_notebook_abandoned_task_tracker
-
+from tether.runtime.hw_watchdog import HardwareWatchdog
 
 # ---------------------------------------------------------------------------
 # Minimal fakes — enough for the readyz endpoint only
 # ---------------------------------------------------------------------------
+
 
 class _MinimalStore(SessionStore):
     """In-memory store: implements only what readyz needs (get_history)."""
@@ -53,10 +55,31 @@ class _MinimalStore(SessionStore):
     ) -> None:
         pass
 
-    async def add_assistant_toolcall(self, session_id: str, tool_name: str, args: Dict[str, Any], *, turn_id=None, tool_call_id=None, seq_start=None) -> None:
+    async def add_assistant_toolcall(
+        self,
+        session_id: str,
+        tool_name: str,
+        args: Dict[str, Any],
+        *,
+        turn_id=None,
+        tool_call_id=None,
+        seq_start=None,
+    ) -> None:
         pass
 
-    async def add_tool_result(self, session_id: str, tool_name: str, result: Any, *, turn_id=None, tool_call_id=None, seq_start=None, status="ok", error=None, duration_ms=None) -> None:
+    async def add_tool_result(
+        self,
+        session_id: str,
+        tool_name: str,
+        result: Any,
+        *,
+        turn_id=None,
+        tool_call_id=None,
+        seq_start=None,
+        status="ok",
+        error=None,
+        duration_ms=None,
+    ) -> None:
         pass
 
     async def get_history(self, session_id: str, include_thinking: bool = False) -> List[Dict[str, Any]]:
@@ -191,9 +214,7 @@ def _make_app(provider: ModelProvider, store: SessionStore, *, with_watchdog: bo
     """
     from tether.protocol.parsers.sliding import SlidingParser
 
-    watchdog: Optional[HardwareWatchdog] = (
-        HardwareWatchdog([provider]) if with_watchdog else None
-    )
+    watchdog: Optional[HardwareWatchdog] = HardwareWatchdog([provider]) if with_watchdog else None
 
     gen_svc = Engine(
         provider=provider,
@@ -214,6 +235,7 @@ def _make_app(provider: ModelProvider, store: SessionStore, *, with_watchdog: bo
 # ---------------------------------------------------------------------------
 # Tests — Phase 3 step 37 shape
 # ---------------------------------------------------------------------------
+
 
 def test_readyz_with_dummy_provider():
     """DummyProvider isn't HardwareLifecycle → watchdog has zero HW
@@ -236,9 +258,7 @@ def test_readyz_with_dummy_provider():
     ("task_count", "expected_status"),
     [(0, "healthy"), (8, "degraded"), (16, "error")],
 )
-def test_readyz_notebook_cleanup_is_informational_only(
-    task_count, expected_status
-):
+def test_readyz_notebook_cleanup_is_informational_only(task_count, expected_status):
     """All cleanup states are visible but do not affect provider readiness."""
     tracker = get_notebook_abandoned_task_tracker()
     tracker._reset_for_tests()
@@ -251,9 +271,7 @@ def test_readyz_notebook_cleanup_is_informational_only(
         for _ in range(task_count):
             tracker.track(_PendingTask(), kind="anext")
         provider = _FakeHWProvider(HwHealth(status="healthy", details={}))
-        body = TestClient(_make_app(provider, _MinimalStore())).get(
-            "/api/v1/readyz"
-        ).json()
+        body = TestClient(_make_app(provider, _MinimalStore())).get("/api/v1/readyz").json()
         cleanup = body["operational_health"]["notebook_cleanup"]
         assert body["ready"] is True
         assert body["provider"] is True
@@ -277,9 +295,7 @@ def test_readyz_overflowed_notebook_cleanup_remains_informational():
         for _ in range(33):
             tracker.track(_PendingTask(), kind="anext")
         provider = _FakeHWProvider(HwHealth(status="healthy", details={}))
-        body = TestClient(_make_app(provider, _MinimalStore())).get(
-            "/api/v1/readyz"
-        ).json()
+        body = TestClient(_make_app(provider, _MinimalStore())).get("/api/v1/readyz").json()
         cleanup = body["operational_health"]["notebook_cleanup"]
         assert body["ready"] is True
         assert body["provider"] is True
@@ -292,15 +308,19 @@ def test_readyz_overflowed_notebook_cleanup_remains_informational():
 
 
 def test_readyz_store_failure():
-    """Store throws → ready=false, store=false, provider=None.
-    Same shape regardless of watchdog presence."""
+    """Store throws → ready=false, store=false.
+    ADR-0021: provider field tracks registry health (True when the provider
+    is constructed) even when the store is down. Same shape regardless of
+    watchdog presence."""
     client = TestClient(_make_app(_DummyProvider(), _BrokenStore()))
     resp = client.get("/api/v1/readyz")
     assert resp.status_code == 200
     body = resp.json()
     assert body["ready"] is False
     assert body["store"] is False
-    assert body["provider"] is None
+    # ADR-0021: provider tracks any-healthy-provider; True because the Engine
+    # has a healthy provider in its registry even when the store is broken.
+    assert body["provider"] is True
     assert "db connection failed" in body["error"]
 
 
@@ -332,14 +352,19 @@ def test_readyz_with_fake_hw_provider_degraded_is_ready():
 
 
 def test_readyz_with_fake_hw_provider_error():
-    """Provider reporting ``error`` makes /readyz return ready=false."""
+    """Provider reporting ``error`` makes /readyz return ready=false.
+    ADR-0021: ``provider`` bool tracks registry health independent of HW
+    state — the provider IS in the registry and healthy at the registry
+    level even when its HW layer reports error."""
     provider = _FakeHWProvider(HwHealth(status="error", details={"reason": "all engines crashed"}))
     client = TestClient(_make_app(provider, _MinimalStore()))
     resp = client.get("/api/v1/readyz")
     body = resp.json()
     assert body["ready"] is False
     assert body["store"] is True
-    assert body["provider"] is False
+    # ADR-0021: provider=True because the registry has a healthy entry;
+    # HW errors are surfaced via hw_health, not the provider bool.
+    assert body["provider"] is True
     assert body["error"] == "hw_health: error"
     assert body["hw_health"]["overall"] == "error"
 
@@ -348,12 +373,11 @@ def test_readyz_with_fake_hw_provider_error():
 # Tests — fallback path (hw_watchdog=None)
 # ---------------------------------------------------------------------------
 
+
 def test_readyz_no_watchdog_fallback():
     """Engine built directly with hw_watchdog=None falls back to the
     list_models() probe. Old wire shape (models_available)."""
-    client = TestClient(
-        _make_app(_DummyProvider(), _MinimalStore(), with_watchdog=False)
-    )
+    client = TestClient(_make_app(_DummyProvider(), _MinimalStore(), with_watchdog=False))
     resp = client.get("/api/v1/readyz")
     assert resp.status_code == 200
     body = resp.json()
@@ -366,9 +390,7 @@ def test_readyz_no_watchdog_fallback():
 
 def test_readyz_no_watchdog_empty_models():
     """Fallback path with empty list_models() → ready=false."""
-    client = TestClient(
-        _make_app(_EmptyModelProvider(), _MinimalStore(), with_watchdog=False)
-    )
+    client = TestClient(_make_app(_EmptyModelProvider(), _MinimalStore(), with_watchdog=False))
     resp = client.get("/api/v1/readyz")
     body = resp.json()
     assert body["ready"] is False
@@ -451,9 +473,7 @@ class _ReadyzConnector(Connector):
     async def begin_login(self) -> LoginPrompt:
         return LoginPrompt(kind="url", payload="https://example.com")
 
-    async def complete_login(
-        self, *, payload: Dict[str, Any]
-    ) -> LoginContinueResult:
+    async def complete_login(self, *, payload: Dict[str, Any]) -> LoginContinueResult:
         return LoginContinueResult(state=ConnectorState.READY)
 
     def tools(self) -> Dict[str, Tool]:
@@ -474,12 +494,8 @@ def _make_app_with_connector(
     """Variant of _make_app that attaches a ConnectorRegistry."""
     from tether.protocol.parsers.sliding import SlidingParser
 
-    watchdog: Optional[HardwareWatchdog] = (
-        HardwareWatchdog([provider]) if with_watchdog else None
-    )
-    registry = ConnectorRegistry(
-        [connector] if connector is not None else [], data_dir=None
-    )
+    watchdog: Optional[HardwareWatchdog] = HardwareWatchdog([provider]) if with_watchdog else None
+    registry = ConnectorRegistry([connector] if connector is not None else [], data_dir=None)
     gen_svc = Engine(
         provider=provider,
         parser=SlidingParser(),
@@ -501,29 +517,21 @@ def test_readyz_with_connector_registry():
     """A connector registered → /readyz body carries a ``connectors``
     array with each connector's ``{id, state, detail}`` snapshot."""
     conn = _ReadyzConnector(health_state=ConnectorState.READY, detail="ok")
-    client = TestClient(
-        _make_app_with_connector(_DummyProvider(), _MinimalStore(), conn)
-    )
+    client = TestClient(_make_app_with_connector(_DummyProvider(), _MinimalStore(), conn))
     resp = client.get("/api/v1/readyz")
     assert resp.status_code == 200
     body = resp.json()
     assert body["ready"] is True
     assert "connectors" in body
-    assert body["connectors"] == [
-        {"id": "readyz_test", "state": "ready", "detail": "ok"}
-    ]
+    assert body["connectors"] == [{"id": "readyz_test", "state": "ready", "detail": "ok"}]
 
 
 def test_readyz_with_unconfigured_connector_still_ready():
     """An UNCONFIGURED connector does NOT flip ``ready`` to false —
     that's the expected steady state until the user logs in (connector
     spec §3.3)."""
-    conn = _ReadyzConnector(
-        health_state=ConnectorState.UNCONFIGURED, detail="needs login"
-    )
-    client = TestClient(
-        _make_app_with_connector(_DummyProvider(), _MinimalStore(), conn)
-    )
+    conn = _ReadyzConnector(health_state=ConnectorState.UNCONFIGURED, detail="needs login")
+    client = TestClient(_make_app_with_connector(_DummyProvider(), _MinimalStore(), conn))
     resp = client.get("/api/v1/readyz")
     body = resp.json()
     assert body["ready"] is True

@@ -40,6 +40,7 @@ brave = []     # httpx is in core; reserved for future Brave-specific dependenci
 ollama = []    # Reserved for future provider support; no implementation in this refactor.
 mlc = []       # Qualcomm CodeLinaro Adreno wheels are installed separately; see environment.yml.
 nexa = []      # Reserved for future Snapdragon NPU provider support.
+geniex = []    # GenieX external NPU provider (GenieX CLI server manages model lifecycle).
 sqlcipher = [] # Reserved for optional encrypted SQLite support.
 # Phase 2b (ADR-0018): WhatsApp connector via neonize (Python on whatsmeow Go).
 # Pin neonize EXACTLY — .post0 releases are DLL-only bumps; minor-version moves
@@ -81,11 +82,12 @@ markers = [
     "integration: cross-module tests; may touch sqlite/aiosqlite/in-process FastAPI",
     "network: tests that hit a real external network (Brave/etc.); default-off",
     "hardware: tests that require the Snapdragon Adreno GPU; default-off",
+    "geniex: tests that require a running GenieX CLI server; default-off",
     "e2e: end-to-end tests requiring a running server; default-off",
     "docs: spec generation drift checks; default-off",
     "asyncio: pytest-asyncio marker (kept for compatibility)",
 ]
-addopts = "--strict-markers --strict-config -m \"not network and not hardware and not e2e and not docs\""
+addopts = "--strict-markers --strict-config -m \"not network and not hardware and not e2e and not docs and not geniex\""
 asyncio_mode = "auto"
 asyncio_default_fixture_loop_scope = "function"
 filterwarnings = [

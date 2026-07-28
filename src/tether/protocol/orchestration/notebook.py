@@ -422,6 +422,7 @@ class NotebookOrchestrator(Orchestrator):
     async def run(
         self, *, session_id: str, prompt: str, model_name: str,
         cancel_token: Optional["CancelToken"] = None,
+        reasoning_effort: Optional[str] = None,
     ) -> AsyncIterator["WireEvent"]:
         """Run research with a normal persisted turn lifecycle."""
         turn_id = uuid.uuid4().hex[:12]
@@ -498,7 +499,13 @@ class NotebookOrchestrator(Orchestrator):
             elif question:
                 yield NotebookPhaseStart(**_envelope(), phase="plan", iteration=0)
                 plan_queries: list[str] = []
-                async for kind, payload in self._plan(model_name=planner_model, question=question, today_iso=today_iso, cancel_token=cancel_token):
+                async for kind, payload in self._plan(
+                    model_name=planner_model,
+                    question=question,
+                    today_iso=today_iso,
+                    cancel_token=cancel_token,
+                    reasoning_effort=reasoning_effort,
+                ):
                     if kind == "heartbeat":
                         yield NotebookPhaseProgress(**_envelope(), phase="plan", iteration=0, elapsed_ms=payload)
                     else:
@@ -577,7 +584,16 @@ class NotebookOrchestrator(Orchestrator):
                 )
                 yield NotebookPhaseStart(**_envelope(), phase="extract", iteration=iteration)
                 extracted: Optional[ExtractResult] = None
-                async for kind, payload in self._extract(model_name=extractor_model, question=full_question, source_query=query, snippets=search_result.get("results", []), facts=state.facts, today_iso=today_iso, cancel_token=cancel_token):
+                async for kind, payload in self._extract(
+                    model_name=extractor_model,
+                    question=full_question,
+                    source_query=query,
+                    snippets=search_result.get("results", []),
+                    facts=state.facts,
+                    today_iso=today_iso,
+                    cancel_token=cancel_token,
+                    reasoning_effort=reasoning_effort,
+                ):
                     if kind == "heartbeat":
                         yield NotebookPhaseProgress(**_envelope(), phase="extract", iteration=iteration, elapsed_ms=payload)
                     else:
@@ -651,6 +667,7 @@ class NotebookOrchestrator(Orchestrator):
                 question=full_question,
                 facts=state.facts,
                 today_iso=today_iso,
+                reasoning_effort=reasoning_effort,
             )
             synth_loop = asyncio.get_running_loop()
             synth_started = synth_loop.time()
@@ -790,6 +807,7 @@ class NotebookOrchestrator(Orchestrator):
         question: str,
         today_iso: str,
         cancel_token: Optional["CancelToken"] = None,
+        reasoning_effort: Optional[str] = None,
     ) -> AsyncIterator[tuple[str, Any]]:
         """Run the Planner as raw text, then parse seed queries.
 
@@ -814,6 +832,7 @@ class NotebookOrchestrator(Orchestrator):
                     },
                 ],
                 cancel_token=cancel_token,
+                reasoning_effort=reasoning_effort,
             ):
                 kind, payload = item
                 if kind == "heartbeat":
@@ -840,6 +859,7 @@ class NotebookOrchestrator(Orchestrator):
         facts: list[AtomicFact],
         today_iso: str,
         cancel_token: Optional["CancelToken"] = None,
+        reasoning_effort: Optional[str] = None,
     ) -> AsyncIterator[tuple[str, Any]]:
         """Run the Extractor as raw text, then parse facts and follow-ups.
 
@@ -875,6 +895,7 @@ class NotebookOrchestrator(Orchestrator):
                     },
                 ],
                 cancel_token=cancel_token,
+                reasoning_effort=reasoning_effort,
             ):
                 kind, payload = item
                 if kind == "heartbeat":
@@ -895,13 +916,14 @@ class NotebookOrchestrator(Orchestrator):
         question: str,
         facts: list[AtomicFact],
         today_iso: str,
+        reasoning_effort: Optional[str] = None,
     ) -> AsyncIterator[str]:
         """Stream synthesizer text directly; never route through SlidingParser."""
         with structlog.contextvars.bound_contextvars(phase="synthesize"):
             logger.info("notebook.phase_start", phase="synthesize")
-            async for chunk in self.provider.stream(
-                model_name=model_name,
-                messages=[
+            stream_kwargs: dict[str, Any] = {
+                "model_name": model_name,
+                "messages": [
                     {
                         "role": "system",
                         "content": SYNTHESIZER_SYSTEM_PROMPT.format(today_iso=today_iso),
@@ -914,8 +936,11 @@ class NotebookOrchestrator(Orchestrator):
                         ),
                     },
                 ],
-                tools=None,
-            ):
+                "tools": None,
+            }
+            if reasoning_effort is not None:
+                stream_kwargs["reasoning_effort"] = reasoning_effort
+            async for chunk in self.provider.stream(**stream_kwargs):
                 if isinstance(chunk, str):
                     yield chunk
                 else:
@@ -927,6 +952,7 @@ class NotebookOrchestrator(Orchestrator):
         model_name: str,
         messages: list[dict[str, Any]],
         cancel_token: Optional["CancelToken"] = None,
+        reasoning_effort: Optional[str] = None,
     ) -> AsyncIterator[tuple[str, Any]]:
         """Stream provider text with heartbeat sentinels.
 
@@ -956,11 +982,14 @@ class NotebookOrchestrator(Orchestrator):
         ``Exception`` subclass on the result-side of a task.
         """
         chunks: list[str] = []
-        astream = self.provider.stream(
-            model_name=model_name,
-            messages=messages,
-            tools=None,
-        )
+        stream_kwargs: dict[str, Any] = {
+            "model_name": model_name,
+            "messages": messages,
+            "tools": None,
+        }
+        if reasoning_effort is not None:
+            stream_kwargs["reasoning_effort"] = reasoning_effort
+        astream = self.provider.stream(**stream_kwargs)
         loop = asyncio.get_running_loop()
         started = loop.time()
         pending: Optional[asyncio.Task[Any]] = None

@@ -18,6 +18,8 @@ from typing import Any, List
 
 import pytest
 
+from tests.fixtures.fake_research_provider import FakeResearchProvider
+from tests.fixtures.recording_research_store import RecordingResearchStore
 from tether.config.settings import ResearchSettings
 from tether.core.types import OrchestratorConfig
 from tether.protocol.orchestration.notebook import (
@@ -30,8 +32,6 @@ from tether.protocol.wire.events import (
     TextDelta,
     ThinkingDelta,
 )
-from tests.fixtures.fake_research_provider import FakeResearchProvider
-
 
 # ---------------------------------------------------------------------------
 # _ThinkStripper unit tests
@@ -225,9 +225,6 @@ def test_strip_single_char_chunks_split_every_marker():
 @pytest.fixture
 def anyio_backend():
     return "asyncio"
-
-
-from tests.fixtures.recording_research_store import RecordingResearchStore
 
 
 class _FakeStore(RecordingResearchStore):

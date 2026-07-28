@@ -6,13 +6,12 @@ These tests use in-process fakes only (no MLC). The MLC-specific behaviors
 will be covered by hardware-marker tests added in p3-mlc-as-hwlifecycle /
 p3-lifespan-slim.
 """
+
 from __future__ import annotations
 
 import threading
 import time
 from typing import Dict, List
-
-import pytest
 
 from tether.providers.hw import HwErrorClass, HwHealth
 from tether.runtime.hw_watchdog import (
@@ -20,7 +19,6 @@ from tether.runtime.hw_watchdog import (
     HardwareWatchdog,
 )
 from tether.runtime.watchdog_mode import WatchdogMode
-
 
 # ---------------------------------------------------------------------------
 # Test fakes (defined inline; NOT in tether_service/)
@@ -197,6 +195,16 @@ async def test_watchdog_health_summary_aggregates_healthy():
     assert summary["providers"][0]["details"] == {"engines": 1}
 
 
+async def test_watchdog_health_summary_keeps_provider_ids_from_mapping():
+    mlc = FakeHWProvider(health=HwHealth("healthy"))
+    geniex = FakeHWProvider(health=HwHealth("degraded"))
+    wd = HardwareWatchdog({"mlc": mlc, "geniex": geniex})
+
+    summary = await wd.health_summary()
+
+    assert {entry["provider_id"] for entry in summary["providers"]} == {"mlc", "geniex"}
+
+
 async def test_watchdog_health_summary_aggregates_worst_error():
     """Mixed: one error + one healthy → overall=error."""
     p1 = FakeHWProvider(health=HwHealth("healthy"))
@@ -227,9 +235,7 @@ async def test_watchdog_health_summary_handles_provider_exception():
     summary = await wd.health_summary()
     assert summary["overall"] == "error"
     # The crashing provider's entry has status=error and details with the msg.
-    error_entry = next(
-        e for e in summary["providers"] if e["status"] == "error"
-    )
+    error_entry = next(e for e in summary["providers"] if e["status"] == "error")
     assert "driver dead" in error_entry["details"]["error"]
 
 
@@ -290,6 +296,52 @@ async def test_watchdog_reset_after_swallows_reset_exception():
     did_reset = await wd.reset_after(RuntimeError("orig"), model_name="m")
     assert did_reset is False
     assert p.reset_calls == ["m"]  # we did try
+
+
+async def test_watchdog_reset_after_scopes_to_selected_provider():
+    """A fatal error must not reset a different hardware provider."""
+    mlc = FakeHWProvider(classify_result=HwErrorClass.FATAL_RECOVERABLE)
+    geniex = FakeHWProvider(classify_result=HwErrorClass.FATAL_RECOVERABLE)
+    wd = HardwareWatchdog({"mlc": mlc, "geniex": geniex})
+
+    did_reset = await wd.reset_after(
+        RuntimeError("mlc failed"),
+        model_name="mlc-model",
+        provider_id="mlc",
+    )
+
+    assert did_reset is True
+    assert mlc.reset_calls == ["mlc-model"]
+    assert geniex.reset_calls == []
+
+
+async def test_watchdog_reset_after_refuses_unscoped_multi_provider_reset():
+    mlc = FakeHWProvider(classify_result=HwErrorClass.FATAL_RECOVERABLE)
+    geniex = FakeHWProvider(classify_result=HwErrorClass.FATAL_RECOVERABLE)
+    wd = HardwareWatchdog({"mlc": mlc, "geniex": geniex})
+
+    did_reset = await wd.reset_after(RuntimeError("unknown"), model_name="m")
+
+    assert did_reset is False
+    assert mlc.reset_calls == []
+    assert geniex.reset_calls == []
+
+
+async def test_watchdog_reset_after_keeps_legacy_list_fanout_with_provider_id():
+    """Raw-list callers retain fan-out even with Engine's synthetic ID."""
+    first = FakeHWProvider(classify_result=HwErrorClass.FATAL_RECOVERABLE)
+    second = FakeHWProvider(classify_result=HwErrorClass.FATAL_RECOVERABLE)
+    wd = HardwareWatchdog([first, second])
+
+    did_reset = await wd.reset_after(
+        RuntimeError("legacy"),
+        model_name="m",
+        provider_id="default",
+    )
+
+    assert did_reset is True
+    assert first.reset_calls == ["m"]
+    assert second.reset_calls == ["m"]
 
 
 # ---------------------------------------------------------------------------

@@ -138,6 +138,66 @@ class ConfigError(TetherError):
     """
 
 
+class UnknownProviderError(KeyError):
+    """``provider_id`` is not a key of ``Engine.providers`` and not a known
+    failed registry entry.
+
+    Maps to HTTP 422 at the chat router boundary (ADR-0021 contract §8).
+    Subclasses :class:`KeyError` so existing call sites that catch
+    ``KeyError`` for missing-provider conditions keep working.
+    """
+
+    def __init__(self, provider_id: str):
+        super().__init__(provider_id)
+        self.provider_id = provider_id
+
+
+class ProviderUnhealthyError(RuntimeError):
+    """``provider_id`` is a known registry entry but its construction or
+    warm-up failed; the engine cannot route requests to it.
+
+    Maps to HTTP 503 at the chat router boundary (ADR-0021 contract §8).
+    """
+
+    def __init__(self, provider_id: str, message: str):
+        super().__init__(f"Provider {provider_id!r} unhealthy: {message}")
+        self.provider_id = provider_id
+        self.message = message
+
+
+class UnknownModelError(ValueError):
+    """A requested model is not advertised by the selected provider.
+
+    Maps to HTTP 422 before streaming begins. ``provider_id`` is ``None`` when
+    the model was not advertised by any healthy provider.
+    """
+
+    def __init__(self, model_name: str, provider_id: str | None = None):
+        if provider_id is None:
+            message = f"Unknown model {model_name!r}."
+        else:
+            message = f"Model {model_name!r} is not available on provider {provider_id!r}."
+        super().__init__(message)
+        self.model_name = model_name
+        self.provider_id = provider_id
+
+
+class AmbiguousModelError(ValueError):
+    """A model name is advertised by more than one healthy provider.
+
+    The caller must choose one explicitly with ``provider_id`` rather than
+    relying on registry declaration order.
+    """
+
+    def __init__(self, model_name: str, provider_ids: list[str]):
+        super().__init__(
+            f"Model {model_name!r} is available on multiple providers: "
+            f"{sorted(provider_ids)!r}. Specify provider_id."
+        )
+        self.model_name = model_name
+        self.provider_ids = tuple(provider_ids)
+
+
 __all__ = [
     "TetherError",
     "FatalProviderError",
@@ -148,4 +208,8 @@ __all__ = [
     "ConnectorNotConfiguredError",
     "ConnectorAuthError",
     "ConfigError",
+    "UnknownProviderError",
+    "ProviderUnhealthyError",
+    "UnknownModelError",
+    "AmbiguousModelError",
 ]

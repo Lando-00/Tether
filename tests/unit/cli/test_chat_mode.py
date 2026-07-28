@@ -41,7 +41,7 @@ def cli_harness(monkeypatch: pytest.MonkeyPatch) -> tuple[io.StringIO, Mock]:
         "console",
         Console(file=stream, force_terminal=False, width=120),
     )
-    monkeypatch.setattr(cli_main, "select_model", lambda _model_name: "model-a")
+    monkeypatch.setattr(cli_main, "select_model", lambda _model_name, _provider=None, **kw: ("model-a", None))
     monkeypatch.setattr(cli_main, "manage_sessions", lambda: ("s1", "resume"))
     monkeypatch.setattr(cli_main, "get_session_history", lambda _session_id: [])
     monkeypatch.setattr(cli_main, "display_history", lambda _history: None)
@@ -116,6 +116,64 @@ def test_chat_command_interactive_mode_switch_to_research(
     assert "Mode switched to research" in stream.getvalue()
 
 
+def test_chat_command_reasoning_effort_is_sent(
+    cli_harness: tuple[io.StringIO, Mock],
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    stream, post = cli_harness
+    prompts = iter(["\\reasoning high", "hello", "\\exit"])
+    monkeypatch.setattr(cli_main, "ptk_prompt", lambda *args, **kwargs: next(prompts))
+    monkeypatch.setattr(
+        cli_main,
+        "get_available_model_details",
+        lambda: [
+            {
+                "id": "model-a",
+                "provider_id": "_unwrapped_",
+                "supports_reasoning_effort": True,
+                "reasoning_efforts": ["low", "high"],
+            }
+        ],
+    )
+
+    cli_main.main(
+        model_name="model-a",
+        api_url="http://testserver/api/v1",
+        debug=False,
+        show_thinking=True,
+        mode=cli_main.ChatMode.chat,
+    )
+
+    assert post.call_args.kwargs["json"]["reasoning_effort"] == "high"
+    assert "Reasoning effort set to high" in stream.getvalue()
+
+
+def test_chat_command_reasoning_reset_clears_startup_effort(
+    cli_harness: tuple[io.StringIO, Mock],
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    stream, post = cli_harness
+    prompts = iter(["\\reasoning off", "hello", "\\exit"])
+    monkeypatch.setattr(cli_main, "ptk_prompt", lambda *args, **kwargs: next(prompts))
+    monkeypatch.setattr(
+        cli_main,
+        "_reasoning_efforts_for_model",
+        lambda *_args: pytest.fail("reset must not require model metadata"),
+    )
+
+    cli_main.main(
+        model_name="model-a",
+        api_url="http://testserver/api/v1",
+        debug=False,
+        show_thinking=True,
+        mode=cli_main.ChatMode.chat,
+        reasoning_effort="high",
+    )
+
+    assert "reasoning_effort" not in post.call_args.kwargs["json"]
+    assert "reset to the provider default" in stream.getvalue()
+
+
 def test_chat_command_mode_toggle_back_to_chat(
     cli_harness: tuple[io.StringIO, Mock],
     monkeypatch: pytest.MonkeyPatch,
@@ -143,9 +201,9 @@ def test_models_command_is_not_treated_as_mode_toggle(
     prompts = iter(["\\models", "hello", "\\exit"])
     selected: list[object] = []
 
-    def select_model(model_name):
+    def select_model(model_name, _provider=None, **kw):
         selected.append(model_name)
-        return "model-a"
+        return ("model-a", None)
 
     monkeypatch.setattr(cli_main, "select_model", select_model)
     monkeypatch.setattr(cli_main, "ptk_prompt", lambda *args, **kwargs: next(prompts))

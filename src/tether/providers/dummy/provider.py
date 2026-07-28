@@ -20,6 +20,7 @@ class DummyProvider(ModelProvider):
         tools: Optional[List[Dict[str, Any]]] = None,
         *,
         request_id: Optional[str] = None,
+        reasoning_effort: Optional[str] = None,
     ) -> AsyncGenerator[str, None]:
         """Simulate streaming text chunks based on last user message.
 

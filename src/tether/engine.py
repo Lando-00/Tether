@@ -21,6 +21,7 @@ import logging
 from typing import TYPE_CHECKING, Any, AsyncGenerator, Callable, Dict, List, Optional
 
 from tether.config.settings import Settings
+from tether.core.errors import ProviderUnhealthyError
 from tether.core.interfaces import (
     ModelProvider,
     SessionStore,
@@ -50,7 +51,16 @@ class Engine:
     def __init__(
         self,
         *,
-        provider: ModelProvider,
+        # ADR-0021 P2.A: dict-based provider registry. The legacy
+        # ``provider=`` (singular) kwarg is preserved as a one-cycle
+        # back-compat shim — when it is passed, we synthesise
+        # ``providers={"default": provider}`` with
+        # ``default_provider_id="default"``.
+        providers: Optional[Dict[str, ModelProvider]] = None,
+        default_provider_id: Optional[str] = None,
+        provider_start_failures: Optional[Dict[str, str]] = None,
+        strict_model_routing: Optional[bool] = None,
+        provider: Optional[ModelProvider] = None,
         parser: Optional[StreamParser] = None,
         parser_factory: Optional[Callable[[], StreamParser]] = None,
         session_store: SessionStore,
@@ -123,7 +133,74 @@ class Engine:
         else:
             self._parser_factory = parser_factory
 
-        self.provider = provider
+        # ADR-0021 P2.A: resolve provider registry from either the new
+        # ``providers=`` dict + ``default_provider_id`` OR the legacy
+        # singular ``provider=`` kwarg.
+        if providers is not None:
+            if not providers:
+                raise ValueError(
+                    "Engine: providers dict cannot be empty"
+                )
+            if default_provider_id is None:
+                raise ValueError(
+                    "Engine: default_provider_id required when "
+                    "providers= is passed"
+                )
+            failures = dict(provider_start_failures or {})
+            if (
+                default_provider_id not in providers
+                and default_provider_id not in failures
+            ):
+                raise ValueError(
+                    f"Engine: default_provider_id "
+                    f"{default_provider_id!r} not in providers or "
+                    f"provider_start_failures (known healthy: "
+                    f"{sorted(providers)}, known failed: {sorted(failures)})."
+                )
+            self.providers: Dict[str, ModelProvider] = dict(providers)
+            self.default_provider_id: str = default_provider_id
+            self._provider_start_failures = failures
+            self._strict_model_routing = (
+                True if strict_model_routing is None else strict_model_routing
+            )
+            # `provider` is a legacy singular-provider compatibility shim.
+            # It must remain usable for old callers, but it must not change
+            # default_provider_id or influence multi-provider routing.
+            self.provider = self.providers.get(
+                self.default_provider_id, next(iter(self.providers.values()))
+            )
+        elif provider is not None:
+            # Legacy singular-provider construction path. Synthesise the
+            # one-entry registry so the rest of Engine has the same
+            # invariants regardless of how it was built.
+            self.providers = {"default": provider}
+            self.default_provider_id = "default"
+            self._provider_start_failures = dict(provider_start_failures or {})
+            self.provider = provider
+            self._strict_model_routing = (
+                False if strict_model_routing is None else strict_model_routing
+            )
+        else:
+            raise ValueError(
+                "Engine requires either providers= (dict) or "
+                "provider= (legacy singular)"
+            )
+        # Cache model inventories before a warm-up failure removes a provider
+        # from the healthy routing map. Healthy routes always refresh this
+        # cache, while failed providers use it only to surface a typed 503 for
+        # a previously known model.
+        self._known_models_by_provider: Dict[str, set[str]] = {}
+        self._provider_inventory_failures: Dict[str, str] = {}
+        if self._strict_model_routing:
+            for pid, registered_provider in self.providers.items():
+                try:
+                    self._remember_provider_models(pid, registered_provider)
+                except ProviderUnhealthyError:
+                    # Startup remains degraded-but-available when a provider's
+                    # inventory probe is transiently unavailable. Request
+                    # routing retries the probe and returns a typed 503 until
+                    # it succeeds.
+                    continue
         # ``self.parser`` is retained for back-compat reads (tests +
         # introspection). It's the parser produced by the factory at
         # construction time; new code should call ``self._parser_factory()``
@@ -151,18 +228,8 @@ class Engine:
         self._closed = False
         self._orchestrator_registry: Dict[str, str] = orchestrator_registry or {
             "chat": "tether.protocol.orchestration.chatty.ChattyAgentOrchestrator",
-            # Wave 4 reconcile R-F3: research mode is opt-in. Direct Engine()
-            # constructors that want research must pass orchestrator_registry
-            # explicitly. The from_settings path threads it from default.yml
-            # (also opt-in, commented by default). Avoids test/prod divergence
-            # where direct-construct silently activated research without the
-            # web_search boot validation that lives in from_settings.
         }
         self._orchestrator_default_mode = orchestrator_default_mode
-        # ADR-0020 R3: research-mode-specific settings, threaded into the
-        # NotebookOrchestrator constructor via inspect.signature in
-        # :meth:`chat`. Optional so direct constructors (tests + library
-        # callers) don't have to know about research mode.
         self._research_settings: Optional["ResearchSettings"] = research_settings
         # Phase 7 step 74: whether to store raw args_json in tool_audit.
         # Default False (privacy-preserving). Set by Engine.from_settings
@@ -179,6 +246,146 @@ class Engine:
         # can take action; populated by the awaited start loop in
         # __aenter__ and consumed by app.http.routers.health.
         self._connector_start_failures: List[str] = []
+
+    def _remember_provider_models(
+        self,
+        provider_id: str,
+        provider: ModelProvider,
+    ) -> list[str]:
+        """Refresh the model inventory for a healthy provider.
+
+        A listing failure must not silently route to another provider. It is
+        recorded as transient provider unavailability and surfaced as a typed
+        503 to callers that need to resolve model ownership.
+        """
+        from tether.core.errors import ProviderUnhealthyError
+
+        try:
+            models = list(provider.list_models())
+        except Exception as exc:  # noqa: BLE001 - provider introspection guard
+            message = (
+                "model inventory unavailable: "
+                f"{type(exc).__name__}: {exc}"
+            )
+            self._provider_inventory_failures[provider_id] = message
+            logger.warning(
+                "provider.list_models_failed provider_id=%s error_class=%s "
+                "error_message=%s",
+                provider_id,
+                type(exc).__name__,
+                str(exc),
+            )
+            raise ProviderUnhealthyError(provider_id, message) from exc
+        self._provider_inventory_failures.pop(provider_id, None)
+        self._known_models_by_provider[provider_id] = set(models)
+        return models
+
+    def _healthy_provider(self, provider_id: str) -> ModelProvider:
+        """Return a selected healthy provider or raise the typed route error."""
+        from tether.core.errors import (
+            ProviderUnhealthyError,
+            UnknownProviderError,
+        )
+
+        provider = self.providers.get(provider_id)
+        if provider is not None:
+            return provider
+        if provider_id in self._provider_start_failures:
+            raise ProviderUnhealthyError(
+                provider_id, self._provider_start_failures[provider_id]
+            )
+        raise UnknownProviderError(provider_id)
+
+    def resolve_provider_id(
+        self,
+        model_name: str,
+        *,
+        provider_id: Optional[str] = None,
+    ) -> str:
+        """Resolve a request to one provider without implicit fallback.
+
+        An explicit provider must advertise the requested model. Without an
+        explicit provider, only a uniquely advertising healthy provider may be
+        selected. Duplicate names require the caller to choose a provider.
+        """
+        from tether.core.errors import (
+            AmbiguousModelError,
+            ProviderUnhealthyError,
+            UnknownModelError,
+        )
+
+        if provider_id is not None:
+            provider = self._healthy_provider(provider_id)
+            if not self._strict_model_routing:
+                return provider_id
+            if model_name not in self._remember_provider_models(
+                provider_id, provider
+            ):
+                raise UnknownModelError(model_name, provider_id)
+            return provider_id
+
+        if not self._strict_model_routing:
+            self._healthy_provider(self.default_provider_id)
+            return self.default_provider_id
+
+        owners = [
+            pid
+            for pid, provider in self.providers.items()
+            if model_name in self._remember_provider_models(pid, provider)
+        ]
+        if len(owners) == 1:
+            return owners[0]
+        if len(owners) > 1:
+            raise AmbiguousModelError(model_name, owners)
+
+        failed_owners = [
+            pid
+            for pid, models in self._known_models_by_provider.items()
+            if pid in self._provider_start_failures and model_name in models
+        ]
+        if len(failed_owners) == 1:
+            pid = failed_owners[0]
+            raise ProviderUnhealthyError(
+                pid, self._provider_start_failures[pid]
+            )
+        raise UnknownModelError(model_name)
+
+    def validate_research_model_overrides(self, provider_id: str) -> None:
+        """Ensure research phase overrides belong to the selected provider.
+
+        NotebookOrchestrator receives one provider instance for every phase.
+        A global override that only another provider owns would otherwise be
+        sent to the selected backend and could silently run the wrong model.
+        """
+        if self._research_settings is None or not self._strict_model_routing:
+            return
+
+        provider = self._healthy_provider(provider_id)
+        available_models = set(
+            self._remember_provider_models(provider_id, provider)
+        )
+        overrides = (
+            ("planner_model", self._research_settings.planner_model),
+            ("extractor_model", self._research_settings.extractor_model),
+            ("synthesizer_model", self._research_settings.synthesizer_model),
+        )
+        from tether.core.errors import UnknownModelError
+
+        for phase_name, model_name in overrides:
+            if model_name is not None and model_name not in available_models:
+                raise UnknownModelError(model_name, provider_id)
+
+    def refresh_provider_inventory_health(self) -> None:
+        """Retry only inventories previously marked transiently unavailable."""
+        for provider_id in tuple(self._provider_inventory_failures):
+            provider = self.providers.get(provider_id)
+            if provider is None:
+                self._provider_inventory_failures.pop(provider_id, None)
+                continue
+            try:
+                self._remember_provider_models(provider_id, provider)
+            except ProviderUnhealthyError:
+                continue
 
     @classmethod
     def from_settings(
@@ -225,8 +432,52 @@ class Engine:
         from tether.runtime.hw_watchdog import HardwareWatchdog
         configure_logging(settings)
 
-        model_spec = settings.providers.model
-        provider = load(model_spec.impl, **model_spec.args)
+        model_registry = settings.providers.model_registry
+        default_pid_requested = settings.providers.default_model_provider
+        assert default_pid_requested is not None, (
+            "ProvidersSettings validator must have resolved default_model_provider"
+        )
+
+        providers: Dict[str, ModelProvider] = {}
+        provider_failures: Dict[str, str] = {}
+        for pid, spec in model_registry.items():
+            try:
+                providers[pid] = load(spec.impl, **spec.args)
+                logger.info(
+                    "provider.loaded provider_id=%s impl=%s", pid, spec.impl
+                )
+            except Exception as exc:  # noqa: BLE001 - degraded-mode start
+                from tether.core.errors import ConfigError as _ConfigErrLocal
+
+                logger.error(
+                    "provider.load_failed provider_id=%s impl=%s "
+                    "error_class=%s error_message=%s",
+                    pid,
+                    spec.impl,
+                    type(exc).__name__,
+                    str(exc),
+                )
+                provider_failures[pid] = (
+                    f"{type(exc).__name__}: {exc}"
+                )
+                # Defensive: never let ConfigError leak as a degraded
+                # failure — it's always a fail-fast condition.
+                if isinstance(exc, _ConfigErrLocal):
+                    raise
+
+        if not providers:
+            from tether.core.errors import ConfigError as _CE
+
+            raise _CE(
+                f"All {len(provider_failures)} providers failed to construct: "
+                f"{provider_failures!r}"
+            )
+
+        # Keep the configured default stable even if that provider failed.
+        # The Engine retains a healthy singular `provider` shim for legacy
+        # readers, but request routing must return 503 for the failed default
+        # rather than silently switching backends.
+        default_pid = default_pid_requested
 
         parser_spec = settings.providers.parser
 
@@ -317,7 +568,7 @@ class Engine:
         tool_runner = ToolRunner(tools, timeout_sec=settings.limits.tool_timeout_sec,
                                  result_max_bytes=settings.security.tool_result_max_bytes)
 
-        hw_watchdog = HardwareWatchdog([provider], mode=watchdog_mode)
+        hw_watchdog = HardwareWatchdog(providers, mode=watchdog_mode)
 
         # Phase 5 followups F6 (rubber-duck review): validate the orchestrator
         # registry at boot rather than letting a typo surface as a 500
@@ -374,13 +625,40 @@ class Engine:
                 ("synthesizer_model", research.synthesizer_model),
             )
             if any(override is not None for _, override in phase_model_overrides):
-                provider_registry = set(provider.list_models())
+                # Check across all healthy providers for model availability.
+                # A provider whose inventory is transiently unavailable must
+                # not abort server startup with a raw exception. Per-request
+                # selected-provider validation below enforces ownership before
+                # research starts once that provider can be queried.
+                provider_models: set[str] = set()
+                # A provider that failed construction is as unavailable for
+                # global discovery as one whose inventory probe failed. Keep
+                # the server in degraded mode and validate the override for
+                # the request-selected provider before research streaming.
+                inventory_unavailable = bool(provider_failures)
+                for _p in providers.values():
+                    try:
+                        provider_models.update(_p.list_models())
+                    except Exception as exc:  # noqa: BLE001 - degraded startup
+                        inventory_unavailable = True
+                        logger.warning(
+                            "provider.model_inventory_deferred "
+                            "provider_class=%s error_class=%s "
+                            "error_message=%s",
+                            type(_p).__name__,
+                            type(exc).__name__,
+                            str(exc),
+                        )
                 for phase_name, override in phase_model_overrides:
-                    if override is not None and override not in provider_registry:
+                    if (
+                        override is not None
+                        and override not in provider_models
+                        and not inventory_unavailable
+                    ):
                         raise ConfigError(
                             f"orchestrator.research.{phase_name}={override!r} "
-                            "is not a registered model in providers.registry. "
-                            f"Available: {sorted(provider_registry)}. "
+                            "is not a registered model across any provider. "
+                            f"Available: {sorted(provider_models)}. "
                             "(ADR-0020 §D5 / fu-research-multi-model-warm)"
                         )
 
@@ -390,7 +668,10 @@ class Engine:
         confirm_intent_classifier = load(settings.intent.classifier_impl)
 
         engine = cls(
-            provider=provider,
+            providers=providers,
+            default_provider_id=default_pid,
+            provider_start_failures=provider_failures,
+            strict_model_routing=settings.providers.model is None,
             parser_factory=_new_parser,
             session_store=store,
             tools=tools,
@@ -422,6 +703,9 @@ class Engine:
         model_name: str,
         mode: Optional[str] = None,
         cancel_event: Optional[asyncio.Event] = None,
+        reasoning_effort: Optional[str] = None,
+        provider_id: Optional[str] = None,
+        _resolved_provider_id: Optional[str] = None,
     ) -> AsyncGenerator[bytes, None]:
         """Drive the core orchestration to stream NDJSON bytes (v0 vocabulary).
 
@@ -447,6 +731,9 @@ class Engine:
             model_name=model_name,
             mode=mode,
             cancel_token=cancel_token,
+            reasoning_effort=reasoning_effort,
+            provider_id=provider_id,
+            _resolved_provider_id=_resolved_provider_id,
         ):
             bytes_out = v0_compat_serialize(wire_event)
             if bytes_out:  # MessageStart returns b"" — skip
@@ -460,6 +747,9 @@ class Engine:
         model_name: str,
         mode: Optional[str] = None,
         cancel_token: Optional["CancelToken"] = None,
+        reasoning_effort: Optional[str] = None,
+        provider_id: Optional[str] = None,
+        _resolved_provider_id: Optional[str] = None,
     ) -> AsyncGenerator["WireEvent", None]:
         """Library-mode typed event stream (synthesis §3.4).
 
@@ -473,11 +763,21 @@ class Engine:
         to ``self._orchestrator_default_mode`` ("chat") when None.
         Briefing §2 Seam B item 4; synthesis §3.5.
         """
+        # Resolve model ownership before any orchestrator work. HTTP uses the
+        # private resolved-provider handoff after its eager pre-stream
+        # validation; direct library callers still resolve here.
         from tether.protocol.orchestration.registry import (
             resolve_orchestrator_class,
         )
 
         effective_mode = mode if mode is not None else self._orchestrator_default_mode
+        if _resolved_provider_id is None:
+            pid = self.resolve_provider_id(model_name, provider_id=provider_id)
+            if effective_mode == "research":
+                self.validate_research_model_overrides(pid)
+        else:
+            pid = _resolved_provider_id
+        provider = self._healthy_provider(pid)
         orchestrator_cls = resolve_orchestrator_class(
             effective_mode, self._orchestrator_registry
         )
@@ -499,7 +799,7 @@ class Engine:
         _orch_sig = _inspect.signature(orchestrator_cls.__init__)
         _orch_params = _orch_sig.parameters
         _full_kwargs: Dict[str, Any] = dict(
-            provider=self.provider,
+            provider=provider,
             parser=per_turn_parser,
             store=self.store,
             tools=self.tools,
@@ -507,6 +807,7 @@ class Engine:
             config=self.orchestrator_config,
             tool_runner=self.tool_runner,
             hw_watchdog=self.hw_watchdog,
+            provider_id=pid,
             audit_store_args=self._audit_store_args,
             confirm_intent_classifier=self._confirm_intent_classifier,
             # ADR-0020 R3: NotebookOrchestrator uses `tool_registry` (alias
@@ -520,11 +821,24 @@ class Engine:
         }
 
         orch = orchestrator_cls(**_orch_kwargs)
+        _run_sig = _inspect.signature(orch.run)
+        _run_params = _run_sig.parameters
+        _run_kwargs: Dict[str, Any] = {
+            "session_id": session_id,
+            "prompt": prompt,
+            "model_name": model_name,
+            "cancel_token": cancel_token,
+        }
+        if (
+            "reasoning_effort" in _run_params
+            or any(
+                parameter.kind is _inspect.Parameter.VAR_KEYWORD
+                for parameter in _run_params.values()
+            )
+        ):
+            _run_kwargs["reasoning_effort"] = reasoning_effort
         async for wire_event in orch.run(
-            session_id=session_id,
-            prompt=prompt,
-            model_name=model_name,
-            cancel_token=cancel_token,
+            **_run_kwargs,
         ):
             yield wire_event
 
@@ -554,12 +868,147 @@ class Engine:
         return await self.store.delete_all_sessions()
 
     def list_models(self) -> List[str]:
-        return self.provider.list_models()
+        """Return a de-duplicated discovery list of healthy raw model IDs.
 
-    def unload_model(self, model_name: str) -> bool:
-        return self.provider.unload_model(model_name)
+        Provider IDs are deliberately not encoded into model names because
+        GenieX names already contain slashes. Clients needing a requestable
+        pair use :meth:`list_model_info` and send ``provider_id`` separately.
+        """
+        result: List[str] = []
+        seen: set[str] = set()
+        for pid, prov in self.providers.items():
+            try:
+                models = self._remember_provider_models(pid, prov)
+            except ProviderUnhealthyError:
+                continue
+            for model_name in models:
+                if model_name not in seen:
+                    result.append(model_name)
+                    seen.add(model_name)
+        return result
+
+    def list_model_info(self) -> List:
+        """Merged ModelDetails from all healthy providers, wrapped with provider_id."""
+        from tether.providers.types import ModelDetails
+
+        result: List[ModelDetails] = []
+        for pid, prov in self.providers.items():
+            try:
+                for info in prov.list_model_info():
+                    result.append(info.model_copy(update={"provider_id": pid}))
+            except Exception:  # noqa: BLE001 - defensive
+                pass
+        return result
+
+    def unload_model(self, model_name: str, *, provider_id: Optional[str] = None) -> bool:
+        """Unload a model only from its resolved owning provider."""
+        pid = self.resolve_provider_id(model_name, provider_id=provider_id)
+        return self.providers[pid].unload_model(model_name)
+
+    def list_provider_health(self) -> Dict[str, Dict[str, Any]]:
+        """Per-provider snapshot for ``/readyz``.
+
+        Cheap, sync, no network. Includes entries for both healthy
+        providers (from ``self.providers``) AND failed registry entries
+        (from ``self._provider_start_failures``). ADR-0021 contract §2.
+        """
+        out: Dict[str, Dict[str, Any]] = {}
+        for pid, prov in self.providers.items():
+            try:
+                kind = prov.kind
+            except Exception:  # noqa: BLE001 - defensive
+                kind = "unknown"
+            try:
+                source = prov.source
+            except Exception:  # noqa: BLE001 - defensive
+                source = "unknown"
+            if source not in ("local", "remote"):
+                source = "unknown"
+            inventory_failure = self._provider_inventory_failures.get(pid)
+            out[pid] = {
+                "healthy": inventory_failure is None,
+                "kind": kind,
+                "source": source,
+                "error": inventory_failure,
+            }
+        for pid, msg in self._provider_start_failures.items():
+            out[pid] = {
+                "healthy": False,
+                "kind": "unknown",
+                "source": "unknown",
+                "error": msg,
+            }
+        return out
 
     # --- Lifecycle ---
+
+    async def _warm_up_providers_degraded(self) -> None:
+        """Run ``warm_up`` for every provider opting in via capabilities.
+
+        ADR-0021 P2.A: failures are non-fatal. The failing provider is
+        demoted (moved from ``self.providers`` to
+        ``self._provider_start_failures``) so routing rejects it with
+        ProviderUnhealthyError (HTTP 503). The configured default is never
+        replaced; its legacy singular-provider shim may point at another
+        healthy provider without affecting request routing.
+        """
+        if not self.providers:
+            return
+        for pid in list(self.providers.keys()):
+            prov = self.providers[pid]
+            caps = getattr(prov, "capabilities", None)
+            if caps is None or not getattr(caps, "warm_up_required", False):
+                continue
+            model = None
+            try:
+                model = prov.default_model()
+            except Exception:  # noqa: BLE001 - defensive
+                model = None
+            if not model:
+                try:
+                    models = prov.list_models()
+                except Exception:  # noqa: BLE001 - defensive
+                    models = []
+                model = models[0] if models else None
+            if not model:
+                continue
+            self._known_models_by_provider.setdefault(pid, set()).add(model)
+            try:
+                await prov.warm_up(model)
+            except Exception as exc:  # noqa: BLE001 - degraded warm-up
+                logger.warning(
+                    "provider.warm_up_failed provider_id=%s model=%s "
+                    "error_class=%s error_message=%s",
+                    pid,
+                    model,
+                    type(exc).__name__,
+                    str(exc),
+                )
+                self._provider_start_failures[pid] = (
+                    f"warm_up: {type(exc).__name__}: {exc}"
+                )
+                self.providers.pop(pid, None)
+                from tether.providers.hw import HardwareLifecycle
+
+                if not isinstance(prov, HardwareLifecycle):
+                    try:
+                        await prov.aclose()
+                    except Exception as close_exc:  # noqa: BLE001 - defensive
+                        logger.warning(
+                            "provider.demoted_close_failed provider_id=%s "
+                            "error_class=%s error_message=%s",
+                            pid,
+                            type(close_exc).__name__,
+                            str(close_exc),
+                        )
+                if self.provider is prov and self.providers:
+                    new_legacy_provider = next(iter(self.providers.values()))
+                    logger.warning(
+                        "provider.legacy_shim_reassigned "
+                        "failed_provider_id=%s",
+                        pid,
+                    )
+                    self.provider = new_legacy_provider
 
     async def __aenter__(self) -> "Engine":
         """Phase 4 step 41: run startup() on every tool concurrently.
@@ -591,6 +1040,10 @@ class Engine:
         See :func:`tether.tools.lifecycle.startup_all` for the
         gather semantics (synthesis §13.2 R5).
         """
+        # ADR-0021 P2.A: degraded provider warm-up BEFORE store / inbox
+        # / tools / connectors.
+        await self._warm_up_providers_degraded()
+
         # Phase 6 step 63: open the SqliteSessionStore's aiosqlite
         # connection eagerly inside __aenter__. ``from_settings`` only
         # constructs the store (sync); the async connect() must happen
@@ -770,6 +1223,36 @@ class Engine:
             await shutdown_all(self.tools)
 
         # Then provider via watchdog.
+        # ADR-0021 P2.A: aclose() fan-out for non-HardwareLifecycle
+        # providers BEFORE the watchdog shutdown (which only handles
+        # HardwareLifecycle providers).
+        import inspect as _inspect
+
+        from tether.providers.hw import HardwareLifecycle as _HwLC
+        non_hw_providers = [
+            p for p in self.providers.values()
+            if not isinstance(p, _HwLC)
+        ]
+        for _p in non_hw_providers:
+            _close = getattr(_p, "aclose", None)
+            if _close is None:
+                continue
+            try:
+                _maybe = _close()
+            except Exception as _exc:  # noqa: BLE001 - defensive
+                logger.exception(
+                    "Engine.aclose: provider aclose() raised: %s", _exc
+                )
+                continue
+            if _inspect.isawaitable(_maybe):
+                try:
+                    await _maybe
+                except Exception as _exc:  # noqa: BLE001 - defensive
+                    logger.exception(
+                        "Engine.aclose: provider aclose() awaited "
+                        "raise: %s",
+                        _exc,
+                    )
         if self.hw_watchdog is not None:
             self.hw_watchdog.shutdown_all()
         elif hasattr(self.provider, "shutdown_all"):

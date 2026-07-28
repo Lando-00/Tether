@@ -1,0 +1,146 @@
+"""Tests for ProvidersSettings multi-provider registry (ADR-0021 P1.2)."""
+from __future__ import annotations
+
+import warnings
+
+import pytest
+
+from tether.config.settings import ProviderSpec, ProvidersSettings
+from tether.core.errors import ConfigError
+
+_PARSER = {"impl": "x.P", "args": {}}
+_STORE = {"impl": "x.S", "args": {}}
+_SPEC_A = {"impl": "x.A", "args": {}}
+_SPEC_B = {"impl": "x.B", "args": {}}
+
+
+def test_singular_model_synthesises_registry():
+    with pytest.warns(DeprecationWarning):
+        p = ProvidersSettings.model_validate(
+            {"model": _SPEC_A, "parser": _PARSER, "session_store": _STORE}
+        )
+    assert "default" in p.model_registry
+    assert p.model_registry["default"].impl == "x.A"
+    assert p.default_model_provider == "default"
+    # Legacy field is preserved (not removed) for one cycle.
+    assert isinstance(p.model, ProviderSpec)
+
+
+def test_legacy_model_dump_round_trips_as_canonical_registry():
+    with pytest.warns(DeprecationWarning):
+        legacy = ProvidersSettings.model_validate(
+            {"model": _SPEC_A, "parser": _PARSER, "session_store": _STORE}
+        )
+
+    dumped = legacy.model_dump()
+
+    assert "model" not in dumped
+    reloaded = ProvidersSettings.model_validate(dumped)
+    assert reloaded.model_registry == legacy.model_registry
+    assert reloaded.default_model_provider == "default"
+
+
+def test_explicit_registry_works():
+    with warnings.catch_warnings():
+        warnings.simplefilter("error", DeprecationWarning)
+        p = ProvidersSettings.model_validate(
+            {
+                "model_registry": {"a": _SPEC_A, "b": _SPEC_B},
+                "default_model_provider": "a",
+                "parser": _PARSER,
+                "session_store": _STORE,
+            }
+        )
+    assert set(p.model_registry) == {"a", "b"}
+    assert p.default_model_provider == "a"
+    assert p.model is None
+    assert "model" not in p.model_dump()
+
+
+def test_both_singular_and_registry_raises_config_error():
+    with pytest.raises(ConfigError, match="mutually exclusive"):
+        ProvidersSettings.model_validate(
+            {
+                "model": _SPEC_A,
+                "model_registry": {"a": _SPEC_A},
+                "default_model_provider": "a",
+                "parser": _PARSER,
+                "session_store": _STORE,
+            }
+        )
+
+
+@pytest.mark.parametrize(
+    "model,model_registry",
+    [
+        (_SPEC_A, {}),
+        (None, {"a": _SPEC_A}),
+    ],
+)
+def test_explicitly_specifying_both_provider_shapes_raises(
+    model,
+    model_registry,
+):
+    with pytest.raises(ConfigError, match="mutually exclusive"):
+        ProvidersSettings.model_validate(
+            {
+                "model": model,
+                "model_registry": model_registry,
+                "default_model_provider": "a",
+                "parser": _PARSER,
+                "session_store": _STORE,
+            }
+        )
+
+
+def test_empty_registry_raises_config_error():
+    with pytest.raises(ConfigError, match="empty"):
+        ProvidersSettings.model_validate(
+            {"parser": _PARSER, "session_store": _STORE}
+        )
+
+
+def test_default_missing_raises():
+    with pytest.raises(ConfigError, match="default_model_provider is required"):
+        ProvidersSettings.model_validate(
+            {
+                "model_registry": {"a": _SPEC_A},
+                "parser": _PARSER,
+                "session_store": _STORE,
+            }
+        )
+
+
+def test_default_not_in_registry_raises():
+    with pytest.raises(ConfigError, match="not a key"):
+        ProvidersSettings.model_validate(
+            {
+                "model_registry": {"a": _SPEC_A},
+                "default_model_provider": "missing",
+                "parser": _PARSER,
+                "session_store": _STORE,
+            }
+        )
+
+
+@pytest.mark.parametrize(
+    "provider_id",
+    ["contains/slash", "contains space", "", "x" * 65, "_unwrapped_"],
+)
+def test_registry_rejects_non_requestable_provider_ids(provider_id: str):
+    with pytest.raises(ConfigError, match="invalid provider id"):
+        ProvidersSettings.model_validate(
+            {
+                "model_registry": {provider_id: _SPEC_A},
+                "default_model_provider": provider_id,
+                "parser": _PARSER,
+                "session_store": _STORE,
+            }
+        )
+
+
+def test_legacy_load_warning_message_mentions_adr():
+    with pytest.warns(DeprecationWarning, match="ADR-0021"):
+        ProvidersSettings.model_validate(
+            {"model": _SPEC_A, "parser": _PARSER, "session_store": _STORE}
+        )

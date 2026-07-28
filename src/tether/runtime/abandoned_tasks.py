@@ -1,9 +1,9 @@
 """Bounded process-level tracking for tasks abandoned during cleanup."""
 from __future__ import annotations
 
+import time
 from collections import OrderedDict
 from dataclasses import asdict, dataclass
-import time
 from typing import Any, Callable
 
 from tether.core.logging import logger

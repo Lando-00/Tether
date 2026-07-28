@@ -35,6 +35,8 @@ from typing import Any, AsyncGenerator, Dict, List, Optional
 
 import pytest
 
+from tests.fixtures.fake_research_provider import FakeResearchProvider
+from tests.fixtures.recording_research_store import RecordingResearchStore
 from tether.config.settings import ResearchSettings
 from tether.core.types import OrchestratorConfig
 from tether.protocol.orchestration import notebook as notebook_module
@@ -43,8 +45,6 @@ from tether.protocol.orchestration.notebook import NotebookOrchestrator
 from tether.protocol.parsers.sliding import SlidingParser
 from tether.protocol.wire.events import MessageStop, TextDelta
 from tether.runtime.abandoned_tasks import get_notebook_abandoned_task_tracker
-from tests.fixtures.fake_research_provider import FakeResearchProvider
-
 
 GRACE_SLACK_SEC = 0.5
 
@@ -74,9 +74,6 @@ def _retain_pending_and_reset() -> None:
     tracker._reset_for_tests()
     for task in pending:
         tracker.track(task, kind="retained_by_test")
-
-
-from tests.fixtures.recording_research_store import RecordingResearchStore
 
 
 class _FakeStore(RecordingResearchStore):
