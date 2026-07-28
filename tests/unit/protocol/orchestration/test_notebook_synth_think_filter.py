@@ -38,10 +38,12 @@ from tests.fixtures.fake_research_provider import FakeResearchProvider
 # ---------------------------------------------------------------------------
 
 
-def _drive(chunks: List[str]) -> tuple[str, str, _ThinkStripper]:
+def _drive(
+    chunks: List[str], *, assume_open: bool = False
+) -> tuple[str, str, _ThinkStripper]:
     """Feed ``chunks`` through a fresh stripper; return concatenated
     ``(text, thinking)`` plus the stripper instance (for state asserts)."""
-    stripper = _ThinkStripper()
+    stripper = _ThinkStripper(assume_open=assume_open)
     text_parts: List[str] = []
     think_parts: List[str] = []
     for chunk in chunks:
@@ -106,27 +108,40 @@ def test_strip_bare_leading_close_marker_split_chunks():
     assert "</think>" not in text
 
 
-@pytest.mark.skip(
-    reason=(
-        "Known tradeoff: handling arbitrarily long hidden text before a "
-        "bare-leading </think> requires buffering normal no-think output and "
-        "regresses first-token latency/cancellation tests. Track separately."
-    )
-)
-def test_strip_bare_leading_close_marker_long_prefix_KNOWN_GAP():
-    """A realistic hidden preamble before a bare close must not leak.
+def test_strip_long_leading_close_when_assume_open_think():
+    """Phase 9.8: the long bare-leading preamble is solved for opted-in models.
 
-    GPT-5.5 review caught that the implementation flushes after the 7-char
-    overlap window, which leaks long hidden reasoning plus the close marker
-    into TextDelta. A first attempt to buffer 512 chars fixed this case but
-    broke normal no-think streaming (synth cancellation tests timed out
-    waiting for the first visible chunk), so this remains a known follow-up.
+    Handling an arbitrarily long hidden preamble before a bare-leading
+    ``</think>`` generically would require buffering normal no-think output
+    and regressed first-token latency. The shipped fix is instead a
+    model-scoped opt-in (``synth_assume_open_think_models``): the stripper
+    starts inside the hidden block, so no amount of preamble can leak.
     """
-    hidden = "this is long hidden reasoning before close "
-    text, thinking, _ = _drive([hidden, "</think>", "visible"])
+    hidden = "this is long hidden reasoning before close " * 40
+    text, thinking, _ = _drive([hidden, "</think>", "visible"], assume_open=True)
     assert text == "visible"
     assert thinking == hidden
     assert "</think>" not in text
+
+
+def test_assume_open_unclosed_stream_never_leaks_hidden_text():
+    """An opted-in stream that never closes must yield no visible text."""
+    text, thinking, stripper = _drive(
+        ["hidden reasoning that never closes"], assume_open=True
+    )
+    assert text == ""
+    assert "hidden" in thinking
+    assert stripper.unclosed_assumed_block is True
+
+
+def test_non_opted_long_leading_preamble_remains_a_known_limitation():
+    """Documented tradeoff: without the opt-in, a long hidden preamble
+    before a bare-leading close still reaches the text channel. Models with
+    this template must be listed in ``synth_assume_open_think_models``."""
+    hidden = "this is long hidden reasoning before close "
+    text, _thinking, _ = _drive([hidden, "</think>", "visible"])
+    assert "visible" in text
+    assert hidden.strip() in text
 
 
 def test_strip_nested_think_blocks_do_not_leak_tail_text():
