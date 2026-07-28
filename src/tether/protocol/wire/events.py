@@ -270,8 +270,20 @@ class NotebookFactAdded(_Base):
     source_query: str = Field(
         description="The sub-query whose tool result produced this fact"
     )
+    source_kind: Literal["web_search", "local_deterministic"] = "web_search"
     total_facts: int = Field(
         ge=1, description="Running total of Notebook facts after this addition"
+    )
+
+
+class NotebookClarificationRequested(_Base):
+    """Research input needs a user clarification before planning can proceed."""
+
+    type: Literal["notebook_clarification_requested"] = "notebook_clarification_requested"
+    reason: Literal["ambiguous_correction", "ambiguous_entity", "unsearchable_input"]
+    message: str = Field(max_length=512)
+    candidates: List[Annotated[str, Field(max_length=256)]] = Field(
+        default_factory=list, max_length=5
     )
 
 
@@ -368,6 +380,7 @@ WireEvent = Annotated[
         NotebookPhaseStart,
         NotebookPhaseProgress,
         NotebookFactAdded,
+        NotebookClarificationRequested,
         NotebookQueryAdded,
         NotebookLimitReached,
         NotebookNoFacts,
@@ -392,6 +405,7 @@ __all__ = [
     "NotebookPhaseStart",
     "NotebookPhaseProgress",
     "NotebookFactAdded",
+    "NotebookClarificationRequested",
     "NotebookQueryAdded",
     "NotebookLimitReached",
     "NotebookNoFacts",

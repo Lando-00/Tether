@@ -7,6 +7,7 @@ import pytest
 from pydantic import TypeAdapter, ValidationError
 
 from tether.protocol.wire.events import (
+    NotebookClarificationRequested,
     NotebookFactAdded,
     NotebookLimitReached,
     NotebookNoFacts,
@@ -86,6 +87,54 @@ def test_wire_event_union_accepts_notebook_fact_added():
 
     assert isinstance(parsed, NotebookFactAdded)
     assert parsed == event
+
+
+def test_notebook_fact_added_source_kind_roundtrips():
+    event = NotebookFactAdded(
+        **_base(
+            fact_text="2 + 2 = 4",
+            source_query="2 + 2",
+            source_kind="local_deterministic",
+            total_facts=1,
+        )
+    )
+
+    assert NotebookFactAdded.model_validate(event.model_dump()) == event
+
+
+def test_notebook_clarification_requested_roundtrips_and_is_a_wire_event():
+    event = NotebookClarificationRequested(
+        **_base(
+            reason="ambiguous_correction",
+            message="Which term should I replace?",
+            candidates=["Irelend"],
+        )
+    )
+
+    assert TypeAdapter(WireEvent).validate_python(event.model_dump()) == event
+
+
+def test_notebook_clarification_requested_enforces_bounds():
+    with pytest.raises(ValidationError):
+        NotebookClarificationRequested(
+            **_base(reason="unsearchable_input", message="x" * 513)
+        )
+    with pytest.raises(ValidationError):
+        NotebookClarificationRequested(
+            **_base(
+                reason="unsearchable_input",
+                message="Need a question",
+                candidates=["x"] * 6,
+            )
+        )
+    with pytest.raises(ValidationError):
+        NotebookClarificationRequested(
+            **_base(
+                reason="unsearchable_input",
+                message="Need a question",
+                candidates=["x" * 257],
+            )
+        )
 
 
 def test_notebook_query_added_roundtrip_succeeds():
@@ -278,4 +327,3 @@ def test_wire_event_union_accepts_notebook_no_facts():
 
     assert isinstance(parsed, NotebookNoFacts)
     assert parsed == event
-

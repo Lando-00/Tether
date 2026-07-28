@@ -24,6 +24,7 @@ def test_atomic_fact_construction():
     assert fact.text == "Tether has research mode"
     assert fact.source_query == "research mode"
     assert fact.confidence == "high"
+    assert fact.source_kind == "web_search"
     assert fact.created_at.tzinfo is not None
     assert fact.created_at.utcoffset() == datetime.now(timezone.utc).utcoffset()
     with pytest.raises(FrozenInstanceError):

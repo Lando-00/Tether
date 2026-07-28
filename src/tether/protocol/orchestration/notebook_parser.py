@@ -10,11 +10,12 @@ Layer order (bullet from rs-D-prompts.md §2.1):
 
 1. ``json.loads(raw)`` — happy path.
 2. Strip ```` ```json ... ``` ```` code fences, retry ``json.loads``.
-3. Regex-extract first balanced ``{...}`` block + repair trailing
-   commas / single quotes / unquoted keys, retry ``json.loads``.
+3. Boundedly scan balanced ``{...}`` candidates after removing complete
+   hidden reasoning blocks; repair trailing commas / single quotes /
+   unquoted keys and select the last schema-valid candidate.
 4. Line-by-line ``FACT: <text>`` / ``- <text>`` / numbered bullet
    extraction (no follow-up queries from this layer).
-5. Log raw output at ``ERROR``, return empty :class:`ExtractResult`.
+5. Log safe metadata at ``WARNING``, return empty :class:`ExtractResult`.
 
 The 20-row acceptance corpus lives in
 ``tests/unit/protocol/orchestration/test_notebook_parser.py`` (Wave 3
@@ -51,11 +52,41 @@ _SNIPPET_META_RE = re.compile(
 _VALID_CONFIDENCE = {"low", "medium", "high"}
 _MAX_PLAN_QUERY_CHARS = 160
 _MAX_PLAN_QUERY_WORDS = 16
+_MAX_LAYER_3_CHARS = 64 * 1024
+_MAX_LAYER_3_OBJECTS = 16
+_MAX_JSON_NESTING = 64
+_MAX_BULLET_SCAN_CHARS = 64 * 1024
+_MAX_BULLET_LINES = 128
+_MAX_BULLET_LINE_CHARS = 1_024
 _PLAN_META_RE = re.compile(
     r"\b(?:the user|user is|i need|i should|but wait|however,?\s+the user|"
     r"let'?s|we need|that'?s a separate query)\b",
     re.IGNORECASE,
 )
+_CONTROL_RE = re.compile(r"[\x00-\x1f\x7f]")
+_TOOL_MARKER_RE = re.compile(r"<<\s*(?:function_call|tool_call)\s*>>|```", re.IGNORECASE)
+_INSTRUCTION_QUERY_RE = re.compile(
+    # Injection-shaped phrasing only. Bare verbs like "call"/"run"/"show"
+    # are deliberately allowed because they begin legitimate titles and
+    # topics ("Call of Duty 2026 sales", "Output gap economics"); a query
+    # string is never executed, it is only searched.
+    r"^\s*(?:ignore|disregard|forget)\b"
+    r"|^\s*(?:reveal|output|print|show|repeat)\s+(?:your|the|all)\s+"
+    r"(?:system|previous|prior|initial)\b"
+    r"|\bignore\s+(?:all\s+)?(?:previous|prior|above|earlier)\b"
+    r"|\b(?:delete|drop|erase)\s+all\b"
+    r"|\byou\s+are\s+now\b",
+    re.IGNORECASE,
+)
+_ARITHMETIC_ONLY_RE = re.compile(
+    r"^\s*(?:(?:what\s+is|calculate)\s+)?[\d\s+\-*/%().=x×÷]+\??\s*$",
+    re.IGNORECASE,
+)
+_THINK_BLOCK_RE = re.compile(r"<think\b[^>]*>.*?</think\s*>", re.IGNORECASE | re.DOTALL)
+_LEADING_THINK_PREAMBLE_RE = re.compile(
+    r"^\s*<think\b[^>]*>.*?</think\s*>", re.IGNORECASE | re.DOTALL
+)
+_THINK_CLOSE_RE = re.compile(r"</think\s*>", re.IGNORECASE)
 
 # Narrowly anchored extraction-process vocabulary. Each entry is a
 # prefix (already lowercased, includes trailing space) that strongly
@@ -140,16 +171,18 @@ def parse_plan_output(raw: str, *, max_queries: int = 5) -> list[str]:
     """
     raw_length = len(raw or "")
     try:
-        for layer_fn in (_layer_1_direct_json, _layer_2_strip_fences, _layer_3_balanced_brace_extract):
+        for layer_fn in (_layer_1_direct_json, _layer_2_strip_fences):
             result = layer_fn(raw)
-            if result is not None:
-                queries = result.get("key_elements", [])
-                if isinstance(queries, list):
-                    return _sanitize_plan_queries(queries, max_queries=max_queries)
+            if _is_schema_candidate(result, "key_elements"):
+                return sanitize_search_queries(result["key_elements"], max_queries=max_queries)
+        cleaned = _strip_reasoning_preamble(raw)
+        result = _layer_3_balanced_brace_extract(cleaned, required_key="key_elements")
+        if result is not None:
+            return sanitize_search_queries(result["key_elements"], max_queries=max_queries)
 
-        bullets = _layer_4_bullet_fallback(raw)
+        bullets = _layer_4_bullet_fallback(cleaned)
         if bullets:
-            return _sanitize_plan_queries(bullets, max_queries=max_queries)
+            return sanitize_search_queries(bullets, max_queries=max_queries)
 
         logger.warning("notebook_parser.plan_total_fail", raw_length=raw_length)
         return []
@@ -158,25 +191,34 @@ def parse_plan_output(raw: str, *, max_queries: int = 5) -> list[str]:
         return []
 
 
-def _sanitize_plan_queries(items: list[Any], *, max_queries: int) -> list[str]:
-    """Return short, search-shaped planner queries.
+def sanitize_search_queries(items: Any, *, max_queries: int) -> list[str]:
+    """Return bounded, deduplicated, search-shaped queries from untrusted LLM output.
 
-    Real Qwen planner runs can place chain-of-thought/meta commentary inside
-    a ``key_elements`` string (for example, "The math problem 25 + 50. But
-    wait, the user..."). Those strings are not useful Brave queries and can
-    trigger 422s. Keep only concise, self-contained search-query candidates.
+    Shared by Planner, Extractor follow-ups, and W2 residual fallback.
+    Meaningful short queries remain valid; model instructions do not.
     """
     queries: list[str] = []
     seen: set[str] = set()
+    if not isinstance(items, list):
+        return queries
     for item in items:
-        query = str(item).strip()
+        if not isinstance(item, str):
+            continue
+        raw_query = item.strip()
+        query = re.sub(r"\s+", " ", raw_query)
         if not query:
             continue
         if len(query) > _MAX_PLAN_QUERY_CHARS:
             continue
         if len(query.split()) > _MAX_PLAN_QUERY_WORDS:
             continue
-        if _PLAN_META_RE.search(query):
+        if (
+            _CONTROL_RE.search(raw_query)
+            or _PLAN_META_RE.search(query)
+            or _TOOL_MARKER_RE.search(query)
+            or _INSTRUCTION_QUERY_RE.search(query)
+            or _ARITHMETIC_ONLY_RE.fullmatch(query)
+        ):
             continue
         normalized = _normalize_plan_query(query)
         if normalized in seen:
@@ -186,6 +228,11 @@ def _sanitize_plan_queries(items: list[Any], *, max_queries: int) -> list[str]:
         if len(queries) >= max_queries:
             break
     return queries
+
+
+def _sanitize_plan_queries(items: list[Any], *, max_queries: int) -> list[str]:
+    """Compatibility alias for the shared query sanitizer."""
+    return sanitize_search_queries(items, max_queries=max_queries)
 
 
 def _normalize_plan_query(query: str) -> str:
@@ -223,35 +270,36 @@ def parse_extract_output(
         for layer_fn, layer_num in (
             (_layer_1_direct_json, 1),
             (_layer_2_strip_fences, 2),
-            (_layer_3_balanced_brace_extract, 3),
         ):
             result = layer_fn(raw)
-            if result is not None:
-                facts_raw = result.get("facts", [])
-                followups_raw = result.get("follow_up_queries", [])
-                if not isinstance(followups_raw, list):
-                    followups_raw = []
-                coerced = _coerce_facts(facts_raw, source_query)
-                kept_facts: list[AtomicFact] = []
-                leak_dropped = 0
-                for fact in coerced:
-                    if _is_reasoning_leak(fact.text):
-                        leak_dropped += 1
-                        continue
-                    kept_facts.append(fact)
-                facts = kept_facts[:max_facts]
-                followups = [q.strip() for q in followups_raw if isinstance(q, str) and q.strip()][
-                    :max_facts
-                ]
-                return ExtractResult(
-                    facts=facts,
-                    follow_up_queries=followups,
-                    parser_layer=layer_num,
-                    raw_length=raw_length,
-                    reasoning_leak_dropped=leak_dropped,
-                )
+            if _is_schema_candidate(result, "facts"):
+                break
+        else:
+            cleaned = _strip_reasoning_preamble(raw)
+            result = _layer_3_balanced_brace_extract(cleaned, required_key="facts")
+            layer_num = 3
+        if _is_schema_candidate(result, "facts"):
+            facts_raw = result["facts"]
+            followups_raw = result.get("follow_up_queries", [])
+            coerced = _coerce_facts(facts_raw, source_query)
+            kept_facts: list[AtomicFact] = []
+            leak_dropped = 0
+            for fact in coerced:
+                if _is_reasoning_leak(fact.text):
+                    leak_dropped += 1
+                    continue
+                kept_facts.append(fact)
+            return ExtractResult(
+                facts=kept_facts[:max_facts],
+                follow_up_queries=sanitize_search_queries(
+                    followups_raw, max_queries=min(max_facts, 3)
+                ),
+                parser_layer=layer_num,
+                raw_length=raw_length,
+                reasoning_leak_dropped=leak_dropped,
+            )
 
-        bullets = _layer_4_bullet_fallback(raw)
+        bullets = _layer_4_bullet_fallback(_strip_reasoning_preamble(raw))
         if bullets:
             leak_dropped = 0
             kept_bullets: list[str] = []
@@ -327,21 +375,22 @@ def _layer_2_strip_fences(raw: str) -> Optional[dict]:
         return None
 
 
-def _layer_3_balanced_brace_extract(raw: str) -> Optional[dict]:
-    """Extract first balanced ``{...}`` block + repair loose JSON.
+def _layer_3_balanced_brace_extract(raw: str, *, required_key: str | None = None) -> Optional[dict]:
+    """Extract the last schema-valid bounded balanced object + repair loose JSON.
 
     Repairs include trailing commas before ``}`` / ``]``, single-quoted
     strings → double-quoted, and unquoted keys (where unambiguous).
     Returns ``None`` if no balanced block found or repair still fails.
     """
     try:
-        block = _first_balanced_object(raw or "")
-        if block is None:
-            return None
-        result = _loads_dict(block)
-        if result is not None:
-            return result
-        return _loads_dict(_repair_loose_json(block))
+        last_valid: Optional[dict] = None
+        for block in _balanced_objects(raw or ""):
+            result = _loads_dict(block) or _loads_dict(_repair_loose_json(block))
+            if result is not None and (
+                required_key is None or _is_schema_candidate(result, required_key)
+            ):
+                last_valid = result
+        return last_valid
     except Exception:
         return None
 
@@ -357,7 +406,9 @@ def _layer_4_bullet_fallback(raw: str) -> list[str]:
     """
     facts: list[str] = []
     try:
-        for line in (raw or "").splitlines():
+        for line in (raw or "")[:_MAX_BULLET_SCAN_CHARS].splitlines()[:_MAX_BULLET_LINES]:
+            if len(line) > _MAX_BULLET_LINE_CHARS:
+                continue
             match = _FACT_LINE_RE.match(line)
             if not match:
                 continue
@@ -414,16 +465,15 @@ def _loads_dict(raw: str) -> Optional[dict]:
         return None
 
 
-def _first_balanced_object(raw: str) -> Optional[str]:
-    start = raw.find("{")
-    if start < 0:
-        return None
-
+def _balanced_objects(raw: str) -> list[str]:
+    """Return up to sixteen balanced objects from the first 64 KiB of text."""
+    objects: list[str] = []
     depth = 0
     in_string = False
     escaped = False
-    for index in range(start, len(raw)):
-        char = raw[index]
+    start: int | None = None
+    discarded_depth = 0
+    for index, char in enumerate(raw[:_MAX_LAYER_3_CHARS]):
         if in_string:
             if escaped:
                 escaped = False
@@ -436,12 +486,55 @@ def _first_balanced_object(raw: str) -> Optional[str]:
         if char == '"':
             in_string = True
         elif char == "{":
-            depth += 1
-        elif char == "}":
-            depth -= 1
+            if discarded_depth:
+                discarded_depth += 1
+                continue
             if depth == 0:
-                return raw[start : index + 1]
-    return None
+                start = index
+            depth += 1
+            if depth > _MAX_JSON_NESTING:
+                discarded_depth = depth
+                depth = 0
+                start = None
+        elif char == "}":
+            if discarded_depth:
+                discarded_depth -= 1
+                continue
+            if depth == 0:
+                continue
+            depth -= 1
+            if depth == 0 and start is not None:
+                objects.append(raw[start : index + 1])
+                if len(objects) >= _MAX_LAYER_3_OBJECTS:
+                    break
+                start = None
+    return objects
+
+
+def _first_balanced_object(raw: str) -> Optional[str]:
+    """Compatibility helper returning the first bounded balanced object."""
+    objects = _balanced_objects(raw)
+    return objects[0] if objects else None
+
+
+def _is_schema_candidate(result: Any, required_key: str) -> bool:
+    return isinstance(result, dict) and isinstance(result.get(required_key), list) and not (
+        isinstance(result.get("name"), str) and "arguments" in result
+    )
+
+
+def _strip_reasoning_preamble(raw: Any) -> str:
+    """Strip complete hidden reasoning blocks before non-streaming recovery."""
+    text = raw if isinstance(raw, str) else ""
+    leading = _LEADING_THINK_PREAMBLE_RE.match(text[:_MAX_LAYER_3_CHARS])
+    if leading is not None:
+        text = text[leading.end() :]
+    else:
+        bounded_prefix = text[:_MAX_LAYER_3_CHARS]
+        bare_close = _THINK_CLOSE_RE.search(bounded_prefix)
+        if bare_close is not None and "<think" not in bounded_prefix[: bare_close.start()].lower():
+            text = text[bare_close.end() :]
+    return _THINK_BLOCK_RE.sub("", text[:_MAX_LAYER_3_CHARS])
 
 
 def _repair_loose_json(raw: str) -> str:
@@ -460,6 +553,7 @@ __all__ = [
     "ExtractResult",
     "parse_plan_output",
     "parse_extract_output",
+    "sanitize_search_queries",
     "_is_reasoning_leak",
     "_REASONING_LEAK_PREFIXES",
 ]

@@ -34,6 +34,7 @@ class AtomicFact:
     text: str
     source_query: str
     confidence: Literal["high", "medium", "low"]
+    source_kind: Literal["web_search", "local_deterministic"] = "web_search"
     created_at: datetime = field(default_factory=lambda: datetime.now(timezone.utc))
 
 

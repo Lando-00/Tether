@@ -56,6 +56,11 @@ Rules:
 - Cover distinct angles. Do not paraphrase the same topic twice.
 - Prefer concrete entities, dates, products, and proper nouns over
   abstract phrasing.
+- Preserve names, spellings, and identifiers supplied by the user exactly.
+  Never silently normalize, expand, correct, or substitute an entity when
+  its identity is uncertain.
+- If a useful search query would require guessing an uncertain entity or
+  missing detail, emit an empty "key_elements" list rather than guessing.
 - If the user's question is itself already a single googleable query,
   return it unchanged as the only element.
 - Today is {today_iso}. Use that date when the user asks for "latest",
