@@ -269,6 +269,76 @@
       "title": "MessageStop",
       "type": "object"
     },
+    "NotebookClarificationRequested": {
+      "additionalProperties": false,
+      "description": "Research input needs a user clarification before planning can proceed.",
+      "properties": {
+        "candidates": {
+          "items": {
+            "maxLength": 256,
+            "type": "string"
+          },
+          "maxItems": 5,
+          "title": "Candidates",
+          "type": "array"
+        },
+        "message": {
+          "maxLength": 512,
+          "title": "Message",
+          "type": "string"
+        },
+        "protocol_version": {
+          "default": "1.0",
+          "title": "Protocol Version",
+          "type": "string"
+        },
+        "reason": {
+          "enum": [
+            "ambiguous_correction",
+            "ambiguous_entity",
+            "unsearchable_input"
+          ],
+          "title": "Reason",
+          "type": "string"
+        },
+        "seq": {
+          "description": "Per-turn monotonically-increasing sequence number",
+          "minimum": 0,
+          "title": "Seq",
+          "type": "integer"
+        },
+        "session_id": {
+          "title": "Session Id",
+          "type": "string"
+        },
+        "ts": {
+          "description": "Server-side emission timestamp (UTC)",
+          "format": "date-time",
+          "title": "Ts",
+          "type": "string"
+        },
+        "turn_id": {
+          "title": "Turn Id",
+          "type": "string"
+        },
+        "type": {
+          "const": "notebook_clarification_requested",
+          "default": "notebook_clarification_requested",
+          "title": "Type",
+          "type": "string"
+        }
+      },
+      "required": [
+        "session_id",
+        "turn_id",
+        "seq",
+        "ts",
+        "reason",
+        "message"
+      ],
+      "title": "NotebookClarificationRequested",
+      "type": "object"
+    },
     "NotebookFactAdded": {
       "additionalProperties": false,
       "description": "One atomic fact extracted into the Notebook.\n\nEmitted once per fact string written during the ``extract`` phase.\n``source_query`` is the sub-query whose tool result produced this fact.\n``total_facts`` is the running total **after** this fact is added —\nso the first fact gives ``total_facts=1``.",
@@ -292,6 +362,15 @@
         },
         "session_id": {
           "title": "Session Id",
+          "type": "string"
+        },
+        "source_kind": {
+          "default": "web_search",
+          "enum": [
+            "web_search",
+            "local_deterministic"
+          ],
+          "title": "Source Kind",
           "type": "string"
         },
         "source_query": {
@@ -983,6 +1062,7 @@
       "loop_limit_reached": "#/$defs/LoopLimitReached",
       "message_start": "#/$defs/MessageStart",
       "message_stop": "#/$defs/MessageStop",
+      "notebook_clarification_requested": "#/$defs/NotebookClarificationRequested",
       "notebook_fact_added": "#/$defs/NotebookFactAdded",
       "notebook_limit_reached": "#/$defs/NotebookLimitReached",
       "notebook_no_facts": "#/$defs/NotebookNoFacts",
@@ -1032,6 +1112,9 @@
     },
     {
       "$ref": "#/$defs/NotebookFactAdded"
+    },
+    {
+      "$ref": "#/$defs/NotebookClarificationRequested"
     },
     {
       "$ref": "#/$defs/NotebookQueryAdded"

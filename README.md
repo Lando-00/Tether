@@ -124,9 +124,10 @@ Request body for `/chat/stream`: `{"session_id": "...", "prompt": "..."}`.
 
 ### Research mode
 
-Tether ships an opt-in research mode ([ADR-0020](./docs/adr/0020-notebook-orchestrator-algorithm.md)). When enabled, `mode="research"` on `/api/v1/chat/stream` runs a Hanov-style Plan→Search→Extract→Refine→Synthesize loop with structured fact extraction and a final synthesized answer.
+Tether ships a research mode ([ADR-0020](./docs/adr/0020-notebook-orchestrator-algorithm.md)). Sending `mode="research"` to `/api/v1/chat/stream` runs a Hanov-style Plan→Search→Extract→Refine→Synthesize loop with structured fact extraction and a final synthesized answer.
 
-Enable it in `src/tether/config/default.yml`:
+It is registered by default and requires the `web_search` tool. The shipped
+`src/tether/config/default.yml` already contains:
 
 ```yaml
 orchestrator:
@@ -138,6 +139,9 @@ tools:
     - web_search  # required by research mode
 ```
 
+Comment out the `research:` line to disable the mode. The engine fails loud at
+boot if research is registered while `web_search` is not enabled.
+
 Set `BRAVE_API_KEY`; `web_search` uses the Brave Search API.
 
 ```bash
@@ -145,6 +149,21 @@ curl -X POST http://localhost:8000/api/v1/chat/stream \
   -H "Content-Type: application/json" \
   -d '{"session_id":"s","prompt":"Latest research on...", "model_name":"qwen3-4b", "mode":"research"}'
 ```
+
+Research preserves the exact text entered in session history. A short,
+whole-message correction ending in `*` (for example, `Ireland*`) is applied
+transiently to recent context; it does not rewrite that stored input. If the
+correction is ambiguous, or a planned query appears to substitute a
+near-spelling entity, the turn asks a clarifying question before any model
+search or Brave request. The v2 stream is
+`message_start` → `notebook_clarification_requested` →
+`message_stop(complete)`; the CLI renders this as a clarification panel.
+
+Narrow finite-decimal arithmetic such as `what is 25 + 50` is computed
+locally with `Decimal`, not sent to Brave. It becomes a high-confidence
+notebook fact with `source_kind: local_deterministic`; a calculation-only
+turn skips planning, search, and extraction. In `tether-cli --debug`,
+notebook fact output includes this source kind.
 
 Recommended loop bounds depend on how interactive you want the turn to feel:
 
@@ -155,16 +174,30 @@ Recommended loop bounds depend on how interactive you want the turn to feel:
 | Deep batch | 80 | 40 | overnight/batch research after raising timeouts deliberately |
 
 Set these under `orchestrator.research` in `src/tether/config/default.yml`.
+`planner_model`, `extractor_model`, and `synthesizer_model` optionally select
+per-phase models. `synth_assume_open_think_models` is an exact list of model
+IDs whose synthesis stream begins inside a hidden `<think>` block. The
+Pydantic default is empty; the shipped configuration lists the two local
+Qwen3-4B IDs. Add an ID only when its template has that behavior: listed
+models suppress the hidden preamble and fail the turn with non-fatal
+`UnclosedThinkBlock` if it never closes. Non-listed models keep normal
+first-token streaming. Accepted limitation: a long hidden preamble from a
+non-listed model can still reach the stream before a bare leading close marker
+is recognized.
+
 Phase-progress events (`notebook_phase_progress`) emit every ~2 seconds during long
 plan/extract/synthesize calls so clients can show progress during MLC cold-loads
 or slow searches. If the research loop finishes with zero gathered facts, Tether
 emits `notebook_no_facts` before synthesis; synthesis still runs so the model can
-plainly say it did not gather enough evidence.
+plainly say it did not gather enough evidence. If synthesis produces no visible
+text at all, the turn ends with a non-fatal `EmptySynthesis` error rather than
+reporting success with an empty answer.
 
-Research synthesis strips normal `<think>...</think>` blocks from user-visible
-`text_delta` events. A long hidden preamble before a bare-leading `</think>`
-remains a documented model-template edge case because buffering enough to solve it
-regresses first-token streaming latency; see `fu-research-thinkstripper-long-bare-leading`.
+`/readyz` also reports `operational_health.notebook_cleanup`, a bounded
+diagnostic view of abandoned async-generator cleanup. It is informational
+only: it never changes `ready`, resets hardware, or touches MLC shutdown.
+For legacy v0 NDJSON, notebook progress events are suppressed and a
+clarification is sent as one text event.
 
 Research mode is single-tool for v1 (`web_search` only). Multi-tool research is a future seam.
 

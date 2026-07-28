@@ -571,6 +571,10 @@ class ResearchSettings(StrictModel):
             "to the model on the request body."
         ),
     )
+    synth_assume_open_think_models: list[str] = Field(
+        default_factory=list,
+        description="Exact synthesizer model IDs whose streams start inside a hidden think block.",
+    )
     max_facts: int = Field(
         default=40,
         ge=1,

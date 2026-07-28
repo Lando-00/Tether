@@ -135,11 +135,12 @@ orchestrator:
   default: "chat"
   registry:
     chat: "tether.protocol.orchestration.chatty.ChattyAgentOrchestrator"
-    # Research mode (Hanov-style Plan→Search→Extract→Refine→Synthesize loop)
-    # is OPT-IN. To enable, uncomment the line below AND add web_search to
+    # Research mode (Hanov-style Plan→Search→Extract→Refine→Synthesize loop).
+    # Registered by default since Phase 9.8; it requires web_search in
     # tools.enabled. See ADR-0020 §D6 boot validation; the engine fails-loud
     # at boot if research is registered but web_search is not enabled.
-    # research: "tether.protocol.orchestration.notebook.NotebookOrchestrator"
+    # Comment the line below out to disable research mode entirely.
+    research: "tether.protocol.orchestration.notebook.NotebookOrchestrator"
   research:
     # Per-phase model overrides. CAUTION: each override may trigger a 30s
     # MLC cold-load on first call to that phase. Leave null for single-model
@@ -147,6 +148,14 @@ orchestrator:
     planner_model: null
     extractor_model: null
     synthesizer_model: null
+    # Exact synthesizer model IDs whose chat template starts the stream
+    # INSIDE a hidden <think> block (Phase 9.8). For these models the
+    # synth filter withholds text until the closing marker, and a stream
+    # that never closes fails loud instead of returning an empty answer.
+    # Models not listed here keep unbuffered first-token streaming.
+    synth_assume_open_think_models:
+      - "Qwen3-4B-q4f16_0-MLC"
+      - "Qwen3-4B-q4f16_1-MLC"
     # Loop bounds enforced by NotebookState.should_continue().
     max_facts: 40              # Stop collecting once notebook hits this size.
     max_iterations: 20         # Stop looping after N explore→extract→refine cycles.

@@ -317,6 +317,78 @@ during synthesis follows the chatty contract: the generator receives
 event reaches the wire — the audit trail records `client_disconnect`
 but the wire has nothing.
 
+### Phase 9.8 amendment — research-turn hardening
+
+This amendment supersedes any conflicting Phase 9.0 wording above while
+leaving the five-phase algorithm intact.
+
+**Turn lifecycle and corrections.** Research now uses the normal persisted
+turn lifecycle: `start_turn` → `get_history` → `add_user` → research →
+persist assistant text → `complete_turn`. The history snapshot is taken
+*before* the current raw prompt is stored, so a short correction cannot
+match itself. A whole-message correction ending in `*` is reconstructed
+from recent user history for this turn only. The transcript always retains
+the literal input (for example, `Ireland*`), not its reconstructed question.
+
+When a correction has no unambiguous context, research emits
+`MessageStart` → `NotebookClarificationRequested` → `MessageStop(complete)`.
+It makes no model or tool call, persists the clarification message as the
+assistant turn, and completes the turn normally. The same terminal is used
+when the planner's query has a near-spelling substitution of an entity in
+the post-correction question (for example, Ireland → Iceland); this
+deterministic drift guard runs before any web search. The event carries a
+reason (`ambiguous_correction`, `ambiguous_entity`, or
+`unsearchable_input`), a message, and at most five candidates.
+
+**Local deterministic facts.** Narrow finite-decimal binary arithmetic
+(`+`, `-`, `*`, `/`, `x`, `×`, `÷`, optionally introduced by “what is” or
+“calculate”) is evaluated locally with `Decimal`, never `eval`. Its result
+is inserted into the notebook as a high-confidence
+`NotebookFactAdded(source_kind="local_deterministic")`, distinct from
+`source_kind="web_search"`. A pure arithmetic turn skips Plan, Explore, and
+Extract; mixed input searches only the residual question. These facts remain
+available to synthesis and are cited like other notebook entries.
+
+**Query parsing and fallback.** The parser remains five layers: direct JSON;
+fenced JSON; bounded reasoning-strip plus schema-candidate scan; bounded
+bullet extraction; then typed failure. Layer 3 considers at most the first
+64 KiB, 16 objects, and nesting depth 64, and selects the last
+schema-valid object. Shared `sanitize_search_queries` applies to planner
+output, extractor follow-ups, and the residual-question fallback. It rejects
+overlong, meta-reasoning, instruction-shaped, tool-marker, and
+arithmetic-only queries. An empty plan may fall back only to that sanitized
+question; otherwise the turn asks for clarification. There is no
+unconditional whole-prompt search fallback.
+
+**Synthesis thinking.** `orchestrator.research.synth_assume_open_think_models`
+is an exact-ID opt-in list for model templates whose synthesis stream starts
+inside a hidden `<think>` block. Its Pydantic default is empty; the shipped
+configuration names the two local Qwen3-4B IDs. For listed models, hidden
+content is never emitted as `TextDelta`; a stream ending before the matching
+close marker fails closed with non-fatal
+`Error(error_type="UnclosedThinkBlock")` followed by
+`MessageStop(error)`. Models not on the list preserve first-token streaming.
+Accepted limitation: a long hidden preamble from a non-listed model can
+still stream before a bare leading close marker is recognized.
+
+**No silent empty answers.** If the loop completes but synthesis produced no
+visible text, the turn does not report success. It emits non-fatal
+`Error(error_type="EmptySynthesis")` followed by `MessageStop(error)`, so a
+model or provider that returns nothing is distinguishable from a genuine
+"insufficient evidence" answer (which is ordinary synthesized text preceded
+by `notebook_no_facts`).
+
+**Cleanup and operational health.** Timed-out async-generator cleanup is
+observed by the process-wide bounded abandoned-task tracker: warning at 8,
+error at 16, capacity 32. At capacity it evicts only the oldest reference,
+without a further cancellation, and latches overflow. `/readyz` exposes this
+as `operational_health.notebook_cleanup` for diagnosis only: it never changes
+top-level `ready`, resets hardware, or touches the GC-disabled MLC shutdown
+path. In legacy v0 NDJSON, notebook progress events are suppressed and a
+clarification is represented by one text event; clients therefore do not see
+`unknown_wire_event`. The CLI renders clarification requests and, in debug
+mode, labels each notebook fact with its source kind.
+
 ## Consequences
 
 ### Positive

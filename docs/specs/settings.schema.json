@@ -507,6 +507,13 @@
         "parser": {
           "$ref": "#/$defs/ProviderSpec"
         },
+        "registry": {
+          "additionalProperties": {
+            "$ref": "#/$defs/ProviderSpec"
+          },
+          "title": "Registry",
+          "type": "object"
+        },
         "session_store": {
           "$ref": "#/$defs/ProviderSpec"
         }
@@ -572,6 +579,14 @@
           "default": null,
           "description": "Override the model used for the Plan phase. Defaults to the model on the request body.",
           "title": "Planner Model"
+        },
+        "synth_assume_open_think_models": {
+          "description": "Exact synthesizer model IDs whose streams start inside a hidden think block.",
+          "items": {
+            "type": "string"
+          },
+          "title": "Synth Assume Open Think Models",
+          "type": "array"
         },
         "synthesizer_model": {
           "anyOf": [
