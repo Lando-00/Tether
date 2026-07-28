@@ -161,3 +161,41 @@ def test_models_command_is_not_treated_as_mode_toggle(
     # Initial startup uses the provided model; \models calls select_model(None).
     assert selected == ["model-a", None]
     assert post.call_args.kwargs["json"]["mode"] == "chat"
+
+
+class ClarificationStreamResponse(StreamResponse):
+    def iter_lines(self):
+        events = [
+            {"type": "message_start", "session_id": "s1", "turn_id": "t", "seq": 0},
+            {
+                "type": "notebook_clarification_requested",
+                "reason": "ambiguous_correction",
+                "message": "Which earlier term should this correction replace?",
+                "candidates": ["Irelend"],
+            },
+            {"type": "message_stop", "stop_reason": "complete"},
+        ]
+        for event in events:
+            yield json.dumps(event).encode("utf-8")
+
+
+def test_research_clarification_is_rendered_to_the_user(
+    cli_harness: tuple[io.StringIO, Mock],
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    stream, post = cli_harness
+    post.return_value = ClarificationStreamResponse()
+    prompts = iter(["Ireland*", "\\exit"])
+    monkeypatch.setattr(cli_main, "ptk_prompt", lambda *args, **kwargs: next(prompts))
+
+    cli_main.main(
+        model_name="model-a",
+        api_url="http://testserver/api/v1",
+        debug=False,
+        show_thinking=True,
+        mode=cli_main.ChatMode.research,
+    )
+
+    output = stream.getvalue()
+    assert "Which earlier term" in output
+    assert "Irelend" in output

@@ -22,11 +22,12 @@ from tether.core.interfaces import (
     StreamParser,
 )
 from tether.core.types import OrchestratorConfig as ChatSettings
-from tether.protocol.orchestration.chatty import _TOOL_CANCEL_GRACE_SEC
+from tether.protocol.orchestration.chatty import _AWAITER_PERSIST_BUDGET_SEC, _TOOL_CANCEL_GRACE_SEC
 from tether.protocol.orchestration.notebook_parser import (
     ExtractResult,
     parse_extract_output,
     parse_plan_output,
+    sanitize_search_queries,
 )
 from tether.protocol.orchestration.notebook_prompts import (
     EXTRACTOR_SYSTEM_PROMPT,
@@ -36,14 +37,18 @@ from tether.protocol.orchestration.notebook_prompts import (
     SYNTHESIZER_SYSTEM_PROMPT,
     SYNTHESIZER_USER_TEMPLATE,
 )
+from tether.protocol.orchestration.notebook_input import has_entity_drift, prepare_research_input
 from tether.protocol.orchestration.notebook_state import (
     AtomicFact,
     NotebookState,
     _normalize_query,
 )
+from tether.runtime.abandoned_tasks import get_notebook_abandoned_task_tracker
 from tether.protocol.wire.events import (
+    Error,
     MessageStart,
     MessageStop,
+    NotebookClarificationRequested,
     NotebookFactAdded,
     NotebookLimitReached,
     NotebookNoFacts,
@@ -88,65 +93,20 @@ _MAX_FACT_LENGTH = 4096
 _HEARTBEAT_INTERVAL_SEC = 2.0
 
 
-# Phase 9.7 W4 (nho-fu-w4-synth-abandon /
-# fu-research-synth-cancel-child-task): module-level strong-ref bag for
-# asyncgen cleanup tasks the orchestrator has abandoned after exceeding
-# ``_TOOL_CANCEL_GRACE_SEC``.
-#
-# Abandonment is a process-level resource event, not orchestrator-instance
-# state — keeping the bag at module scope lets the synth loop AND
-# ``_collect_stream_text`` share the same helper without plumbing ``self``
-# through, and makes it natural to drain in tests via
-# ``notebook._abandoned_cleanup_tasks``.
-#
-# The bag is bounded in normal operation: each request appends at most one
-# pending ``__anext__`` task plus one ``aclose`` task, and the done-callback
-# discards the entry as soon as the task finishes. The bag growing
-# unboundedly would require an adversarial provider whose cleanup never
-# completes; that is a provider bug, not an orchestrator bug.
-_abandoned_cleanup_tasks: "set[asyncio.Task[Any]]" = set()
-_ABANDONED_CLEANUP_WARN_THRESHOLD = 8
-
-
+# Cleanup tasks are retained by the bounded runtime tracker rather than an
+# unbounded module-level strong-reference set.
 def _abandon_cleanup_task(task: "asyncio.Task[Any]", *, kind: str) -> None:
-    """Promote ``task`` to an abandoned cleanup: keep a strong ref, attach
-    a logging done-callback, and stop blocking the request on it.
-
-    Used when an asyncgen's ``aclose()`` (or in-flight ``__anext__()``)
-    exceeds ``_TOOL_CANCEL_GRACE_SEC``. The task is left running so its
-    eventual cleanup completes naturally; the request returns MessageStop
-    within the grace contract. The contract Tether claims is user-visible
-    latency, not resource lifetime.
-
-    The done-callback intentionally does NOT log a stack trace — only
-    ``error_type`` — to match the redaction discipline used elsewhere in
-    this module (cf. ``_query_log_fields``).
-    """
-    _abandoned_cleanup_tasks.add(task)
-    backlog = len(_abandoned_cleanup_tasks)
-    if backlog >= _ABANDONED_CLEANUP_WARN_THRESHOLD:
-        logger.warning(
-            "notebook.abandoned_cleanup.backlog",
-            kind=kind,
-            backlog=backlog,
-            threshold=_ABANDONED_CLEANUP_WARN_THRESHOLD,
-        )
+    """Register a cleanup task without driving, cancelling, or awaiting it."""
+    tracker = get_notebook_abandoned_task_tracker()
+    tracker.track(task, kind=kind)
 
     def _on_done(t: "asyncio.Task[Any]") -> None:
-        _abandoned_cleanup_tasks.discard(t)
         if t.cancelled():
             logger.info("notebook.abandoned_cleanup.cancelled", kind=kind)
             return
         exc = t.exception()
-        if exc is None or isinstance(
-            exc, (StopAsyncIteration, asyncio.CancelledError)
-        ):
-            return
-        logger.warning(
-            "notebook.abandoned_cleanup.exception",
-            kind=kind,
-            error_type=type(exc).__name__,
-        )
+        if exc is not None and not isinstance(exc, (StopAsyncIteration, asyncio.CancelledError)):
+            logger.warning("notebook.abandoned_cleanup.exception", kind=kind, error_type=type(exc).__name__)
 
     task.add_done_callback(_on_done)
 
@@ -275,11 +235,13 @@ class _ThinkStripper:
     THINK_OPEN = "<think>"
     THINK_CLOSE = "</think>"
     _OVERLAP = max(len(THINK_OPEN), len(THINK_CLOSE)) - 1
-    def __init__(self) -> None:
-        self._mode: str = "leading"
+    def __init__(self, assume_open: bool = False) -> None:
+        self._assume_open = assume_open
+        self._saw_assumed_close = False
+        self._mode: str = "think" if assume_open else "leading"
         self._buf: str = ""
         self._unclosed_think_count: int = 0
-        self._think_depth: int = 0
+        self._think_depth: int = 1 if assume_open else 0
 
     def feed(self, chunk: str) -> tuple[str, str]:
         """Consume one chunk; return ``(text_part, thinking_part)``.
@@ -359,6 +321,10 @@ class _ThinkStripper:
             if idx_open != -1 and (idx_close == -1 or idx_open < idx_close):
                 think_out.append(self._buf[:idx_open])
                 self._buf = self._buf[idx_open + len(self.THINK_OPEN):]
+                # An opted-in model can visibly repeat the template open marker.
+                # It confirms the assumed block; it does not nest it.
+                if self._assume_open and not self._saw_assumed_close and self._think_depth == 1:
+                    continue
                 self._think_depth += 1
                 continue
             if idx_close != -1:
@@ -367,6 +333,8 @@ class _ThinkStripper:
                 self._think_depth = max(0, self._think_depth - 1)
                 if self._think_depth == 0:
                     self._mode = "text"
+                    if self._assume_open:
+                        self._saw_assumed_close = True
                 continue
             if len(self._buf) > self._OVERLAP:
                 emit = self._buf[: -self._OVERLAP]
@@ -376,6 +344,10 @@ class _ThinkStripper:
             break
 
         return "".join(text_out), "".join(think_out)
+
+    @property
+    def unclosed_assumed_block(self) -> bool:
+        return self._assume_open and not self._saw_assumed_close
 
     def finalize(self) -> tuple[str, str]:
         """Flush any residual buffered state at end-of-stream.
@@ -448,474 +420,367 @@ class NotebookOrchestrator(Orchestrator):
         self.clock = clock
 
     async def run(
-        self,
-        *,
-        session_id: str,
-        prompt: str,
-        model_name: str,
+        self, *, session_id: str, prompt: str, model_name: str,
         cancel_token: Optional["CancelToken"] = None,
     ) -> AsyncIterator["WireEvent"]:
-        """Run the Hanov Plan→Explore→Extract→Refine→Synthesize loop."""
+        """Run research with a normal persisted turn lifecycle."""
         turn_id = uuid.uuid4().hex[:12]
         seq = 0
-        message_started = False
-        cancelled = False
-
-        def _next_seq() -> int:
-            nonlocal seq
-            n = seq
-            seq += 1
-            structlog.contextvars.bind_contextvars(seq=n)
-            return n
+        message_started = terminal_emitted = turn_started = False
+        cancelled = failed = False
+        answer_parts: list[str] = []
+        thinking_parts: list[str] = []
 
         def _envelope() -> dict[str, Any]:
-            return {
-                "session_id": session_id,
-                "turn_id": turn_id,
-                "seq": _next_seq(),
-                "ts": datetime.now(timezone.utc),
-            }
+            nonlocal seq
+            value = {"session_id": session_id, "turn_id": turn_id, "seq": seq, "ts": datetime.now(timezone.utc)}
+            structlog.contextvars.bind_contextvars(seq=seq)
+            seq += 1
+            return value
 
         def _is_cancelled() -> bool:
             return cancel_token is not None and cancel_token.cancelled()
 
-        async def _emit_message_start() -> MessageStart:
+        async def _start() -> MessageStart:
             nonlocal message_started
             message_started = True
             return MessageStart(**_envelope(), available_tools=[])
 
+        async def _clarify(
+            reason: str, message: str, candidates: tuple[str, ...] = ()
+        ) -> AsyncIterator["WireEvent"]:
+            nonlocal terminal_emitted
+            yield await _start()
+            yield NotebookClarificationRequested(
+                **_envelope(),
+                reason=reason,
+                message=message[:512],
+                # Truncate at the yield site: an overlong candidate would
+                # otherwise raise ValidationError and abort the stream with
+                # no MessageStop.
+                candidates=[item[:256] for item in candidates[:5]],
+            )
+            answer_parts.append(message[:512])
+            terminal_emitted = True
+            yield MessageStop(**_envelope(), stop_reason="complete")
+
         try:
             structlog.contextvars.bind_contextvars(turn_id=turn_id)
+            await self.store.start_turn(session_id, turn_id, model_name=model_name)
+            turn_started = True
+            # Snapshot precedes add_user so a correction cannot match itself.
+            prior_history = await self.store.get_history(session_id, include_thinking=False)
+            await self.store.add_user(session_id, prompt, turn_id=turn_id)
+            prepared = prepare_research_input(prompt, prior_history)
+            if prepared.clarification is not None:
+                async for event in _clarify(prepared.clarification.reason, prepared.clarification.message, prepared.clarification.candidates):
+                    yield event
+                return
+
+            # ``question`` drives planning/search (arithmetic removed);
+            # ``full_question`` is what Extract and Synthesize see so a
+            # locally answered sub-question is never hidden from the answer.
+            question = prepared.effective_question
+            full_question = prepared.resolved_question or question
             today_iso = self.clock().isoformat()
             planner_model = self.research_settings.planner_model or model_name
             extractor_model = self.research_settings.extractor_model or model_name
             synthesizer_model = self.research_settings.synthesizer_model or model_name
+            state = NotebookState(max_facts=self.research_settings.max_facts, max_iterations=self.research_settings.max_iterations, max_facts_per_extract=self.research_settings.max_facts_per_extract)
 
-            notebook_state = NotebookState(
-                max_facts=self.research_settings.max_facts,
-                max_iterations=self.research_settings.max_iterations,
-                max_facts_per_extract=self.research_settings.max_facts_per_extract,
-            )
+            # Local facts are first-class cited notebook entries, never Brave input.
+            for fact in prepared.local_facts:
+                if state.try_add_fact(fact):
+                    yield NotebookFactAdded(**_envelope(), fact_text=fact.text[:_MAX_FACT_LENGTH], source_query=fact.source_query, source_kind=fact.source_kind, total_facts=len(state.facts))
 
             if _is_cancelled():
                 cancelled = True
-            else:
-                yield NotebookPhaseStart(
-                    **_envelope(),
-                    phase="plan",
-                    iteration=0,
-                )
+            elif question:
+                yield NotebookPhaseStart(**_envelope(), phase="plan", iteration=0)
                 plan_queries: list[str] = []
-                async for item in self._plan(
-                    model_name=planner_model,
-                    question=prompt,
-                    today_iso=today_iso,
-                    cancel_token=cancel_token,
-                ):
-                    kind, payload = item
+                async for kind, payload in self._plan(model_name=planner_model, question=question, today_iso=today_iso, cancel_token=cancel_token):
                     if kind == "heartbeat":
-                        yield NotebookPhaseProgress(
-                            **_envelope(),
-                            phase="plan",
-                            iteration=0,
-                            elapsed_ms=payload,
-                        )
+                        yield NotebookPhaseProgress(**_envelope(), phase="plan", iteration=0, elapsed_ms=payload)
                     else:
                         plan_queries = payload
-                logger.info("notebook.phase_complete", phase="plan", queries=len(plan_queries))
-                if not plan_queries and prompt.strip():
-                    # Real LLM planners can occasionally fail to emit strict
-                    # JSON (or emit an empty key_elements list) for typo-heavy
-                    # / multi-part user prompts. Falling straight through to
-                    # empty synthesis is a poor research UX; use the original
-                    # prompt as one broad search query so Explore still has a
-                    # chance to gather facts.
-                    fallback_query = prompt.strip()[:_MAX_QUERY_LENGTH]
-                    logger.warning(
-                        "notebook.plan_empty_fallback",
-                        query_length=len(fallback_query),
-                    )
-                    plan_queries = [fallback_query]
-
+                if any(has_entity_drift(query, question) for query in plan_queries):
+                    async for event in _clarify("ambiguous_entity", "Please clarify the entity you want me to research."):
+                        yield event
+                    return
+                if not plan_queries:
+                    plan_queries = sanitize_search_queries([question], max_queries=1)
+                    if not plan_queries:
+                        async for event in _clarify("unsearchable_input", "Please provide a specific question I can safely research."):
+                            yield event
+                        return
                 for query in plan_queries:
-                    notebook_state.queue.append(query)
-                    notebook_state.processed_queries.add(_normalize_query(query))
-                    yield NotebookQueryAdded(
-                        **_envelope(),
-                        query=query[:_MAX_QUERY_LENGTH],
-                        queue_depth=len(notebook_state.queue),
-                    )
+                    state.queue.append(query)
+                    state.processed_queries.add(_normalize_query(query))
+                    yield NotebookQueryAdded(**_envelope(), query=query[:_MAX_QUERY_LENGTH], queue_depth=len(state.queue))
 
-            while not cancelled and notebook_state.should_continue():
+            while not cancelled and state.should_continue():
                 if _is_cancelled():
                     cancelled = True
                     break
-
-                notebook_state.iteration += 1
-                iteration = notebook_state.iteration
-                query = notebook_state.queue.popleft()
-
-                yield NotebookPhaseStart(
-                    **_envelope(),
-                    phase="explore",
-                    iteration=iteration,
-                )
+                state.iteration += 1
+                iteration = state.iteration
+                query = state.queue.popleft()
+                yield NotebookPhaseStart(**_envelope(), phase="explore", iteration=iteration)
                 logger.info(
                     "notebook.phase_start",
                     phase="explore",
                     iteration=iteration,
                     **_query_log_fields(query),
                 )
-
-                tool_task = asyncio.create_task(
+                task = asyncio.create_task(
                     self.tool_runner.run(
-                        "web_search",
-                        {"query": query, "count": _WEB_SEARCH_COUNT},
+                        "web_search", {"query": query, "count": _WEB_SEARCH_COUNT}
                     )
                 )
                 try:
-                    while not tool_task.done():
-                        if _is_cancelled():
-                            cancelled = True
-                            break
-                        await asyncio.wait({tool_task}, timeout=0.01)
-                    if cancelled:
-                        # Cooperative cancel: the ``finally`` block below
-                        # cancels + grace-waits the tool task. We break out
-                        # of the outer ``while not cancelled`` loop after
-                        # the finally runs.
+                    while not task.done() and not _is_cancelled():
+                        await asyncio.wait({task}, timeout=0.01)
+                    if _is_cancelled():
+                        cancelled = True
                         break
-
-                    try:
-                        search_result = await tool_task
-                    except Exception as exc:
-                        logger.warning(
-                            "notebook.explore_tool_error",
-                            iteration=iteration,
-                            error_type=type(exc).__name__,
-                            exc_info=True,
-                            **_query_log_fields(query),
-                        )
-                        continue
-
-                    if not isinstance(search_result, dict) or search_result.get("error"):
-                        logger.warning(
-                            "notebook.explore_tool_error",
-                            iteration=iteration,
-                            error_type="tool_error",
-                            **_query_log_fields(query),
-                        )
-                        continue
-                    logger.info(
-                        "notebook.phase_complete",
-                        phase="explore",
+                    search_result = await task
+                except Exception as exc:
+                    logger.warning(
+                        "notebook.explore_tool_error",
                         iteration=iteration,
-                        results=len(search_result.get("results", [])),
+                        error_type=type(exc).__name__,
+                        **_query_log_fields(query),
                     )
+                    continue
                 finally:
-                    # Phase 9.5 fu-research-external-cancel-pattern
-                    # (mirrors chatty.py:1292-1322 F3 pattern).
-                    #
-                    # External ``asyncio.CancelledError`` propagating from
-                    # ``asyncio.wait({tool_task}, timeout=0.01)`` would
-                    # otherwise unwind without cancelling ``tool_task``,
-                    # leaking the in-flight web_search call. This finally
-                    # runs on:
-                    #   1. Normal completion (tool_task done → no-op).
-                    #   2. Cooperative cancel (_is_cancelled() True →
-                    #      cancel + grace-wait here, then break above).
-                    #   3. External CancelledError (tool_task still
-                    #      pending → cancel + grace-wait, then re-raise).
-                    #   4. ``continue`` from the error paths above
-                    #      (tool_task already done → no-op).
-                    if not tool_task.done():
-                        tool_task.cancel()
+                    # External CancelledError would otherwise leave the
+                    # in-flight web_search running (mirrors chatty F3).
+                    if not task.done():
+                        task.cancel()
                         try:
-                            await asyncio.wait_for(
-                                tool_task,
-                                timeout=_TOOL_CANCEL_GRACE_SEC,
-                            )
+                            await asyncio.wait_for(task, timeout=_TOOL_CANCEL_GRACE_SEC)
                         except (asyncio.TimeoutError, asyncio.CancelledError):
-                            # Tool either over-ran the grace or honored
-                            # the cancel. Either way, we're done with it.
-                            # Don't add ``Exception`` to the tuple —
-                            # let real bugs surface to the logger.
                             pass
-
+                if not isinstance(search_result, dict) or search_result.get("error"):
+                    logger.warning(
+                        "notebook.explore_tool_error",
+                        iteration=iteration,
+                        error_type="tool_error",
+                        **_query_log_fields(query),
+                    )
+                    continue
+                logger.info(
+                    "notebook.phase_complete",
+                    phase="explore",
+                    iteration=iteration,
+                    results=len(search_result.get("results", []) or []),
+                )
+                yield NotebookPhaseStart(**_envelope(), phase="extract", iteration=iteration)
+                extracted: Optional[ExtractResult] = None
+                async for kind, payload in self._extract(model_name=extractor_model, question=full_question, source_query=query, snippets=search_result.get("results", []), facts=state.facts, today_iso=today_iso, cancel_token=cancel_token):
+                    if kind == "heartbeat":
+                        yield NotebookPhaseProgress(**_envelope(), phase="extract", iteration=iteration, elapsed_ms=payload)
+                    else:
+                        extracted = payload
                 if _is_cancelled():
                     cancelled = True
                     break
-
-                yield NotebookPhaseStart(
-                    **_envelope(),
-                    phase="extract",
-                    iteration=iteration,
-                )
-                extract_result: Optional[ExtractResult] = None
-                async for item in self._extract(
-                    model_name=extractor_model,
-                    question=prompt,
-                    source_query=query,
-                    snippets=search_result.get("results", []),
-                    facts=notebook_state.facts,
-                    today_iso=today_iso,
-                    cancel_token=cancel_token,
-                ):
-                    kind, payload = item
-                    if kind == "heartbeat":
-                        yield NotebookPhaseProgress(
-                            **_envelope(),
-                            phase="extract",
-                            iteration=iteration,
-                            elapsed_ms=payload,
-                        )
-                    else:
-                        extract_result = payload
-                # ``_extract`` always yields a final ("result", ExtractResult).
-                # The assert pins that invariant for type-checkers and surfaces
-                # any future regression where the helper exits before yielding
-                # the result sentinel (which would otherwise NoneType-crash
-                # later when we iterate over .facts).
-                assert extract_result is not None
+                # ``_extract`` always yields a final ("result", ExtractResult);
+                # the assert pins that invariant for future refactors.
+                assert extracted is not None
                 logger.info(
                     "notebook.phase_complete",
                     phase="extract",
                     iteration=iteration,
-                    facts=len(extract_result.facts),
-                    follow_ups=len(extract_result.follow_up_queries),
-                    parser_layer=extract_result.parser_layer,
-                    raw_length=extract_result.raw_length,
+                    facts=len(extracted.facts),
+                    follow_ups=len(extracted.follow_up_queries),
+                    parser_layer=extracted.parser_layer,
+                    raw_length=extracted.raw_length,
                 )
-
-                if _is_cancelled():
-                    cancelled = True
-                    break
-
-                for fact in extract_result.facts:
-                    # Order: mutate first, then yield. Pydantic ge=1 on total_facts
-                    # catches emit-before-append off-by-one bugs.
-                    if notebook_state.try_add_fact(fact):
-                        yield NotebookFactAdded(
-                            **_envelope(),
-                            fact_text=fact.text[:_MAX_FACT_LENGTH],
-                            source_query=fact.source_query,
-                            total_facts=len(notebook_state.facts),
-                        )
-                    if notebook_state.limit_kind() == "max_facts":
+                for fact in extracted.facts:
+                    if state.try_add_fact(fact):
+                        yield NotebookFactAdded(**_envelope(), fact_text=fact.text[:_MAX_FACT_LENGTH], source_query=fact.source_query, source_kind=fact.source_kind, total_facts=len(state.facts))
+                    if state.limit_kind() == "max_facts":
                         break
-
-                if notebook_state.limit_kind() is not None:
+                if state.limit_kind() is not None:
                     break
-
-                deduped_follow_ups: list[str] = []
-                for follow_up in extract_result.follow_up_queries:
-                    normalized = _normalize_query(follow_up)
-                    if normalized in notebook_state.processed_queries:
-                        continue
-                    deduped_follow_ups.append(follow_up)
-                    notebook_state.processed_queries.add(normalized)
-
-                if deduped_follow_ups:
+                followups = [
+                    q
+                    for q in extracted.follow_up_queries
+                    if _normalize_query(q) not in state.processed_queries
+                ]
+                if followups:
                     logger.info(
-                        "notebook.phase_start",
-                        phase="refine",
-                        iteration=iteration,
+                        "notebook.phase_start", phase="refine", iteration=iteration
                     )
-                    yield NotebookPhaseStart(
-                        **_envelope(),
-                        phase="refine",
-                        iteration=iteration,
-                    )
-                    for follow_up in deduped_follow_ups:
-                        notebook_state.queue.append(follow_up)
+                    yield NotebookPhaseStart(**_envelope(), phase="refine", iteration=iteration)
+                    for followup in followups:
+                        state.processed_queries.add(_normalize_query(followup))
+                        state.queue.append(followup)
                         yield NotebookQueryAdded(
                             **_envelope(),
-                            query=follow_up[:_MAX_QUERY_LENGTH],
-                            queue_depth=len(notebook_state.queue),
+                            query=followup[:_MAX_QUERY_LENGTH],
+                            queue_depth=len(state.queue),
                         )
                     logger.info(
                         "notebook.phase_complete",
                         phase="refine",
                         iteration=iteration,
-                        queries=len(deduped_follow_ups),
-                    )
-
-            if not cancelled and not notebook_state.should_continue():
-                limit_kind = notebook_state.limit_kind()
-                if limit_kind is not None and notebook_state.queue:
-                    count = (
-                        len(notebook_state.facts)
-                        if limit_kind == "max_facts"
-                        else notebook_state.iteration
-                    )
-                    yield NotebookLimitReached(
-                        **_envelope(),
-                        limit_kind=limit_kind,
-                        count=count,
+                        queries=len(followups),
                     )
 
             if cancelled:
                 if not message_started:
-                    yield await _emit_message_start()
+                    yield await _start()
+                terminal_emitted = True
                 yield MessageStop(**_envelope(), stop_reason="cancelled")
                 return
-
-            if not notebook_state.facts:
-                # Phase 9.7 W3-B (nho-fu-w3b-empty-signal): surface an
-                # empty-Notebook signal BEFORE synthesize so clients can
-                # distinguish "we ran the loop but found nothing" from
-                # "we found something and are synthesizing". This is
-                # NOT an Error and NOT a NotebookLimitReached — synthesis
-                # still runs on the empty Notebook and MessageStop is
-                # still ``complete``.
-                #
-                # ``queries_attempted`` and ``iterations`` are both sourced
-                # from ``notebook_state.iteration``: the counter is
-                # incremented once per dequeue+explore (notebook.py:413),
-                # so in the current single-query-per-iteration loop they
-                # coincide. Both are surfaced independently so the wire
-                # contract survives future multi-query iterations.
-                queries_attempted = notebook_state.iteration
-                iterations = notebook_state.iteration
-                note = "empty plan" if queries_attempted == 0 else None
-                yield NotebookNoFacts(
-                    **_envelope(),
-                    queries_attempted=queries_attempted,
-                    iterations=iterations,
-                    note=note,
-                )
-
-            yield NotebookPhaseStart(
-                **_envelope(),
-                phase="synthesize",
-                iteration=0,
+            if state.limit_kind() is not None and state.queue:
+                count = len(state.facts) if state.limit_kind() == "max_facts" else state.iteration
+                yield NotebookLimitReached(**_envelope(), limit_kind=state.limit_kind(), count=count)
+            if not state.facts:
+                yield NotebookNoFacts(**_envelope(), queries_attempted=state.iteration, iterations=state.iteration, note="empty plan" if not state.iteration else None)
+            yield NotebookPhaseStart(**_envelope(), phase="synthesize", iteration=0)
+            yield await _start()
+            stripper = _ThinkStripper(
+                assume_open=synthesizer_model
+                in self.research_settings.synth_assume_open_think_models
             )
-            yield await _emit_message_start()
             astream = self._synthesize_stream(
                 model_name=synthesizer_model,
-                question=prompt,
-                facts=notebook_state.facts,
+                question=full_question,
+                facts=state.facts,
                 today_iso=today_iso,
             )
-            # Phase 9.6 I-1 (HIGH-A): strip <think>...</think> blocks
-            # from the synth stream. NotebookOrchestrator bypasses
-            # SlidingParser (ADR-0020 §D1 prompt-injection defense), so
-            # without this filter Qwen3's thinking tokens bleed verbatim
-            # into TextDelta. _ThinkStripper is a think-only state
-            # machine — it does NOT detect <<function_call>> markers.
-            #
-            # The post-yield ``_is_cancelled()`` checks are load-bearing:
-            # the stripper holds up to OVERLAP chars before emitting, so
-            # the chunk that triggered TextDelta is one ahead of the
-            # chunk the consumer's cancel reacted to. Without rechecking
-            # after each yield, the next ``__anext__()`` can park on a
-            # blocking await (provider sleep) and we'd miss the cancel
-            # until the bounded ``aclose()`` grace fires.
-            #
-            # Phase 9.6 I-4 (W2-B): drive ``astream.__anext__()`` from a
-            # single-consumer ``asyncio.wait({pending}, timeout=interval)``
-            # so we can emit ``NotebookPhaseProgress`` heartbeats during
-            # cold-load idle without losing ``seq`` monotonicity (all
-            # yields still flow through ``_envelope()``).
-            stripper = _ThinkStripper()
             synth_loop = asyncio.get_running_loop()
             synth_started = synth_loop.time()
-            pending_chunk: Optional[asyncio.Task[Any]] = None
+            pending: Optional[asyncio.Task[Any]] = None
             try:
-                pending_chunk = asyncio.create_task(astream.__anext__())
+                pending = asyncio.create_task(astream.__anext__())
                 while True:
                     if _is_cancelled():
                         cancelled = True
                         break
-                    done, _still = await asyncio.wait(
-                        {pending_chunk}, timeout=_HEARTBEAT_INTERVAL_SEC
-                    )
-                    if pending_chunk in done:
-                        try:
-                            chunk = pending_chunk.result()
-                        except StopAsyncIteration:
-                            pending_chunk = None
-                            break
-                        text_part, thinking_part = stripper.feed(chunk)
-                        if text_part:
-                            yield TextDelta(**_envelope(), text=text_part)
-                            if _is_cancelled():
-                                cancelled = True
-                                break
-                        if thinking_part and self.config.save_thinking:
-                            yield ThinkingDelta(**_envelope(), text=thinking_part)
-                            if _is_cancelled():
-                                cancelled = True
-                                break
-                        pending_chunk = asyncio.create_task(astream.__anext__())
-                    else:
-                        elapsed_ms = int(
-                            (synth_loop.time() - synth_started) * 1000
-                        )
+                    done, _ = await asyncio.wait({pending}, timeout=_HEARTBEAT_INTERVAL_SEC)
+                    if pending not in done:
                         yield NotebookPhaseProgress(
                             **_envelope(),
                             phase="synthesize",
                             iteration=0,
-                            elapsed_ms=elapsed_ms,
+                            elapsed_ms=int((synth_loop.time() - synth_started) * 1000),
                         )
-                # Normal exhaustion only. On cancel we drop the residual
-                # rather than emit stale text after the cancel signal.
-                if not cancelled and not _is_cancelled():
-                    text_tail, thinking_tail = stripper.finalize()
-                    if text_tail:
-                        yield TextDelta(**_envelope(), text=text_tail)
-                    if thinking_tail and self.config.save_thinking:
-                        yield ThinkingDelta(**_envelope(), text=thinking_tail)
-            finally:
-                # Phase 9.7 W4 (nho-fu-w4-synth-abandon /
-                # fu-research-synth-cancel-child-task): cancel the
-                # in-flight __anext__ task first (bounded by the cancel
-                # grace), then hand cleanup to ``_bounded_aclose``. The
-                # helper enforces two invariants:
-                #
-                # 1. If ``pending_chunk`` is still ``not done()`` after
-                #    its grace (uncooperative ``__anext__``), it does
-                #    NOT call ``astream.aclose()`` — that would raise
-                #    ``RuntimeError("aclose(): asynchronous generator
-                #    is already running")``. Instead it abandons the
-                #    pending task and skips aclose.
-                # 2. ``astream.aclose()`` itself runs inside an
-                #    abandonable task, so a provider whose cleanup
-                #    catches ``CancelledError`` and re-awaits a shielded
-                #    inner (e.g. native engine teardown) cannot pin the
-                #    request past the grace.
-                #
-                # The contract is user-visible latency, not resource
-                # lifetime — the abandoned tasks keep running so the
-                # provider's cleanup completes naturally.
-                if pending_chunk is not None and not pending_chunk.done():
-                    pending_chunk.cancel()
+                        continue
                     try:
-                        await asyncio.wait_for(
-                            pending_chunk, timeout=_TOOL_CANCEL_GRACE_SEC
+                        chunk = pending.result()
+                    except StopAsyncIteration:
+                        pending = None
+                        break
+                    text, thinking = stripper.feed(chunk)
+                    # The post-yield cancel checks are load-bearing: the
+                    # stripper holds up to OVERLAP chars, so the chunk that
+                    # triggered this delta is one ahead of the chunk the
+                    # consumer reacted to.
+                    if text:
+                        answer_parts.append(text)
+                        yield TextDelta(**_envelope(), text=text)
+                        if _is_cancelled():
+                            cancelled = True
+                            break
+                    if thinking:
+                        thinking_parts.append(thinking)
+                        if self.config.save_thinking:
+                            yield ThinkingDelta(**_envelope(), text=thinking)
+                            if _is_cancelled():
+                                cancelled = True
+                                break
+                    pending = asyncio.create_task(astream.__anext__())
+                if not cancelled:
+                    tail, thought = stripper.finalize()
+                    if tail:
+                        answer_parts.append(tail)
+                        yield TextDelta(**_envelope(), text=tail)
+                    if thought:
+                        thinking_parts.append(thought)
+                    if stripper.unclosed_assumed_block:
+                        # Fail closed: hidden content is never reclassified as
+                        # answer text, and the turn must not report success.
+                        failed = True
+                        logger.warning("notebook.synth.unclosed_assumed_think")
+                        terminal_emitted = True
+                        yield Error(
+                            **_envelope(),
+                            message="Synthesis ended before its thinking block closed.",
+                            error_type="UnclosedThinkBlock",
+                            is_fatal=False,
                         )
+                        yield MessageStop(**_envelope(), stop_reason="error")
+                        return
+                    if not "".join(answer_parts).strip():
+                        # Research ran but the synthesizer produced no visible
+                        # answer. Reporting ``complete`` here would be a silent
+                        # empty success.
+                        failed = True
+                        logger.warning("notebook.synth.empty_answer")
+                        terminal_emitted = True
+                        yield Error(
+                            **_envelope(),
+                            message="Research finished without producing an answer.",
+                            error_type="EmptySynthesis",
+                            is_fatal=False,
+                        )
+                        yield MessageStop(**_envelope(), stop_reason="error")
+                        return
+            finally:
+                # Cancel the in-flight ``__anext__`` first (bounded by the
+                # cancel grace), then hand cleanup to ``_bounded_aclose``,
+                # which abandons uncooperative cleanup rather than pinning
+                # the request past the grace.
+                if pending is not None and not pending.done():
+                    pending.cancel()
+                    try:
+                        await asyncio.wait_for(pending, timeout=_TOOL_CANCEL_GRACE_SEC)
                     except (asyncio.TimeoutError, asyncio.CancelledError):
                         pass
                     except StopAsyncIteration:
                         pass
-                await _bounded_aclose(
-                    astream, pending_chunk=pending_chunk, kind="synth"
-                )
-
-            yield MessageStop(
-                **_envelope(),
-                stop_reason="cancelled" if cancelled else "complete",
-            )
+                await _bounded_aclose(astream, pending_chunk=pending, kind="synth")
+            terminal_emitted = True
+            yield MessageStop(**_envelope(), stop_reason="cancelled" if cancelled else "complete")
         except asyncio.CancelledError:
             cancelled = True
-            try:
-                if not message_started:
-                    yield await _emit_message_start()
-                yield MessageStop(**_envelope(), stop_reason="cancelled")
-            except BaseException:
-                pass
+            if not terminal_emitted:
+                try:
+                    if not message_started:
+                        yield await _start()
+                    terminal_emitted = True
+                    yield MessageStop(**_envelope(), stop_reason="cancelled")
+                except BaseException:
+                    pass
             raise
+        except Exception as exc:
+            failed = True
+            logger.exception("notebook.run_error", error_type=type(exc).__name__)
+            if not terminal_emitted:
+                if not message_started:
+                    yield await _start()
+                terminal_emitted = True
+                yield Error(**_envelope(), message="Research could not be completed.", error_type=type(exc).__name__, is_fatal=False)
+                yield MessageStop(**_envelope(), stop_reason="error")
         finally:
+            if turn_started:
+                status = "cancelled" if cancelled else "failed" if failed else "completed"
+                try:
+                    await asyncio.wait_for(self.store.add_assistant_text(session_id, "".join(answer_parts), thinking_text="".join(thinking_parts), save_thinking=self.config.save_thinking, turn_id=turn_id), timeout=_AWAITER_PERSIST_BUDGET_SEC)
+                except (asyncio.TimeoutError, asyncio.CancelledError):
+                    logger.warning("notebook.persist_assistant_timeout")
+                except Exception:
+                    logger.warning("notebook.persist_assistant_error", exc_info=True)
+                try:
+                    await asyncio.wait_for(self.store.complete_turn(turn_id, status=status, stop_reason="cancelled" if cancelled else "error" if failed else "complete"), timeout=_AWAITER_PERSIST_BUDGET_SEC)
+                except (asyncio.TimeoutError, asyncio.CancelledError):
+                    logger.warning("notebook.complete_turn_timeout")
+                except Exception:
+                    logger.warning("notebook.complete_turn_error", exc_info=True)
             structlog.contextvars.unbind_contextvars("turn_id", "seq")
 
     async def _plan(
@@ -1149,7 +1014,7 @@ def _format_notebook_block(facts: list[AtomicFact]) -> str:
     if not facts:
         return "(none)"
     return "\n".join(
-        f"{index}. {fact.text} [{fact.confidence}]"
+        f"{index}. {'[local calculation] ' if fact.source_kind == 'local_deterministic' else ''}{fact.text} [{fact.confidence}]"
         for index, fact in enumerate(facts, start=1)
     )
 

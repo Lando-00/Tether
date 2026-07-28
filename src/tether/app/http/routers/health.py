@@ -1,5 +1,7 @@
 from fastapi import APIRouter, Request
 
+from tether.runtime.abandoned_tasks import get_notebook_abandoned_task_tracker
+
 router = APIRouter(tags=["health"])
 
 
@@ -39,6 +41,15 @@ async def _connector_health_block(svc) -> list:
     return out
 
 
+def _operational_health_block() -> dict:
+    """Return informational process-health state without affecting readiness."""
+    return {
+        "notebook_cleanup": get_notebook_abandoned_task_tracker()
+        .snapshot()
+        .to_dict()
+    }
+
+
 @router.get("/readyz")
 async def readyz(request: Request):
     """Readiness probe: verifies store and provider are functional.
@@ -67,15 +78,25 @@ async def readyz(request: Request):
         during ``Engine.__aenter__``, the failing id is included in the
         ``connector_start_failures`` array and ``ready`` is set to false
         so process supervisors can take action. The response remains 200.
+      - Operational health: ``operational_health.notebook_cleanup`` reports
+        bounded abandoned-task tracking for diagnostics only. Its state never
+        changes readiness or initiates recovery.
 
     A streaming probe is still avoided: MLC engines may take 5–60s on cold
     cache. Health is reported by counting cached entries, not loading.
     """
     svc = request.app.state.gen_svc
+    operational_health = _operational_health_block()
     try:
         _ = await svc.store.get_history("_readiness")
     except Exception as e:
-        return {"ready": False, "store": False, "provider": None, "error": str(e)}
+        return {
+            "ready": False,
+            "store": False,
+            "provider": None,
+            "error": str(e),
+            "operational_health": operational_health,
+        }
 
     connectors_block = await _connector_health_block(svc)
 
@@ -99,6 +120,7 @@ async def readyz(request: Request):
                     "hw_health": health,
                     "connectors": connectors_block,
                     "connector_start_failures": connector_start_failures,
+                    "operational_health": operational_health,
                 }
             return {
                 "ready": not connector_start_failures,
@@ -107,6 +129,7 @@ async def readyz(request: Request):
                 "hw_health": health,
                 "connectors": connectors_block,
                 "connector_start_failures": connector_start_failures,
+                "operational_health": operational_health,
             }
 
         models = svc.provider.list_models()
@@ -118,6 +141,7 @@ async def readyz(request: Request):
                 "error": "no models available",
                 "connectors": connectors_block,
                 "connector_start_failures": connector_start_failures,
+                "operational_health": operational_health,
             }
         return {
             "ready": not connector_start_failures,
@@ -126,6 +150,13 @@ async def readyz(request: Request):
             "models_available": len(models),
             "connectors": connectors_block,
             "connector_start_failures": connector_start_failures,
+            "operational_health": operational_health,
         }
     except Exception as e:
-        return {"ready": False, "store": True, "provider": False, "error": str(e)}
+        return {
+            "ready": False,
+            "store": True,
+            "provider": False,
+            "error": str(e),
+            "operational_health": operational_health,
+        }

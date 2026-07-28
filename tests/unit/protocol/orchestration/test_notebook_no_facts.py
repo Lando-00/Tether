@@ -30,7 +30,10 @@ from tether.protocol.wire.events import (
 from tests.fixtures.fake_research_provider import FakeResearchProvider
 
 
-class _FakeStore:
+from tests.fixtures.recording_research_store import RecordingResearchStore
+
+
+class _FakeStore(RecordingResearchStore):
     pass
 
 

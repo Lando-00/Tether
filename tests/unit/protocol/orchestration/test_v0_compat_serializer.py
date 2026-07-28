@@ -290,3 +290,50 @@ def test_ndjson_emitter_dict_shim_still_works():
     assert decoded["session_id"] == "s"
     assert decoded["data"] == {"delta": "hi"}
     assert "ts" in decoded
+
+# ---------------------------------------------------------------------------
+# Phase 9.8: research-mode events over the legacy v0 wire
+# ---------------------------------------------------------------------------
+
+
+def test_notebook_progress_events_are_suppressed_not_errors():
+    """v0 clients must not receive ``unknown_wire_event`` for research events."""
+    from tether.protocol.wire.events import (
+        NotebookFactAdded,
+        NotebookLimitReached,
+        NotebookNoFacts,
+        NotebookPhaseProgress,
+        NotebookPhaseStart,
+        NotebookQueryAdded,
+    )
+
+    events = [
+        NotebookPhaseStart(**_envelope(), phase="plan", iteration=0),
+        NotebookPhaseProgress(**_envelope(), phase="plan", iteration=0, elapsed_ms=10),
+        NotebookFactAdded(
+            **_envelope(), fact_text="f", source_query="q", total_facts=1
+        ),
+        NotebookQueryAdded(**_envelope(), query="q", queue_depth=1),
+        NotebookLimitReached(**_envelope(), limit_kind="max_facts", count=1),
+        NotebookNoFacts(**_envelope(), queries_attempted=1, iterations=1),
+    ]
+
+    for evt in events:
+        assert v0_compat_serialize(evt) == b"", f"{type(evt).__name__} must be dropped"
+
+
+def test_notebook_clarification_maps_to_v0_text():
+    from tether.protocol.wire.events import NotebookClarificationRequested
+
+    evt = NotebookClarificationRequested(
+        **_envelope(),
+        reason="ambiguous_correction",
+        message="Which earlier term should this correction replace?",
+        candidates=["Irelend"],
+    )
+
+    payload = _decode(v0_compat_serialize(evt))
+
+    assert payload["type"] == "text"
+    assert "Which earlier term" in payload["data"]["delta"]
+    assert "- Irelend" in payload["data"]["delta"]

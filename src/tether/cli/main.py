@@ -1119,9 +1119,16 @@ def main(
                             if debug:
                                 fact = str(event.get("fact_text", ""))
                                 total = event.get("total_facts", "?")
+                                source_kind = event.get("source_kind", "web_search")
                                 console.print(
-                                    f"[dim]Notebook fact {total}: {fact[:120]}[/dim]"
+                                    f"[dim]Notebook fact {total} ({source_kind}): {fact[:120]}[/dim]"
                                 )
+
+                        elif evt_type == "notebook_clarification_requested":
+                            message = str(event.get("message", "Please clarify your question."))
+                            candidates = event.get("candidates", [])
+                            candidate_text = "\n".join(f"• {item}" for item in candidates if isinstance(item, str))
+                            console.print(Panel(message + (f"\n\nCandidates:\n{candidate_text}" if candidate_text else ""), title="Research clarification", border_style="yellow"))
 
                         elif evt_type == "notebook_query_added":
                             if debug:

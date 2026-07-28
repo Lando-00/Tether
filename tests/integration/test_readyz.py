@@ -16,6 +16,7 @@ from tether.core.interfaces import ModelProvider, SessionStore
 from tether.engine import Engine
 from tether.providers.hw import HardwareLifecycle, HwErrorClass, HwHealth
 from tether.runtime.hw_watchdog import HardwareWatchdog
+from tether.runtime.abandoned_tasks import get_notebook_abandoned_task_tracker
 
 
 # ---------------------------------------------------------------------------
@@ -136,6 +137,7 @@ class _FakeHWProvider(ModelProvider, HardwareLifecycle):
 
     def __init__(self, health: HwHealth):
         self._health = health
+        self.reset_calls = 0
 
     # ModelProvider
     async def stream(
@@ -162,6 +164,7 @@ class _FakeHWProvider(ModelProvider, HardwareLifecycle):
         return HwErrorClass.TRANSIENT
 
     async def hw_reset(self, model_name: str) -> None:
+        self.reset_calls += 1
         return None
 
     async def hw_health(self) -> HwHealth:
@@ -227,6 +230,65 @@ def test_readyz_with_dummy_provider():
     assert body["hw_health"]["providers"] == []
     # Old field shouldn't appear on the watchdog path.
     assert "models_available" not in body
+
+
+@pytest.mark.parametrize(
+    ("task_count", "expected_status"),
+    [(0, "healthy"), (8, "degraded"), (16, "error")],
+)
+def test_readyz_notebook_cleanup_is_informational_only(
+    task_count, expected_status
+):
+    """All cleanup states are visible but do not affect provider readiness."""
+    tracker = get_notebook_abandoned_task_tracker()
+    tracker._reset_for_tests()
+
+    class _PendingTask:
+        def add_done_callback(self, callback):
+            self.callback = callback
+
+    try:
+        for _ in range(task_count):
+            tracker.track(_PendingTask(), kind="anext")
+        provider = _FakeHWProvider(HwHealth(status="healthy", details={}))
+        body = TestClient(_make_app(provider, _MinimalStore())).get(
+            "/api/v1/readyz"
+        ).json()
+        cleanup = body["operational_health"]["notebook_cleanup"]
+        assert body["ready"] is True
+        assert body["provider"] is True
+        assert cleanup["status"] == expected_status
+        assert cleanup["count"] == task_count
+        assert cleanup["overflowed"] is False
+        assert provider.reset_calls == 0
+    finally:
+        tracker._reset_for_tests()
+
+
+def test_readyz_overflowed_notebook_cleanup_remains_informational():
+    tracker = get_notebook_abandoned_task_tracker()
+    tracker._reset_for_tests()
+
+    class _PendingTask:
+        def add_done_callback(self, callback):
+            self.callback = callback
+
+    try:
+        for _ in range(33):
+            tracker.track(_PendingTask(), kind="anext")
+        provider = _FakeHWProvider(HwHealth(status="healthy", details={}))
+        body = TestClient(_make_app(provider, _MinimalStore())).get(
+            "/api/v1/readyz"
+        ).json()
+        cleanup = body["operational_health"]["notebook_cleanup"]
+        assert body["ready"] is True
+        assert body["provider"] is True
+        assert cleanup["status"] == "error"
+        assert cleanup["overflowed"] is True
+        assert cleanup["count"] == 32
+        assert provider.reset_calls == 0
+    finally:
+        tracker._reset_for_tests()
 
 
 def test_readyz_store_failure():

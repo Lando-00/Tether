@@ -37,7 +37,10 @@ from tether.protocol.wire.events import (
 from tests.fixtures.fake_research_provider import FakeResearchProvider
 
 
-class _FakeStore:
+from tests.fixtures.recording_research_store import RecordingResearchStore
+
+
+class _FakeStore(RecordingResearchStore):
     pass
 
 
@@ -106,15 +109,14 @@ def anyio_backend():
 
 @pytest.mark.anyio
 async def test_overlong_fact_and_query_truncated_not_aborted():
-    """Real LLM emits 6000-char fact + 700-char follow-up query.
+    """Real LLM emits a 6000-char fact and an unsafe 700-char follow-up.
 
     Pre-reconcile behavior: ValidationError at ``yield NotebookFactAdded(...)``
     propagates past the outer ``except CancelledError``; stream dies WITHOUT
     a ``MessageStop`` → consumer hangs forever.
 
-    Post-reconcile behavior: yield sites truncate to ``_MAX_FACT_LENGTH`` /
-    ``_MAX_QUERY_LENGTH``; stream completes; ``MessageStop(stop_reason="complete")``
-    is emitted; events carry truncated text (length equals the cap exactly).
+    The fact reaches the existing wire truncation safeguard. The query is
+    rejected by the parser's search-query sanitizer before it can be queued.
     """
     overlong_fact = "X" * 6000  # > _MAX_FACT_LENGTH (4096)
     overlong_followup = "Y" * 700  # > _MAX_QUERY_LENGTH (512)
@@ -128,16 +130,11 @@ async def test_overlong_fact_and_query_truncated_not_aborted():
                 "facts": [{"text": overlong_fact, "confidence": "high"}],
                 "follow_up_queries": [overlong_followup],
             },
-            # Second iteration consumes the (truncated) follow-up query;
-            # extract empty so the loop terminates cleanly without max_iter.
-            {"facts": [], "follow_up_queries": []},
         ]
     )
     provider.set_synthesizer_response("Synth complete.")
 
-    tool_runner = _ScriptedToolRunner(
-        [_ok_result(seed_query), _ok_result(overlong_followup[:_MAX_QUERY_LENGTH])]
-    )
+    tool_runner = _ScriptedToolRunner([_ok_result(seed_query)])
     orch = _build_orch(
         provider=provider,
         tool_runner=tool_runner,
@@ -173,17 +170,14 @@ async def test_overlong_fact_and_query_truncated_not_aborted():
     assert fact_events[0].fact_text == overlong_fact[:_MAX_FACT_LENGTH]
     assert fact_events[0].fact_text.endswith("X")
 
-    # Query events: planner seed + refine follow-up. Find the overlong one.
+    # The unsafe follow-up never reaches the wire queue.
     query_events = [e for e in events if isinstance(e, NotebookQueryAdded)]
-    assert len(query_events) == 2  # 1 planner seed + 1 refine follow-up.
-    refine_event = next(e for e in query_events if e.query.startswith("Y"))
-    assert len(refine_event.query) == _MAX_QUERY_LENGTH
-    assert refine_event.query == overlong_followup[:_MAX_QUERY_LENGTH]
+    assert [event.query for event in query_events] == [seed_query]
 
 
 @pytest.mark.anyio
-async def test_at_limit_fact_and_query_not_truncated():
-    """Boundary positive: text at exactly the cap is not truncated.
+async def test_at_limit_fact_is_not_truncated_and_unsafe_query_is_not_accepted():
+    """Wire caps do not make an unsafe search query acceptable.
 
     Catches off-by-one regressions in the truncation slicing.
     """
@@ -202,7 +196,7 @@ async def test_at_limit_fact_and_query_not_truncated():
     )
     provider.set_synthesizer_response("ok.")
 
-    tool_runner = _ScriptedToolRunner([_ok_result(at_limit_query)])
+    tool_runner = _ScriptedToolRunner([_ok_result("q")])
     orch = _build_orch(
         provider=provider,
         tool_runner=tool_runner,
@@ -229,5 +223,4 @@ async def test_at_limit_fact_and_query_not_truncated():
     assert len(fact_events[0].fact_text) == _MAX_FACT_LENGTH
 
     query_events = [e for e in events if isinstance(e, NotebookQueryAdded)]
-    seed_event = next(e for e in query_events if e.query.startswith("Q"))
-    assert len(seed_event.query) == _MAX_QUERY_LENGTH
+    assert [event.query for event in query_events] == ["q"]

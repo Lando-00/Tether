@@ -30,11 +30,30 @@ from tether.protocol.wire.events import (
     LoopLimitReached,
     MessageStart,
     MessageStop,
+    NotebookClarificationRequested,
+    NotebookFactAdded,
+    NotebookLimitReached,
+    NotebookNoFacts,
+    NotebookPhaseProgress,
+    NotebookPhaseStart,
+    NotebookQueryAdded,
     TextDelta,
     ThinkingDelta,
     ToolCall,
     ToolResult,
     WireEvent,
+)
+
+# Research-mode progress events have no v0 equivalent. They are dropped
+# rather than serialized as ``unknown_wire_event`` errors so legacy v0
+# clients see a clean stream (Phase 9.8).
+_V0_SUPPRESSED = (
+    NotebookPhaseStart,
+    NotebookPhaseProgress,
+    NotebookFactAdded,
+    NotebookQueryAdded,
+    NotebookLimitReached,
+    NotebookNoFacts,
 )
 
 
@@ -104,6 +123,8 @@ def v0_compat_serialize(wire_event: WireEvent) -> bytes:
     if isinstance(wire_event, MessageStart):
         # Legacy had no message_start event; emit nothing.
         return b""
+    if isinstance(wire_event, _V0_SUPPRESSED):
+        return b""
 
     payload: Dict[str, Any] = {
         "type": "",
@@ -115,6 +136,15 @@ def v0_compat_serialize(wire_event: WireEvent) -> bytes:
     if isinstance(wire_event, MessageStop):
         payload["type"] = "done"
         # stop_reason is absorbed — legacy emitted unconditional done {}.
+
+    elif isinstance(wire_event, NotebookClarificationRequested):
+        # v0 has no clarification event; surface it as assistant text so
+        # legacy clients still show the question.
+        payload["type"] = "text"
+        candidates = "\n".join(f"- {item}" for item in wire_event.candidates)
+        payload["data"] = {
+            "delta": wire_event.message + (("\n" + candidates) if candidates else "")
+        }
 
     elif isinstance(wire_event, TextDelta):
         payload["type"] = "text"

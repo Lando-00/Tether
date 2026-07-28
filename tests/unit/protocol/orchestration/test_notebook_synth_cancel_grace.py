@@ -13,8 +13,8 @@ make ``wait_for(aclose(), GRACE)`` block for the full inner duration.
 Phase 9.7 W4 closes that gap: ``astream.aclose()`` is wrapped in a Task,
 ``wait_for(shield(aclose_task), GRACE)`` lets the timeout cancel only
 the outer waiter (not the task), and on timeout the orchestrator
-abandons the aclose task into a module-level strong-ref bag
-(``notebook._abandoned_cleanup_tasks``). MessageStop emits within the
+abandons the aclose task into a bounded process-level tracker
+(``tether.runtime.abandoned_tasks``). MessageStop emits within the
 grace contract; the abandoned cleanup task continues in the background
 and drains when the provider's natural cleanup completes.
 
@@ -42,13 +42,44 @@ from tether.protocol.orchestration.chatty import _TOOL_CANCEL_GRACE_SEC
 from tether.protocol.orchestration.notebook import NotebookOrchestrator
 from tether.protocol.parsers.sliding import SlidingParser
 from tether.protocol.wire.events import MessageStop, TextDelta
+from tether.runtime.abandoned_tasks import get_notebook_abandoned_task_tracker
 from tests.fixtures.fake_research_provider import FakeResearchProvider
 
 
 GRACE_SLACK_SEC = 0.5
 
 
-class _FakeStore:
+def _cleanup_tracker():
+    """The bounded process tracker that now owns abandoned cleanup tasks."""
+    return get_notebook_abandoned_task_tracker()
+
+
+@pytest.fixture(autouse=True)
+def _isolate_cleanup_tracker():
+    """Keep tracker counts and latched health state per-test.
+
+    Strong references to still-pending cleanup tasks are preserved across
+    the reset: dropping them would let CPython finalize a pending task and
+    emit "Task was destroyed but it is pending!". Only counters/latches
+    are cleared.
+    """
+    _retain_pending_and_reset()
+    yield
+    _retain_pending_and_reset()
+
+
+def _retain_pending_and_reset() -> None:
+    tracker = _cleanup_tracker()
+    pending = [task for task in tracker._tracked_tasks_for_tests() if not task.done()]
+    tracker._reset_for_tests()
+    for task in pending:
+        tracker.track(task, kind="retained_by_test")
+
+
+from tests.fixtures.recording_research_store import RecordingResearchStore
+
+
+class _FakeStore(RecordingResearchStore):
     pass
 
 
@@ -343,14 +374,19 @@ async def test_synth_aclose_exception_does_not_escape(monkeypatch):
     assert stops[0].stop_reason == "cancelled"
 
 
-async def _drain_bag(bag: "set[asyncio.Task[Any]]", *, timeout: float = 2.0) -> None:
+async def _drain_bag(
+    bag: "Any", *, timeout: float = 2.0
+) -> None:
     """Drain abandoned cleanup tasks at end-of-test so they don't leak
     into the test session and trigger orphan assertions in sibling tests.
 
-    Snapshots the bag first because the done-callback discards entries
-    as tasks complete (and ``gather`` accepts any iterable).
+    Accepts either the tracker itself or an iterable of tasks. Snapshots
+    first because the done-callback discards entries as tasks complete.
     """
-    snapshot = list(bag)
+    if hasattr(bag, "_tracked_tasks_for_tests"):
+        snapshot = bag._tracked_tasks_for_tests()
+    else:
+        snapshot = list(bag)
     if not snapshot:
         return
     try:
@@ -486,7 +522,7 @@ async def test_synth_cancel_with_uncancellable_cleanup():
         elapsed = loop.time() - cancel_started
         # Snapshot the bag at the moment MessageStop emission has
         # already happened (consumer task has finished unwinding).
-        bag_size_after_stop = len(notebook_module._abandoned_cleanup_tasks)
+        bag_size_after_stop = _cleanup_tracker().snapshot().count
 
     assert elapsed <= _TOOL_CANCEL_GRACE_SEC + GRACE_SLACK_SEC, (
         f"cancelled synth took {elapsed:.3f}s; abandon-on-timeout must "
@@ -508,7 +544,7 @@ async def test_synth_cancel_with_uncancellable_cleanup():
     # warnings. The longest live coroutine in this fixture is the
     # ``asyncio.sleep(GRACE * 4)`` wrapped by ``asyncio.shield``.
     await _drain_bag(
-        notebook_module._abandoned_cleanup_tasks,
+        _cleanup_tracker(),
         timeout=_TOOL_CANCEL_GRACE_SEC * 8,
     )
     await _drain_orphans(baseline, timeout=_TOOL_CANCEL_GRACE_SEC * 8)
@@ -624,16 +660,16 @@ async def test_synth_cancel_with_cancel_swallowing_aclose(monkeypatch):
     # The orchestrator should have abandoned the aclose task — bag
     # length is >= 1 at this point because the swallowed cancellation
     # is still unwinding inner. Drain to keep the test honest.
-    bag_size = len(notebook_module._abandoned_cleanup_tasks)
+    bag_size = _cleanup_tracker().snapshot().count
     assert bag_size >= 1, (
         "expected abandon-bag to contain at least the aclose task after "
         f"MessageStop; got size={bag_size}"
     )
     await _drain_bag(
-        notebook_module._abandoned_cleanup_tasks,
+        _cleanup_tracker(),
         timeout=_TOOL_CANCEL_GRACE_SEC * 8,
     )
-    assert not notebook_module._abandoned_cleanup_tasks, (
+    assert _cleanup_tracker().snapshot().count == 0, (
         "bag did not drain — orchestrator may be leaking strong refs"
     )
     # Drain any orphan asyncio tasks left over from the fixture's
@@ -688,7 +724,7 @@ async def test_bounded_aclose_skips_aclose_when_pending_chunk_not_done():
         # The helper must have abandoned the sentinel (added to the
         # bag) and NOT called gen.aclose() — proven by the gen's
         # finally not having fired.
-        assert sentinel in notebook_module._abandoned_cleanup_tasks, (
+        assert sentinel in _cleanup_tracker()._tracked_tasks_for_tests(), (
             "sentinel pending task was not added to abandon bag"
         )
         assert not aclose_called, (
@@ -712,7 +748,7 @@ async def test_bounded_aclose_skips_aclose_when_pending_chunk_not_done():
         except Exception:
             pass
         # Drain bag (sentinel is the only entry).
-        await _drain_bag(notebook_module._abandoned_cleanup_tasks)
+        await _drain_bag(_cleanup_tracker())
 
 
 class _CooperativeCancelToken:

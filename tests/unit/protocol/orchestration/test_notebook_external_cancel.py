@@ -31,7 +31,10 @@ from tests.fixtures.fake_research_provider import FakeResearchProvider
 GRACE_SLACK_SEC = 0.5
 
 
-class _FakeStore:
+from tests.fixtures.recording_research_store import RecordingResearchStore
+
+
+class _FakeStore(RecordingResearchStore):
     pass
 
 
