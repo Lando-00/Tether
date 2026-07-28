@@ -35,3 +35,6 @@ Thumbs.db
 
 # Env Variables
 .env
+
+# Scratch request payloads used with curl/Invoke-RestMethod against /chat/stream
+body.json

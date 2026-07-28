@@ -507,13 +507,6 @@
         "parser": {
           "$ref": "#/$defs/ProviderSpec"
         },
-        "registry": {
-          "additionalProperties": {
-            "$ref": "#/$defs/ProviderSpec"
-          },
-          "title": "Registry",
-          "type": "object"
-        },
         "session_store": {
           "$ref": "#/$defs/ProviderSpec"
         }
