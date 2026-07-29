@@ -9,18 +9,15 @@ After F4:
 - ToolRunner.run() calls tool.invoke(args), not tool.run(**args)
 - All bundled tools are still constructible; schema property returns valid dict
 """
-import asyncio
-import inspect
 from typing import Any, Dict
 from unittest.mock import AsyncMock, MagicMock
 
 import pytest
 
 from tether.core.interfaces import Tool
+from tether.protocol.orchestration.tool_runner import ToolRunner
 from tether.tools.base import BaseTool
 from tether.tools.time_tool import TimeTool
-from tether.protocol.orchestration.tool_runner import ToolRunner
-
 
 # ---------------------------------------------------------------------------
 # Helper: minimal concrete tool for contract tests
@@ -71,34 +68,24 @@ class TestToolABCContract:
 # ---------------------------------------------------------------------------
 
 class TestBaseToolInvokeShim:
-    def test_invoke_same_result_as_run(self):
+    async def test_invoke_same_result_as_run(self):
         """BaseTool.invoke({'a': 3, 'b': 4}) == BaseTool.run(a=3, b=4)."""
         tool = _AddTool()
-        via_invoke = asyncio.get_event_loop().run_until_complete(
-            tool.invoke({"a": 3, "b": 4})
-        )
-        via_run = asyncio.get_event_loop().run_until_complete(
-            tool.run(a=3, b=4)
-        )
+        via_invoke = await tool.invoke({"a": 3, "b": 4})
+        via_run = await tool.run(a=3, b=4)
         assert via_invoke == via_run == {"result": 7}
 
-    def test_invoke_with_defaults(self):
+    async def test_invoke_with_defaults(self):
         """invoke with only required args uses defaults from run()."""
         tool = _AddTool()
-        result = asyncio.get_event_loop().run_until_complete(
-            tool.invoke({"a": 5})
-        )
+        result = await tool.invoke({"a": 5})
         assert result == {"result": 5}  # b defaults to 0
 
-    def test_timetool_invoke_and_run_agree(self):
+    async def test_timetool_invoke_and_run_agree(self):
         """TimeTool.invoke({'timezone': 'UTC'}) == TimeTool.run(timezone='UTC')."""
         tool = TimeTool()
-        r_invoke = asyncio.get_event_loop().run_until_complete(
-            tool.invoke({"timezone": "UTC"})
-        )
-        r_run = asyncio.get_event_loop().run_until_complete(
-            tool.run(timezone="UTC")
-        )
+        r_invoke = await tool.invoke({"timezone": "UTC"})
+        r_run = await tool.run(timezone="UTC")
         # Both return dicts with a 'time' key; values may differ by milliseconds
         assert "time" in r_invoke
         assert "time" in r_run
@@ -109,7 +96,7 @@ class TestBaseToolInvokeShim:
 # ---------------------------------------------------------------------------
 
 class TestToolRunnerUsesInvoke:
-    def test_tool_runner_calls_invoke(self):
+    async def test_tool_runner_calls_invoke(self):
         """ToolRunner.run() must call tool.invoke(args), not tool.run(**args).
 
         Phase 4 step 41a: the call now also threads ``context=None`` (or a
@@ -121,20 +108,16 @@ class TestToolRunnerUsesInvoke:
         runner = ToolRunner(tools={"my_tool": mock_tool})
         runner.timeout = 5
 
-        result = asyncio.get_event_loop().run_until_complete(
-            runner.run("my_tool", {"x": 1})
-        )
+        result = await runner.run("my_tool", {"x": 1})
 
         mock_tool.invoke.assert_called_once_with({"x": 1}, context=None)
         assert result == {"ok": True}
 
-    def test_tool_runner_raises_on_unknown_tool(self):
+    async def test_tool_runner_raises_on_unknown_tool(self):
         """ToolRunner.run raises ValueError for unknown tool names."""
         runner = ToolRunner(tools={})
         with pytest.raises(ValueError, match="not found"):
-            asyncio.get_event_loop().run_until_complete(
-                runner.run("nonexistent", {})
-            )
+            await runner.run("nonexistent", {})
 
 
 # ---------------------------------------------------------------------------
@@ -158,7 +141,7 @@ class TestBundledToolsStillWork:
 
     def test_weather_tools_constructible(self):
         """WeatherTool and GetForecastTool are constructible."""
-        from tether.tools.weather_tool import GetWeatherTool, GetForecastTool
+        from tether.tools.weather_tool import GetForecastTool, GetWeatherTool
         for cls in (GetWeatherTool, GetForecastTool):
             tool = cls()
             assert isinstance(tool, BaseTool)
