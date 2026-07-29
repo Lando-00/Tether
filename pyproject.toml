@@ -29,6 +29,11 @@ dependencies = [
     "requests",
     "aiosqlite>=0.19,<1",
     "yoyo-migrations>=8.2,<9",
+    # yoyo 8.x does `import pkg_resources` at module scope. pkg_resources
+    # ships with setuptools, which is no longer present by default in a
+    # Python 3.12 venv, so the migration runner cannot be imported without
+    # declaring it. Dropping this becomes possible when yoyo moves to 9.x.
+    "setuptools",
     "platformdirs>=4.0,<5",
     "structlog>=24.1,<26",
 ]
