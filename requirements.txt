@@ -71,7 +71,7 @@ markdown-it-py==4.2.0
     # via rich
 mdurl==0.1.2
     # via markdown-it-py
-mypy==2.0.0
+mypy==2.1.0
     # via tether (pyproject.toml)
 mypy-extensions==1.1.0
     # via mypy
