@@ -18,6 +18,12 @@ from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 
+# This module locks the ADR-0003 GC-disable invariant on MLCProvider, which
+# imports mlc_llm at module scope. Those are the Qualcomm CodeLinaro Adreno
+# wheels, installed out-of-band and only available on the Snapdragon target,
+# so skip rather than fail elsewhere.
+pytest.importorskip("mlc_llm")
+
 
 def _ext() -> str:
     return {"Windows": ".dll", "Darwin": ".dylib"}.get(platform.system(), ".so")
