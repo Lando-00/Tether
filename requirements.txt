@@ -112,7 +112,7 @@ platformdirs==4.9.6
     # via tether (pyproject.toml)
 pluggy==1.6.0
     # via pytest
-prompt-toolkit==3.0.52
+prompt-toolkit==3.0.53
     # via tether (pyproject.toml)
 protobuf==7.34.1
     # via
