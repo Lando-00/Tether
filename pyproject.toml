@@ -37,7 +37,7 @@ dependencies = [
 server = ["fastapi>=0.117.0,<0.118.0", "uvicorn[standard]>=0.37.0,<0.38.0"]
 cli = ["typer", "rich", "prompt-toolkit"]
 brave = []     # httpx is in core; reserved for future Brave-specific dependencies.
-ollama = []    # Reserved for future provider support; no implementation in this refactor.
+ollama = ["httpx>=0.27,<0.29"]  # OllamaProvider HTTP client (ADR-0022 P2.A). httpx already in core; pin tightens here.
 mlc = []       # Qualcomm CodeLinaro Adreno wheels are installed separately; see environment.yml.
 nexa = []      # Reserved for future Snapdragon NPU provider support.
 geniex = []    # GenieX external NPU provider (GenieX CLI server manages model lifecycle).
@@ -86,8 +86,9 @@ markers = [
     "e2e: end-to-end tests requiring a running server; default-off",
     "docs: spec generation drift checks; default-off",
     "asyncio: pytest-asyncio marker (kept for compatibility)",
+    "ollama: tests that require a live Ollama server (OLLAMA_BASE_URL must be set); default-off",
 ]
-addopts = "--strict-markers --strict-config -m \"not network and not hardware and not e2e and not docs and not geniex\""
+addopts = "--strict-markers --strict-config -m \"not network and not hardware and not e2e and not docs and not geniex and not ollama\""
 asyncio_mode = "auto"
 asyncio_default_fixture_loop_scope = "function"
 filterwarnings = [

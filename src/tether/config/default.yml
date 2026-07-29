@@ -55,6 +55,72 @@ providers:
   #       model_id: "unsloth/Qwen3-1.7B-GGUF:Q4_0"
   #       connect_timeout_seconds: 2
   #       timeout_seconds: 30
+
+  # ── ADR-0022 (Phase 13): Ollama provider — LAN GPU PC ────────────────────
+  # OllamaProvider routes requests to an Ollama server over HTTP. Both entries
+  # below are commented out. To enable, uncomment the model_registry block,
+  # set base_url to your GPU PC's LAN IP, and remove the `model:` block above.
+  # See docs/runbooks/ollama-provider.md for full setup instructions.
+  #
+  # Two api_surface modes are supported by the same OllamaProvider class:
+  #   "native"        — NDJSON streaming via /api/chat; supports think:true
+  #                     for reasoning models; recommended default.
+  #   "openai_compat" — SSE streaming via /v1/chat/completions; use when
+  #                     fronting Ollama with a Bearer-auth reverse proxy, or
+  #                     when talking to a vLLM / llama.cpp / LiteLLM endpoint.
+  #
+  # model_registry:
+  #
+  #   # ── Entry 1: native NDJSON surface (recommended) ──────────────────────
+  #   ollama-gpu:
+  #     impl: "tether.providers.ollama.provider.OllamaProvider"
+  #     args:
+  #       base_url: "http://192.168.1.50:11434"   # LAN IP of the GPU PC
+  #       api_surface: "native"                    # NDJSON /api/chat (default)
+  #       models:
+  #         - "qwen3:8b"                           # must be pulled: ollama pull qwen3:8b
+  #         - "qwen3:14b"
+  #         - "llama3.2:3b"
+  #         - "deepseek-r1:8b"
+  #       default_model: "qwen3:8b"
+  #       thinking_models:                         # enables think:true for these models
+  #         - "qwen3:8b"
+  #         - "qwen3:14b"
+  #         - "deepseek-r1:8b"
+  #       context_windows:
+  #         "qwen3:8b": 32768
+  #         "qwen3:14b": 32768
+  #         "llama3.2:3b": 131072
+  #         "deepseek-r1:8b": 32768
+  #       discover_at_startup: false               # true = merge pulled models at warm_up
+  #       timeout_seconds: 600.0                   # read timeout (LLM generation is slow)
+  #       connect_timeout_seconds: 10.0            # connect timeout (LAN = fast)
+  #       keep_alive: null                         # null=Ollama default 5min; -1=never unload
+  #       default_options: {}                      # e.g. {temperature: 0.7, top_p: 0.9}
+  #
+  #   # ── Entry 2: OpenAI-compatible SSE surface ────────────────────────────
+  #   # Use when Ollama sits behind a Bearer-auth reverse proxy, or when
+  #   # talking to any OpenAI-API-compatible server (vLLM, llama.cpp-server,
+  #   # LiteLLM, etc.). Note the /v1 suffix on base_url.
+  #   #
+  #   # thinking_models MUST be empty for openai_compat — the /v1 endpoint does
+  #   # not honour think:true. The provider logs INFO once at construct if you
+  #   # accidentally leave thinking_models non-empty.
+  #   ollama-openai:
+  #     impl: "tether.providers.ollama.provider.OllamaProvider"
+  #     args:
+  #       base_url: "http://192.168.1.50:11434/v1"  # note the /v1 suffix
+  #       api_surface: "openai_compat"
+  #       api_key_env: "OLLAMA_API_KEY"              # env var holding the bearer token
+  #                                                  # (set null if no auth required)
+  #       models:
+  #         - "qwen3:8b"
+  #       default_model: "qwen3:8b"
+  #       thinking_models: []                        # MUST be empty for openai_compat
+  #       timeout_seconds: 600.0
+  #       connect_timeout_seconds: 10.0
+  #
+  # default_model_provider: "ollama-gpu"
   parser:
     impl: "tether.protocol.parsers.sliding.SlidingParser"
     args:

@@ -18,8 +18,9 @@ import pytest
 from tether.providers.dummy.provider import DummyProvider
 from tether.providers.geniex.provider import GenieXProvider
 from tether.providers.nexa.provider import NexaProvider
+from tether.providers.ollama.provider import OllamaProvider
 
-_PROVIDER_CLASSES = [DummyProvider, GenieXProvider, NexaProvider]
+_PROVIDER_CLASSES = [DummyProvider, GenieXProvider, NexaProvider, OllamaProvider]
 
 
 @pytest.mark.parametrize(
