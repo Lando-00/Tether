@@ -10,9 +10,8 @@ Synthesis §4 Phase 3 step 35.
 from __future__ import annotations
 
 import inspect
-from unittest.mock import AsyncMock, patch
+from unittest.mock import AsyncMock
 
-import pytest
 from fastapi.testclient import TestClient
 
 import tether.app.http.api as api_mod

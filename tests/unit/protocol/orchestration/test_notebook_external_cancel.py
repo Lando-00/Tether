@@ -17,21 +17,18 @@ from typing import Any
 
 import pytest
 
+from tests.fixtures.fake_research_provider import FakeResearchProvider
+from tests.fixtures.recording_research_store import RecordingResearchStore
 from tether.config.settings import ResearchSettings
 from tether.core.types import OrchestratorConfig
 from tether.protocol.orchestration.chatty import _TOOL_CANCEL_GRACE_SEC
 from tether.protocol.orchestration.notebook import NotebookOrchestrator
 from tether.protocol.parsers.sliding import SlidingParser
 from tether.protocol.wire.events import NotebookPhaseStart
-from tests.fixtures.fake_research_provider import FakeResearchProvider
-
 
 # Bound the assertion window: tool task must terminate within
 # ``_TOOL_CANCEL_GRACE_SEC + GRACE_SLACK_SEC`` after the outer cancel.
 GRACE_SLACK_SEC = 0.5
-
-
-from tests.fixtures.recording_research_store import RecordingResearchStore
 
 
 class _FakeStore(RecordingResearchStore):

@@ -28,7 +28,6 @@ from tether.core.connector_registry import (
 )
 from tether.core.interfaces import Tool
 
-
 # ---------------------------------------------------------------------------
 # anyio config
 # ---------------------------------------------------------------------------
@@ -228,23 +227,23 @@ def test_construction_collision_with_in_tree_tool(tmp_path: Path) -> None:
 def test_construction_cross_connector_collision(tmp_path: Path) -> None:
     """Two connectors cannot expose the same tool name even if both
     satisfy their individual prefix constraints."""
-    a = _make_fake_connector(
+    _a = _make_fake_connector(
         connector_id="echo", tool_names=("echo_send",)
     )
     # A second connector whose id is also a prefix of 'echo_send' would
     # technically satisfy require_prefix, but cross-connector collision
     # must still trip the forbidden set.
-    b = _make_fake_connector(
+    _b = _make_fake_connector(
         connector_id="echo_send", tool_names=("echo_send_now",)
     )
     # That construction is fine. Build a real collision:
-    c = _make_fake_connector(
+    _c = _make_fake_connector(
         connector_id="echo", tool_names=("echo_send",)
     )
     # First, the duplicate-id case for c is independent (covered above);
     # here we want a same-tool different-id collision. Build a connector
     # whose id is a prefix of someone else's tool:
-    d = _make_fake_connector(
+    _d = _make_fake_connector(
         connector_id="echo_send", tool_names=("echo_send_now",)
     )
     # And a second connector that also exposes 'echo_send_now'. Its id

@@ -21,13 +21,13 @@ Citations: connector spec §8.1; synthesis §4 Phase 4.5 step 47e-47f.
 """
 from __future__ import annotations
 
-from tether.connectors.types import ConnectorState
 from tests.fixtures.echo_connector import (
     EchoConfirmSendTool,
     EchoMarkSeenTool,
     EchoSendTool,
     EchoWithOptionalTool,
 )
+from tether.connectors.types import ConnectorState
 
 
 def _ready() -> ConnectorState:

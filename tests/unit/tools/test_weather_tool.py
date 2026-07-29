@@ -13,8 +13,7 @@ Mocks ``requests.get`` to avoid real HTTP traffic; covers:
 """
 from __future__ import annotations
 
-from typing import Any, Dict
-from unittest.mock import patch, MagicMock
+from unittest.mock import MagicMock, patch
 
 import pytest
 import requests

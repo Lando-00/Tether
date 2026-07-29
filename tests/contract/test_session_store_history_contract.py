@@ -12,8 +12,6 @@ MUST produce identical output for identical inputs.
 """
 import json
 
-
-
 # ---------------------------------------------------------------------------
 # Basic single-message round trips
 # ---------------------------------------------------------------------------

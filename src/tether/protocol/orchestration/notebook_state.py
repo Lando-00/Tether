@@ -13,11 +13,11 @@ Citations:
 
 from __future__ import annotations
 
+import re
+import string
 from collections import deque
 from dataclasses import dataclass, field
 from datetime import datetime, timezone
-import re
-import string
 from typing import Literal, Optional
 
 

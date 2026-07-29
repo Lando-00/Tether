@@ -6,9 +6,9 @@ Any model_name that could traverse outside models_root must raise ValueError
 BEFORE any filesystem access occurs.
 """
 
-import pytest
 from pathlib import Path
-from unittest.mock import patch
+
+import pytest
 
 from tether.providers.mlc.provider import MLCProvider
 

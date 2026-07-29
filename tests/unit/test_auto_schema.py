@@ -7,13 +7,10 @@ Tests cover: list[str], Optional[str], Literal[...], int=5 default,
 *args/**kwargs filtered, list[int], Optional[Literal[...]], dict[str,Any],
 and TimeTool's actual schema.
 """
-from typing import Any, Dict, List, Literal, Optional
-
-import pytest
+from typing import Any, Dict, Literal, Optional
 
 from tether.tools.base import BaseTool
 from tether.tools.time_tool import TimeTool
-
 
 # ---------------------------------------------------------------------------
 # Minimal fixture tools for schema testing

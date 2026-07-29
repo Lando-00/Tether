@@ -16,11 +16,11 @@ This module provides an async HTTP client for the Brave Search API with:
 
 import asyncio
 import logging
-from typing import Any, Dict, List, Optional
+from typing import Any, Dict, Optional
+
 import httpx
 
 from tether.core.redact import redact_text
-
 
 logger = logging.getLogger(__name__)
 
@@ -36,9 +36,9 @@ class BraveSearchClient:
     reuses a single :class:`httpx.AsyncClient` across calls — see
     synthesis §6 row 17 for the cold-TLS bug this fixes.
     """
-    
+
     BASE_URL = "https://api.search.brave.com/res/v1/web/search"
-    
+
     def __init__(
         self,
         api_key: str,
@@ -50,7 +50,7 @@ class BraveSearchClient:
     ):
         """
         Initialize Brave Search client.
-        
+
         Args:
             api_key: Brave API subscription token
             connect_timeout: Socket connect timeout in seconds (default: 2s)
@@ -61,14 +61,14 @@ class BraveSearchClient:
         """
         if not api_key:
             raise ValueError("API key cannot be empty")
-        
+
         self.api_key = api_key
         self.connect_timeout = connect_timeout
         self.read_timeout = read_timeout
         self.total_timeout = total_timeout
         self.max_retries = max_retries
         self.backoff_base = backoff_base
-        
+
         # Create timeout config for httpx
         self.timeout = httpx.Timeout(
             connect=connect_timeout,
@@ -115,7 +115,7 @@ class BraveSearchClient:
     async def __aexit__(self, exc_type, exc, tb) -> None:
         """Async context-manager exit — calls :meth:`aclose`."""
         await self.aclose()
-    
+
     async def search(
         self,
         q: str,
@@ -127,23 +127,23 @@ class BraveSearchClient:
     ) -> Dict[str, Any]:
         """
         Execute a web search query via Brave Search API.
-        
+
         Args:
             q: Search query string (required)
             count: Number of results to return (1-20)
             country: 2-letter country code (maps to Brave's 'cc' param)
             search_lang: Language code (maps to Brave's 'hl' param)
-            freshness: Freshness filter - 'pd' (past day), 'pw' (past week), 
+            freshness: Freshness filter - 'pd' (past day), 'pw' (past week),
                       'pm' (past month), 'py' (past year), or None
             **kwargs: Additional Brave API parameters
-        
+
         Returns:
             Dict with structured format:
             {
                 "results": [{"url", "title", "snippet", "rank"}],
                 "meta": {"took_ms", "engine", "query"}
             }
-        
+
         Raises:
             RuntimeError: If :meth:`aopen` has not been called.
             httpx.HTTPStatusError: For non-retryable errors (4xx except 429)
@@ -158,7 +158,7 @@ class BraveSearchClient:
 
         import time
         start_time = time.time()
-        
+
         # Build query params with explicit Brave API param names
         params = {
             "q": q,
@@ -166,30 +166,30 @@ class BraveSearchClient:
             "cc": country,  # country → cc (Brave param)
             "hl": search_lang,  # search_lang → hl (Brave param)
         }
-        
+
         if freshness:
             params["freshness"] = freshness
-        
+
         # Add any additional kwargs
         params.update(kwargs)
-        
+
         headers = {
             "Accept": "application/json",
             "Accept-Encoding": "gzip",
             "X-Subscription-Token": self.api_key,  # Auth header
         }
-        
+
         # Retry loop with exponential backoff
         attempt = 0
         last_exception = None
-        
+
         while attempt <= self.max_retries:
             # Check if we've exceeded total timeout budget
             elapsed = time.time() - start_time
             if elapsed >= self.total_timeout:
                 logger.error(f"Total timeout exceeded ({self.total_timeout}s) after {attempt} attempts")
                 raise asyncio.TimeoutError(f"Request exceeded total timeout of {self.total_timeout}s")
-            
+
             # Calculate remaining timeout for this attempt
             remaining_timeout = self.total_timeout - elapsed
             attempt_timeout = httpx.Timeout(
@@ -198,7 +198,7 @@ class BraveSearchClient:
                 write=5.0,
                 pool=5.0
             )
-            
+
             try:
                 # Reuse the shared self._client across retries — no
                 # per-call AsyncClient construction (synthesis §6 row 17).
@@ -275,7 +275,7 @@ class BraveSearchClient:
                     # Other 4xx errors - do not retry
                     logger.error(f"Client error ({response.status_code}): {redact_text(response.text[:100])}")
                     response.raise_for_status()
-            
+
             except (httpx.TimeoutException, asyncio.TimeoutError) as e:
                 logger.warning(f"Timeout on attempt {attempt + 1}/{self.max_retries + 1}")
                 last_exception = e
@@ -286,34 +286,34 @@ class BraveSearchClient:
                     continue
                 else:
                     raise
-            
+
             except httpx.HTTPStatusError:
                 # Already logged above, re-raise
                 raise
-            
+
             except Exception as e:
                 logger.error(f"Unexpected error: {type(e).__name__}: {str(e)[:100]}")
                 raise
-        
+
         # Should not reach here, but if we do, raise the last exception
         if last_exception:
             raise last_exception
         raise RuntimeError("Unexpected retry loop exit")
-    
+
     def _normalize_response(
-        self, 
-        data: Dict[str, Any], 
-        query: str, 
+        self,
+        data: Dict[str, Any],
+        query: str,
         elapsed_sec: float
     ) -> Dict[str, Any]:
         """
         Normalize Brave API response to structured format.
-        
+
         Args:
             data: Raw Brave API JSON response
             query: Original query string
             elapsed_sec: Request elapsed time in seconds
-        
+
         Returns:
             Normalized response with:
             - results: List of structured result dicts
@@ -321,7 +321,7 @@ class BraveSearchClient:
             - articles: Deprecated list of formatted strings (for backward compatibility)
         """
         web_results = data.get("web", {}).get("results", [])
-        
+
         # Build structured results
         results = []
         for idx, item in enumerate(web_results):
@@ -330,29 +330,29 @@ class BraveSearchClient:
             # Remove HTML tags (basic cleanup)
             import re
             clean_desc = re.sub(r'<[^>]+>', '', description)
-            
+
             # Truncate snippet to 360 chars
             snippet = clean_desc
             if len(snippet) > 360:
                 snippet = snippet[:360] + "..."
-            
+
             results.append({
                 "url": item.get("url", ""),
                 "title": item.get("title", ""),
                 "snippet": snippet,
                 "rank": idx + 1
             })
-        
+
         # Build metadata
         meta = {
             "took_ms": int(elapsed_sec * 1000),
             "engine": "brave",
             "query": query
         }
-        
+
         # §13 R5: query already not leaked in results but log level was INFO — demote to DEBUG
         logger.debug(f"Normalized {len(results)} results for query='{query}'")
-        
+
         return {
             "results": results,
             "meta": meta

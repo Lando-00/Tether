@@ -14,15 +14,13 @@ from typing import Any
 import pytest
 from structlog.testing import capture_logs
 
+from tests.fixtures.fake_research_provider import FakeResearchProvider
+from tests.fixtures.recording_research_store import RecordingResearchStore
 from tether.config.settings import ResearchSettings
 from tether.core.logging import reset_logging_for_tests
 from tether.core.types import OrchestratorConfig
 from tether.protocol.orchestration.notebook import NotebookOrchestrator
 from tether.protocol.parsers.sliding import SlidingParser
-from tests.fixtures.fake_research_provider import FakeResearchProvider
-
-
-from tests.fixtures.recording_research_store import RecordingResearchStore
 
 
 class _FakeStore(RecordingResearchStore):

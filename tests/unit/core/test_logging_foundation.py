@@ -9,16 +9,16 @@ from pathlib import Path
 
 import pytest
 
+from tether.config.settings import (
+    LogFileSettings,
+    LogsSettings,
+    ObservabilitySettings,
+    Settings,
+)
 from tether.core.logging import (
     configure_logging,
-    reset_logging_for_tests,
     logger,
-)
-from tether.config.settings import (
-    Settings,
-    ObservabilitySettings,
-    LogsSettings,
-    LogFileSettings,
+    reset_logging_for_tests,
 )
 
 
@@ -30,7 +30,13 @@ def _reset_logging():
     reset_logging_for_tests()
 
 
-def _make_settings(tmp_path: Path, *, file_path: str | None = None, console: bool = False, file_enabled: bool = True) -> Settings:
+def _make_settings(
+    tmp_path: Path,
+    *,
+    file_path: str | None = None,
+    console: bool = False,
+    file_enabled: bool = True,
+) -> Settings:
     """Build a minimal Settings object for logging tests."""
     from tether.config.settings import load_settings
     # Use load_settings to get the full defaults, then we test the observability sub-model

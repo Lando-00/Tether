@@ -116,11 +116,13 @@ def test_v2_tables_accept_inserts(tmp_dsn: str) -> None:
 
         # 4. Create raw events: one tool_call, one tool_result, one text_delta
         conn.execute(
-            "INSERT INTO raw_events(session_id, turn_id, seq, type, tool_call_id, payload_json) VALUES (?, ?, ?, ?, ?, ?)",
+            "INSERT INTO raw_events(session_id, turn_id, seq, type, "
+            "tool_call_id, payload_json) VALUES (?, ?, ?, ?, ?, ?)",
             ("test-sess", "t-001", 0, "tool_call", "call-001", '{"name":"now"}'),
         )
         conn.execute(
-            "INSERT INTO raw_events(session_id, turn_id, seq, type, tool_call_id, payload_json) VALUES (?, ?, ?, ?, ?, ?)",
+            "INSERT INTO raw_events(session_id, turn_id, seq, type, "
+            "tool_call_id, payload_json) VALUES (?, ?, ?, ?, ?, ?)",
             ("test-sess", "t-001", 1, "tool_result", "call-001", '{"result":"noon"}'),
         )
         conn.execute(

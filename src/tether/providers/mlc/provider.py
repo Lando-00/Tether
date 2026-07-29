@@ -4,18 +4,18 @@ import os
 import platform
 import re
 import uuid
-
-import structlog
-
-_log = structlog.get_logger(__name__)
 from pathlib import Path
 from threading import Lock
 from typing import Any, AsyncGenerator, Dict, List, Optional
 
+import structlog
 from mlc_llm import AsyncMLCEngine
+
 from tether.core.interfaces import ModelProvider
 from tether.providers.hw import HwErrorClass, HwHealth
 from tether.runtime.daemon_call import daemon_thread_call
+
+_log = structlog.get_logger(__name__)
 
 # §security R-pathtraversal: model_name must be a plain directory component.
 # This pattern deliberately excludes path separators, colons, and any other
@@ -33,14 +33,14 @@ def _abort_all_requests(engine) -> int:
         inflight = list(getattr(engine.state, "async_streamers", {}).keys())
     except Exception:
         inflight = []
-    
+
     for rid in inflight:
         try:
             # AsyncMLCEngine.abort is async, but _abort is sync & safe here
             engine._abort(rid)
         except Exception:
             pass
-    
+
     return len(inflight)
 
 
@@ -172,7 +172,7 @@ class MLCProvider(ModelProvider):
         self.device = device
         self.max_tokens = max_tokens
         self.marker_only_tools = marker_only_tools
-        
+
         # Instance-level cache and locks (not shared across providers)
         self._engine_cache: Dict[str, AsyncMLCEngine] = {}
         self._cache_lock = Lock()
@@ -367,23 +367,23 @@ class MLCProvider(ModelProvider):
         Unload a specific model by its cache key.
         Useful for recovery from fatal errors.
         Detaches under lock, then terminates outside lock with timeout.
-        
+
         Args:
             cache_key: The cache key of the model to unload
-        
+
         Returns:
             True if model was found and unloaded, False otherwise
         """
         to_terminate = None
-        
+
         # Detach under lock
         with self._cache_lock:
             if cache_key in self._engine_cache:
                 to_terminate = self._engine_cache.pop(cache_key)
-        
+
         if not to_terminate:
             return False
-        
+
         # Terminate outside lock with timeout
         try:
             _abort_all_requests(to_terminate)
@@ -392,7 +392,7 @@ class MLCProvider(ModelProvider):
             _log.warning("provider.engine.terminate_timeout", cache_key=cache_key)
         except Exception as e:
             _log.warning("provider.engine.terminate_error", cache_key=cache_key, error=str(e))
-        
+
         _log.info("provider.engine.unloaded_by_key", cache_key=cache_key)
         return True
 
@@ -630,31 +630,31 @@ class MLCProvider(ModelProvider):
     def get_context_window(self, model_name: str) -> int:
         """
         Get the context window size for a specific model from its config.
-        
+
         Args:
             model_name: Name of the model (e.g., "Qwen3-4B-q4f16_0-MLC")
-        
+
         Returns:
             Context window size in tokens (defaults to 4096 if not found)
         """
         self._validate_model_name(model_name)
         config_path = self.models_root / model_name / "mlc-chat-config.json"
-        
+
         if not config_path.exists():
             # Fallback to conservative default
             return 4096
-        
+
         try:
             with open(config_path, "r", encoding="utf-8") as f:
                 config = json.load(f)
-            
+
             # Try top-level first, then nested in model_config
             context_window = config.get("context_window_size")
             if context_window is None:
                 context_window = config.get("model_config", {}).get("context_window_size")
-            
+
             return context_window if context_window is not None else 4096
-            
+
         except (json.JSONDecodeError, IOError, KeyError) as e:
             _log.warning(
                 "provider.config.context_window_read_error",
@@ -703,7 +703,7 @@ class MLCProvider(ModelProvider):
         with self._cache_lock:
             if model_name not in self._init_locks:
                 self._init_locks[model_name] = asyncio.Lock()
-        
+
         init_lock = self._init_locks[model_name]
 
         async with init_lock:
@@ -711,7 +711,7 @@ class MLCProvider(ModelProvider):
             with self._cache_lock:
                 if cache_key in self._engine_cache:
                     return self._engine_cache[cache_key]
-            
+
             # This is a blocking call, so we run it in an executor
             loop = asyncio.get_running_loop()
             engine = await loop.run_in_executor(None, self._get_engine, model_name)
@@ -789,7 +789,7 @@ class MLCProvider(ModelProvider):
                 stream=True,
                 request_id=mlc_request_id,
             )
-            
+
             # Iterate with explicit exception handling
             try:
                 async for response in stream_generator:
@@ -821,7 +821,7 @@ class MLCProvider(ModelProvider):
                     exc_info=True,
                 )
                 raise
-                
+
         except GeneratorExit:
             # Re-raise GeneratorExit (client disconnect)
             raise
@@ -883,7 +883,7 @@ class MLCProvider(ModelProvider):
                     await stream_generator.aclose()
                 except Exception:
                     pass
-            
+
             # Defensive: abort again if it's still registered.
             # NOTE: use mlc_request_id (the engine's per-request abort ID),
             # NOT the caller's `request_id` correlation arg added in Phase 7

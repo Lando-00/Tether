@@ -24,20 +24,17 @@ from __future__ import annotations
 
 import asyncio
 import time
-
-import pytest
-from fastapi import APIRouter, FastAPI
-from fastapi.testclient import TestClient
 from unittest.mock import AsyncMock
 
+from fastapi import APIRouter, FastAPI
+from fastapi.testclient import TestClient
+
+from tests.fixtures.echo_connector import EchoConnector
 from tether.app.http.routers.connectors import router as connectors_router
-from tether.connectors.types import ConnectorState
 from tether.context.inbox_store import SqliteInbox
 from tether.core.connector_registry import ConnectorRegistry
 from tether.engine import Engine
 from tether.protocol.parsers.sliding import SlidingParser
-from tests.fixtures.echo_connector import EchoConnector
-
 
 # ---------------------------------------------------------------------------
 # Helpers

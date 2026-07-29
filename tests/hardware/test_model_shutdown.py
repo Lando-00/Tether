@@ -7,7 +7,6 @@ Run with: pytest -m hardware tests/hardware/test_model_shutdown.py
 Original usage: python test_model_shutdown.py <model_name>
 Parametrized here over the two models cited in copilot-instructions.md.
 """
-import asyncio
 import time
 from pathlib import Path
 

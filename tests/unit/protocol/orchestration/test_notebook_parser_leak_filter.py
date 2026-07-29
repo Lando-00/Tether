@@ -18,12 +18,11 @@ import json
 import pytest
 
 from tether.protocol.orchestration.notebook_parser import (
-    ExtractResult,
     _REASONING_LEAK_PREFIXES,
+    ExtractResult,
     _is_reasoning_leak,
     parse_extract_output,
 )
-
 
 # ---------------------------------------------------------------------------
 # Corpora

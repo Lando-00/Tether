@@ -17,7 +17,6 @@ from tether.core.interfaces import Tool
 from tether.core.types import ToolExecutionContext
 from tether.protocol.orchestration.tool_runner import ToolRunner
 
-
 # ---------------------------------------------------------------------------
 # Signature inspection
 # ---------------------------------------------------------------------------

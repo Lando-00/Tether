@@ -4,7 +4,6 @@ Synthesis §4 Phase 4 step 42; A2 step 4 (decorator design).
 """
 from __future__ import annotations
 
-import sys
 from unittest.mock import patch
 
 import pytest

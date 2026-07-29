@@ -19,7 +19,6 @@ from tether.protocol.wire.events import (
 )
 from tether.protocol.wire.transport_sse import transport_sse
 
-
 # ---------------------------------------------------------------------------
 # Helpers
 # ---------------------------------------------------------------------------
@@ -88,7 +87,7 @@ async def test_sse_id_is_seq():
     """The id field equals the WireEvent seq number."""
     body = await _collect([_text_delta("x", 7)])
     lines = body.splitlines()
-    id_line = next(l for l in lines if l.startswith("id: "))
+    id_line = next(line for line in lines if line.startswith("id: "))
     assert id_line == "id: 7"
 
 
@@ -97,7 +96,7 @@ async def test_sse_event_is_type():
     """The event field equals the WireEvent type discriminator."""
     body = await _collect([_message_stop(2)])
     lines = body.splitlines()
-    event_line = next(l for l in lines if l.startswith("event: "))
+    event_line = next(line for line in lines if line.startswith("event: "))
     assert event_line == "event: message_stop"
 
 
@@ -105,7 +104,7 @@ async def test_sse_event_is_type():
 async def test_sse_data_is_compact_json():
     """The data field is a single-line JSON object (no embedded newlines)."""
     body = await _collect([_text_delta("hello world", 0)])
-    data_line = next(l for l in body.splitlines() if l.startswith("data: "))
+    data_line = next(line for line in body.splitlines() if line.startswith("data: "))
     json_str = data_line[len("data: "):]
     # Must parse as valid JSON
     obj = json.loads(json_str)
@@ -144,7 +143,7 @@ async def test_sse_handles_text_delta():
     lines = body.splitlines()
     assert "id: 5" in lines
     assert "event: text_delta" in lines
-    data_line = next(l for l in lines if l.startswith("data: "))
+    data_line = next(line for line in lines if line.startswith("data: "))
     obj = json.loads(data_line[len("data: "):])
     assert obj["type"] == "text_delta"
     assert obj["text"] == "hi"
@@ -157,7 +156,7 @@ async def test_sse_handles_message_stop():
     events = [_message_stop(10, stop_reason="complete")]
     body = await _collect(events)
     assert "event: message_stop" in body
-    data_line = next(l for l in body.splitlines() if l.startswith("data: "))
+    data_line = next(line for line in body.splitlines() if line.startswith("data: "))
     obj = json.loads(data_line[len("data: "):])
     assert obj["type"] == "message_stop"
     assert obj["stop_reason"] == "complete"
@@ -169,7 +168,7 @@ async def test_sse_handles_message_start():
     events = [_message_start(0)]
     body = await _collect(events)
     assert "event: message_start" in body
-    data_line = next(l for l in body.splitlines() if l.startswith("data: "))
+    data_line = next(line for line in body.splitlines() if line.startswith("data: "))
     obj = json.loads(data_line[len("data: "):])
     assert obj["type"] == "message_start"
     assert len(obj["available_tools"]) == 1

@@ -4,8 +4,6 @@ Phase 7 step 67 — tether_service/core/redact.py coverage.
 """
 from __future__ import annotations
 
-import pytest
-
 from tether.core.redact import redact_text
 
 

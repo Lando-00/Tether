@@ -15,13 +15,12 @@ from typing import Any, AsyncGenerator, Dict, List, Optional
 
 import pytest
 
+from tests.golden.conftest import MinimalMemoryStore
 from tether.core.interfaces import ModelProvider
 from tether.core.types import OrchestratorConfig
 from tether.protocol.orchestration.orchestrator import orchestrate
 from tether.protocol.orchestration.tool_runner import ToolRunner
 from tether.protocol.parsers.sliding import SlidingParser
-
-from tests.golden.conftest import MinimalMemoryStore
 
 
 @pytest.fixture
@@ -261,7 +260,7 @@ async def test_orchestrator_finally_runs_even_on_unexpected_exception():
     here), and we raise from a custom provider after enough text is
     accumulated but before inner persist runs.
     """
-    store = _CountingStore()
+    _store = _CountingStore()
 
     class _PartialThenRaiseProvider(ModelProvider):
         async def stream(

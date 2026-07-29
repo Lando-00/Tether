@@ -29,7 +29,6 @@ from tether.core.errors import (
 from tether.providers.hw import HwErrorClass
 from tether.providers.mlc.errors import classify_mlc_error
 
-
 # ---------------------------------------------------------------------------
 # Stand-in for Apache TVM's TVMError (real TVM not required for tests).
 # The legacy substring matcher checks for "TVMError" in the class name.

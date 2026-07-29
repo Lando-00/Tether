@@ -156,7 +156,7 @@ class SlidingParser(StreamParser):
                     if self._tick_bytes >= self._tick_threshold:
                         logger.debug(f"Parser: JSON parsing progress, depth={self._json_depth}, pos={i}")
                         self._tick_bytes = 0
-                
+
                 if self.mode == "json": # If we're still in JSON mode
                     if len(self.buf) > self.max_tool_chars:
                         raw = self.buf
@@ -173,7 +173,7 @@ class SlidingParser(StreamParser):
                 stripped = self.buf.lstrip(" \t\r\n")
                 if not stripped:
                     break  # Need more data
-                
+
                 logger.debug(f"Parser: await_payload mode, buf starts with: {repr(stripped[:20])}")
                 self.buf = stripped
                 if self.buf.startswith("{"):
@@ -209,7 +209,7 @@ class SlidingParser(StreamParser):
                     text_before = self.buf[:first_marker_pos]
                     logger.debug(f"Parser: emitting text before {marker_type} marker: {repr(text_before[:50])}")
                     events.append(PText(text=text_before))
-                
+
                 # Transition to the new mode
                 if marker_type == "think":
                     self.buf = self.buf[first_marker_pos + len(self.THINK_OPEN) :]
@@ -255,7 +255,7 @@ class SlidingParser(StreamParser):
                 events.append(PThink(text=self.buf))
             else:
                 events.append(PText(text=self.buf))
-        
+
         # Synthesis §6 row 3 / A4 PAIN-4:
         # finalize() flushes residual text/think/error events only.
         # The orchestrator emits the single terminal DONE event.

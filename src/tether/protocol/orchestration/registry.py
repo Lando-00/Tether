@@ -10,7 +10,7 @@ Briefing §2 Seam B; synthesis §3.5 (Orchestrator strategy seam).
 from __future__ import annotations
 
 import importlib
-from typing import Dict, Type, TYPE_CHECKING
+from typing import TYPE_CHECKING, Dict, Type
 
 if TYPE_CHECKING:
     from tether.core.interfaces import Orchestrator

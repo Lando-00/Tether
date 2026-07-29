@@ -5,10 +5,7 @@ Synthesis §6 (free-wins / regression net), B2 lines 160-190 (normalize_event de
 import copy
 from typing import Any, AsyncGenerator, Dict, List, Optional
 
-import pytest
-
 from tether.core.interfaces import ModelProvider, SessionStore
-
 
 # ---------------------------------------------------------------------------
 # ScriptedProvider — lives here, NOT in tether_service/providers/.

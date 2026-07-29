@@ -7,7 +7,7 @@ from __future__ import annotations
 
 import asyncio
 from pathlib import Path
-from typing import Any, AsyncIterator, List, Optional
+from typing import List, Optional
 from unittest.mock import AsyncMock, MagicMock
 
 import pytest
@@ -16,7 +16,6 @@ from tether.core.errors import FatalProviderError, TransientProviderError
 from tether.providers.dummy.provider import DummyProvider
 from tether.providers.hw import HardwareLifecycle, HwErrorClass, HwHealth
 from tether.providers.mlc.provider import MLCProvider
-
 
 # ---------------------------------------------------------------------------
 # Test fixtures: build an MLCProvider without touching real MLC engines.

@@ -4,7 +4,6 @@ Per connector spec §3.5 + §3.6; synthesis §4 Phase 4.5 step 47a.
 """
 from __future__ import annotations
 
-import os
 import platform
 import stat
 from pathlib import Path
@@ -17,7 +16,6 @@ from tether.core.secrets import (
     EnvFileSecretsProvider,
     SecretsProvider,
 )
-
 
 # ---------------------------------------------------------------------------
 # Fixtures

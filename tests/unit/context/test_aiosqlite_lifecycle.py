@@ -23,10 +23,7 @@ marker needed.
 """
 from __future__ import annotations
 
-import pytest
-
 from tether.context.sqlite_store import SqliteSessionStore
-
 
 # ---------------------------------------------------------------------------
 # Construction

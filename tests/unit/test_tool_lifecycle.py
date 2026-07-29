@@ -27,7 +27,6 @@ import pytest
 from tether.tools.base import BaseTool
 from tether.tools.lifecycle import shutdown_all, startup_all
 
-
 # ---------------------------------------------------------------------------
 # Fixtures / helpers
 # ---------------------------------------------------------------------------

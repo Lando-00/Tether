@@ -12,7 +12,6 @@ from typing import Any, Dict, List
 
 from fastapi import APIRouter, HTTPException, Request
 
-
 router = APIRouter(prefix="/debug", tags=["debug"])
 
 

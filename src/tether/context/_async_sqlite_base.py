@@ -54,7 +54,6 @@ import aiosqlite
 
 from tether.core.logging import logger
 
-
 # Module-level WeakSet of live stores. Used by the atexit handler to
 # stop any aiosqlite worker thread that survives until interpreter
 # shutdown (e.g., tests that construct an Engine without ``async with``

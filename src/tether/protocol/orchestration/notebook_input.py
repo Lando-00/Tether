@@ -5,9 +5,9 @@ The persisted user transcript is deliberately never changed here.  Callers use
 """
 from __future__ import annotations
 
+import re
 from dataclasses import dataclass, field
 from decimal import Decimal, InvalidOperation, localcontext
-import re
 from typing import Any, Iterable, Literal, Mapping, Optional
 
 from tether.protocol.orchestration.notebook_state import AtomicFact
@@ -31,7 +31,10 @@ _MULTIPLY_OPS = frozenset({"*", "x", "×"})
 _DIVIDE_OPS = frozenset({"/", "÷"})
 _SYNTHETIC_PREFIXES = ("<<tool_result", "<<function_call", "<<tool_call")
 _STOP_WORDS = frozenset(
-    {"what", "which", "where", "when", "why", "how", "tell", "about", "the", "and", "for", "with", "from", "capital", "population"}
+    {
+        "what", "which", "where", "when", "why", "how", "tell", "about",
+        "the", "and", "for", "with", "from", "capital", "population",
+    }
 )
 
 

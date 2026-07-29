@@ -7,7 +7,6 @@ coverage with deeper assertions. Synthesis §3.6 + §11.3 R19.
 """
 import json
 
-
 # All tests run twice via the `store` fixture in conftest.py.
 # That fixture parametrizes over memory_store + sqlite_store.
 

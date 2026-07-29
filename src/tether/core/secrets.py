@@ -24,7 +24,6 @@ from abc import ABC, abstractmethod
 from pathlib import Path
 from typing import Optional
 
-
 _VALID_KEY_CHARS = set(
     "abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789_-"
 )

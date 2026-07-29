@@ -5,13 +5,11 @@ and correctly added when enabled with matching origins.
 """
 from __future__ import annotations
 
-import pytest
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.testclient import TestClient
 
 from tether.config.settings import CORSSettings
-
 
 # ---------------------------------------------------------------------------
 # Helpers

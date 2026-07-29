@@ -35,7 +35,6 @@ from tether.core.secrets import SecretsProvider
 from tether.tools.brave_client import BraveSearchClient
 from tether.tools.web_search_tool import WebSearchInputs, WebSearchTool
 
-
 # ---------------------------------------------------------------------------
 # Fake SecretsProvider
 # ---------------------------------------------------------------------------

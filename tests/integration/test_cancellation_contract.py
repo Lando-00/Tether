@@ -20,6 +20,7 @@ from typing import Any, AsyncGenerator, Dict, List, Optional
 
 import pytest
 
+from tests.golden.conftest import MinimalMemoryStore
 from tether.core.interfaces import ModelProvider, Tool
 from tether.core.types import OrchestratorConfig, ToolExecutionContext
 from tether.protocol.orchestration.cancel import AsyncEventCancelToken
@@ -32,12 +33,9 @@ from tether.protocol.orchestration.tool_runner import ToolRunner
 from tether.protocol.parsers.sliding import SlidingParser
 from tether.protocol.wire.events import (
     MessageStop,
-    TextDelta,
     ToolCall,
     ToolResult,
 )
-
-from tests.golden.conftest import MinimalMemoryStore
 
 
 @pytest.fixture

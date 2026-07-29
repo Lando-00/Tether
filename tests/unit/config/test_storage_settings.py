@@ -3,15 +3,15 @@
 Phase 6 step 60: dsn=None resolves via platformdirs.user_data_dir,
 not the CWD-relative legacy default. Synthesis §3.6, §4.
 """
-import pytest
 from pathlib import Path
+
+import pytest
 
 from tether.config.settings import (
     Settings,
-    StorageSettings,
     SqliteSettings,
+    StorageSettings,
 )
-
 
 _MIN_PROVIDERS = {
     "model": {"impl": "x.M", "args": {}},

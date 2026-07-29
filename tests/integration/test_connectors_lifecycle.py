@@ -38,6 +38,7 @@ import pytest
 from fastapi import APIRouter, FastAPI
 from fastapi.testclient import TestClient
 
+from tests.fixtures.echo_connector import EchoConnector
 from tether.app.http.routers.connectors import router as connectors_router
 from tether.connectors.base import Connector
 from tether.connectors.types import (
@@ -56,8 +57,6 @@ from tether.engine import Engine
 from tether.protocol.parsers.sliding import SlidingParser
 from tether.providers.dummy.provider import DummyProvider
 from tether.tools.base import BaseTool
-from tests.fixtures.echo_connector import EchoConnector
-
 
 # ---------------------------------------------------------------------------
 # Shared app builder

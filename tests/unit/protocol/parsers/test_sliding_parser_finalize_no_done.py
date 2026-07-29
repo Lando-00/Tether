@@ -14,15 +14,13 @@ typed event vocabulary has no PStreamEnd-or-equivalent emitted by
 ``finalize()``, the "no DONE" guarantee is now tighter: finalize() must
 not emit any tool-call event either.
 """
-import pytest
-from tether.protocol.parsers.sliding import SlidingParser
 from tether.protocol.parsers.events import (
     PParseError,
     PText,
-    PThink,
     PToolCallDetected,
     PToolCallParsed,
 )
+from tether.protocol.parsers.sliding import SlidingParser
 
 
 def _has_terminal_event(events) -> bool:

@@ -1,6 +1,7 @@
-from typing import Any, Dict
-from importlib import resources
 import os
+from importlib import resources
+from typing import Any, Dict
+
 import yaml
 
 

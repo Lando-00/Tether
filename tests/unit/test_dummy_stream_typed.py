@@ -13,7 +13,6 @@ import pytest
 from tether.providers.dummy.provider import DummyProvider
 from tether.providers.types import ProviderCapabilities, ProviderText
 
-
 # ---------------------------------------------------------------------------
 # kind / capabilities introspection
 # ---------------------------------------------------------------------------

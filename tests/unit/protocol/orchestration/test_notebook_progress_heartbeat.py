@@ -33,6 +33,8 @@ from typing import Any, AsyncGenerator, Dict, List, Optional
 
 import pytest
 
+from tests.fixtures.fake_research_provider import FakeResearchProvider
+from tests.fixtures.recording_research_store import RecordingResearchStore
 from tether.config.settings import ResearchSettings
 from tether.core.types import OrchestratorConfig
 from tether.protocol.orchestration import notebook as notebook_module
@@ -46,8 +48,6 @@ from tether.protocol.wire.events import (
     NotebookQueryAdded,
     TextDelta,
 )
-from tests.fixtures.fake_research_provider import FakeResearchProvider
-
 
 # Cancellation tests use the same slack budget as the Phase 9.5 synth-cancel
 # suite (test_notebook_synth_cancel_grace.py): the grace bound is 250 ms; we
@@ -63,9 +63,6 @@ def anyio_backend():
 # ---------------------------------------------------------------------------
 # Test doubles
 # ---------------------------------------------------------------------------
-
-
-from tests.fixtures.recording_research_store import RecordingResearchStore
 
 
 class _FakeStore(RecordingResearchStore):

@@ -37,7 +37,6 @@ from tether.tools.registration import (
 )
 from tether.tools.web_search_tool import WebSearchInputs, WebSearchTool
 
-
 # ---------------------------------------------------------------------------
 # Helpers
 # ---------------------------------------------------------------------------

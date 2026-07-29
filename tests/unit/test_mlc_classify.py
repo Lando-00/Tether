@@ -16,7 +16,6 @@ import pytest
 from tether.providers.hw import HwErrorClass
 from tether.providers.mlc.errors import classify_mlc_error
 
-
 # ---------------------------------------------------------------------------
 # FATAL_RECOVERABLE patterns — the three legacy substring-grep matchers
 # ---------------------------------------------------------------------------

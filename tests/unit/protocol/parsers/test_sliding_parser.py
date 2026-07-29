@@ -2,8 +2,6 @@
 Unit tests for the SlidingParser with focus on tool call detection.
 Tests chunk boundaries, newlines, balanced JSON, and quoted braces.
 """
-import pytest
-from tether.protocol.parsers.sliding import SlidingParser
 from tether.protocol.parsers.events import (
     PParseError,
     PText,
@@ -11,6 +9,7 @@ from tether.protocol.parsers.events import (
     PToolCallDetected,
     PToolCallParsed,
 )
+from tether.protocol.parsers.sliding import SlidingParser
 
 
 class TestSlidingParserBasics:
@@ -297,7 +296,10 @@ class TestSlidingParserRealWorldScenarios:
     def test_text_then_tool_call(self):
         parser = SlidingParser()
         events1 = parser.feed("Let me check the time for you. ")
-        events2 = parser.feed('<<function_call>> {"name":"get_current_time","arguments":{"timezone":"Europe/Dublin","format":"human"}}')
+        events2 = parser.feed(
+            '<<function_call>> {"name":"get_current_time",'
+            '"arguments":{"timezone":"Europe/Dublin","format":"human"}}'
+        )
 
         all_events = events1 + events2
 

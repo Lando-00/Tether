@@ -10,13 +10,14 @@ and ``GetForecastTool`` use ``Annotated[T, Field(...)]`` parameters on
 into the JSON schema.
 """
 
-from typing import Annotated, Any, Dict, Literal
 from datetime import datetime
+from typing import Annotated, Any, Dict, Literal
+
 import requests
 from pydantic import Field
+
 from tether.tools.base import BaseTool
 from tether.tools.registration import tool
-
 
 # --- API Configuration ---
 GEOCODING_API_URL = "https://geocoding-api.open-meteo.com/v1/search"
@@ -32,7 +33,7 @@ def _get_location_lat_lon(location: str) -> Dict[str, Any]:
         data = response.json()
         if not data.get("results"):
             return {"error": f"Location '{location}' not found."}
-        
+
         result = data["results"][0]
         return {
             "latitude": result["latitude"],
@@ -47,7 +48,7 @@ def _get_location_lat_lon(location: str) -> Dict[str, Any]:
 @tool(name="weather")
 class GetWeatherTool(BaseTool):
     """Get the current weather conditions for a location."""
-    
+
     def __init__(self):
         super().__init__()
 
@@ -83,10 +84,10 @@ class GetWeatherTool(BaseTool):
             response = requests.get(WEATHER_API_URL, params=params)
             response.raise_for_status()
             data = response.json()
-            
+
             current = data["current_weather"]
             temp_unit = "°C" if unit == "celsius" else "°F"
-            
+
             return {
                 "location": location_info["name"],
                 "country": location_info["country"],
@@ -104,7 +105,7 @@ class GetWeatherTool(BaseTool):
 @tool(name="forecast")
 class GetForecastTool(BaseTool):
     """Get a weather forecast for a location."""
-    
+
     def __init__(self):
         super().__init__()
 
@@ -160,7 +161,7 @@ class GetForecastTool(BaseTool):
 
             daily_data = data["daily"]
             temp_unit = "°C" if unit == "celsius" else "°F"
-            
+
             forecasts = []
             for i in range(len(daily_data["time"])):
                 forecasts.append({

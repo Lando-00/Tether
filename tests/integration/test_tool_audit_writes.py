@@ -140,8 +140,6 @@ class _RaisingTool(Tool):
 
 def _settings(db_path: str, *, store_args: bool = False):
     from tether.config.settings import (
-        AuditLogSettings,
-        SecuritySettings,
         Settings,
     )
     return Settings.model_validate(
@@ -224,8 +222,9 @@ async def test_successful_tool_writes_audit_row(tmp_path):
     """A successful tool dispatch writes ONE row with status='ok'."""
     db_path = (tmp_path / "audit.db").as_posix()
     settings = _settings(db_path)
-    from tether.engine import Engine
     import time as _time
+
+    from tether.engine import Engine
     Engine.from_settings(settings)  # apply migrations
 
     store = SqliteSessionStore(dsn=f"sqlite:///{db_path}")

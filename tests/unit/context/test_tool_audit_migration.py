@@ -150,7 +150,7 @@ def test_settings_audit_log_default_false() -> None:
     Tests the sub-model directly to avoid needing a providers arg.
     Synthesis §3.6 + B5 step 7.
     """
-    from tether.config.settings import AuditLogSettings, SecuritySettings
+    from tether.config.settings import SecuritySettings
 
     s = SecuritySettings()
     assert s.audit_log.store_args is False

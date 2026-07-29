@@ -11,10 +11,7 @@ p5-cutover-a-dual-emit (v1.0); boundary fix in p5-cutover-c-flip-default.
 """
 from __future__ import annotations
 
-import pytest
-
 from tether.app.http.routers.chat import _has_version_0, _has_version_1_0
-
 
 # ---------------------------------------------------------------------------
 # _has_version_1_0 — existing tests (must still pass after regex change)

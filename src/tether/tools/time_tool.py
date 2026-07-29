@@ -10,7 +10,7 @@ from tether.tools.registration import tool
 @tool(name="time")
 class TimeTool(BaseTool):
     """Get the current time for a timezone in various formats (ISO, RFC2822, or human-readable)."""
-    
+
     def __init__(self):
         super().__init__()
 

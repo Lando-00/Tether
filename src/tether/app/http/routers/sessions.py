@@ -1,5 +1,6 @@
 from typing import List
-from fastapi import APIRouter, Request, HTTPException
+
+from fastapi import APIRouter, HTTPException, Request
 from pydantic import BaseModel, Field
 
 router = APIRouter(prefix="/sessions", tags=["sessions"])

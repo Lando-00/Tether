@@ -13,11 +13,11 @@ p5-cutover-c-flip-default.
 from __future__ import annotations
 
 import json
+from unittest.mock import AsyncMock
 
 import pytest
 from fastapi import APIRouter, FastAPI
 from fastapi.testclient import TestClient
-from unittest.mock import AsyncMock
 
 from tether.app.http.api import lifespan
 from tether.app.http.routers.chat import router as chat_router
@@ -25,7 +25,6 @@ from tether.app.http.routers.health import router as health_router
 from tether.engine import Engine
 from tether.protocol.parsers.sliding import SlidingParser
 from tether.providers.dummy.provider import DummyProvider
-
 
 # ---------------------------------------------------------------------------
 # Helpers

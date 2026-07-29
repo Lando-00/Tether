@@ -6,19 +6,16 @@ Synthesis §3.4 (Engine.chat library API).
 from __future__ import annotations
 
 import json
-from typing import Any, AsyncGenerator, Dict, List, Optional
+from typing import Any, List
 
 import pytest
 
 from tether.config.settings import Settings
-from tether.core.interfaces import ModelProvider
 from tether.engine import Engine
 from tether.protocol.orchestration.cancel import AsyncEventCancelToken
 from tether.protocol.wire.events import (
     MessageStart,
     MessageStop,
-    TextDelta,
-    WireEvent,
 )
 
 

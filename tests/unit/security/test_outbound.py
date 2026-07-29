@@ -17,12 +17,9 @@ from __future__ import annotations
 import pytest
 
 from tether.config.settings import (
-    OutboundAllowlistSettings,
-    SecuritySettings,
     Settings,
 )
 from tether.security.outbound import OutboundUrlBlocked, assert_safe_url
-
 
 # ---------------------------------------------------------------------------
 # Helpers to build minimal Settings with specific allowlist config
@@ -281,16 +278,15 @@ def test_exception_is_tether_error():
 @pytest.mark.asyncio
 async def test_web_search_assert_safe_url_brave_endpoint_passes():
     """assert_safe_url on BraveSearchClient.BASE_URL passes with default policy."""
-    from unittest.mock import AsyncMock
 
     from tether.tools.brave_client import BraveSearchClient
-    from tether.tools.web_search_tool import WebSearchInputs, WebSearchTool
+    from tether.tools.web_search_tool import WebSearchTool
 
     class _FakeSecrets:
         def get(self, key: str):
             return None
 
-    tool = WebSearchTool(secrets=_FakeSecrets(), settings=settings_default)
+    _tool = WebSearchTool(secrets=_FakeSecrets(), settings=settings_default)
     # _client is None → early return before assert_safe_url; test the helper directly.
     from tether.security.outbound import assert_safe_url as _assert
     _assert(BraveSearchClient.BASE_URL)  # must not raise
@@ -320,7 +316,11 @@ async def test_web_search_run_with_allowlist_mismatch_returns_error_dict():
 
     result = await tool.run(WebSearchInputs(query="test"))
     assert "error" in result
-    assert "Outbound URL blocked" in result["error"] or "allowlist" in result["error"].lower() or "not in" in result["error"].lower()
+    assert (
+        "Outbound URL blocked" in result["error"]
+        or "allowlist" in result["error"].lower()
+        or "not in" in result["error"].lower()
+    )
 
 
 # ---------------------------------------------------------------------------

@@ -19,12 +19,11 @@ import asyncio
 from typing import Any, AsyncGenerator, Dict, List, Optional
 
 import pytest
-import structlog.contextvars
 from structlog.testing import capture_logs
 
-from tether.core.interfaces import ModelProvider, SessionStore
+from tests.golden.conftest import MinimalMemoryStore
+from tether.core.interfaces import ModelProvider
 from tether.core.types import OrchestratorConfig
-from tether.protocol.orchestration.cancel import CancelToken
 from tether.protocol.orchestration.chatty import ChattyAgentOrchestrator
 from tether.protocol.orchestration.policies import (
     LoopLimitPolicy,
@@ -32,8 +31,6 @@ from tether.protocol.orchestration.policies import (
 )
 from tether.protocol.orchestration.tool_runner import ToolRunner
 from tether.protocol.parsers.sliding import SlidingParser
-
-from tests.golden.conftest import MinimalMemoryStore
 
 pytestmark = pytest.mark.anyio
 

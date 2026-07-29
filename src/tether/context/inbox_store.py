@@ -40,12 +40,11 @@ from __future__ import annotations
 import abc
 import datetime
 import json
-from typing import Iterable, List, Optional
+from typing import List
 
 from tether.connectors.types import InboundEvent
 from tether.context._async_sqlite_base import AsyncSqliteStore
 from tether.core.logging import logger
-
 
 # ---------------------------------------------------------------------------
 # ABC

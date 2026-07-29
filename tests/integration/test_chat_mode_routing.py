@@ -23,13 +23,13 @@ from fastapi import APIRouter, FastAPI
 from fastapi.testclient import TestClient
 
 from tether.app.http.api import lifespan
-from tether.app.http.routers.chat import StreamRequest, router as chat_router
+from tether.app.http.routers.chat import StreamRequest
+from tether.app.http.routers.chat import router as chat_router
 from tether.app.http.routers.health import router as health_router
 from tether.config.settings import Settings
 from tether.engine import Engine
 from tether.protocol.parsers.sliding import SlidingParser
 from tether.providers.dummy.provider import DummyProvider
-
 
 # ---------------------------------------------------------------------------
 # Test app factory

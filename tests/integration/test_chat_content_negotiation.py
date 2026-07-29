@@ -16,9 +16,8 @@ Synthesis §4 Phase 5 step 53; §11.3 R18 (p5-cutover-c-flip-default).
 """
 from __future__ import annotations
 
-import json
 import re
-from typing import Any, Dict, List
+from typing import Any
 from unittest.mock import AsyncMock
 
 import pytest
@@ -31,7 +30,6 @@ from tether.app.http.routers.health import router as health_router
 from tether.engine import Engine
 from tether.protocol.parsers.sliding import SlidingParser
 from tether.providers.dummy.provider import DummyProvider
-
 
 # ---------------------------------------------------------------------------
 # Test app factory
@@ -95,7 +93,7 @@ def test_default_is_ndjson_v2(client):
     assert resp.headers["content-type"].startswith("application/x-ndjson")
     assert resp.headers["x-tether-protocol-version"] == "1.0"
     body = resp.text
-    lines = [l for l in body.splitlines() if l.strip()]
+    lines = [line for line in body.splitlines() if line.strip()]
     # At least one v2 line
     assert len(lines) >= 1
     # v2 vocabulary in use (not v0)
@@ -111,7 +109,7 @@ def test_explicit_ndjson_no_version_is_v2(client):
     assert resp.headers["content-type"].startswith("application/x-ndjson")
     assert resp.headers["x-tether-protocol-version"] == "1.0"
     body = resp.text
-    lines = [l for l in body.splitlines() if l.strip()]
+    lines = [line for line in body.splitlines() if line.strip()]
     assert len(lines) >= 1
     # v2 vocabulary in use
     assert "text_delta" in body

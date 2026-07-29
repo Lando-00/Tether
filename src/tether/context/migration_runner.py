@@ -18,7 +18,6 @@ from typing import Optional
 
 from tether.core.logging import logger
 
-
 _MIGRATIONS_DIR = Path(__file__).resolve().parent / "migrations"
 
 # In-process cache of normalized DSNs already migrated in this process.

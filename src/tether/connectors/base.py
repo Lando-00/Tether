@@ -42,7 +42,6 @@ from tether.connectors.types import (
 )
 from tether.core.interfaces import Tool
 
-
 _CONNECTOR_ID_RE = re.compile(r"^[a-z0-9_]+$")
 
 

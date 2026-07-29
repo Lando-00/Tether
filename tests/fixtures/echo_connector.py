@@ -44,7 +44,6 @@ from tether.core.interfaces import Tool
 from tether.core.types import ToolExecutionContext
 from tether.tools.base import BaseTool
 
-
 # ---------------------------------------------------------------------------
 # Tools
 # ---------------------------------------------------------------------------

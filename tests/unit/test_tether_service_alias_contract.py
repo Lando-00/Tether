@@ -60,10 +60,11 @@ def test_alias_submodule_identity() -> None:
     leaf modules. The identity invariant being pinned here does not
     depend on which submodule we pick.
     """
-    from tether.core.errors import ConnectorNotConfiguredError as ETether
     from tether_service.core.errors import (
         ConnectorNotConfiguredError as ETetherService,
     )
+
+    from tether.core.errors import ConnectorNotConfiguredError as ETether
 
     assert ETether is ETetherService, (
         "tether_service.core.errors.ConnectorNotConfiguredError is not "
@@ -79,8 +80,9 @@ def test_alias_isinstance_works_across_boundary() -> None:
     object on the alias side would break ``isinstance`` for connector
     tools across the boundary; pin that this can't happen silently.
     """
-    from tether.tools.base import BaseTool as TetherBase
     from tether_service.tools.base import BaseTool as ServiceBase
+
+    from tether.tools.base import BaseTool as TetherBase
 
     assert TetherBase is ServiceBase, (
         "BaseTool not identical across alias boundary — isinstance broken"

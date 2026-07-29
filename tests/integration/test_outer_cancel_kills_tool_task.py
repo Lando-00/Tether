@@ -12,10 +12,11 @@ from __future__ import annotations
 
 import asyncio
 import time
-from typing import Any, AsyncGenerator, Dict, List, Optional
+from typing import Any, AsyncGenerator, Dict, Optional
 
 import pytest
 
+from tests.golden.conftest import MinimalMemoryStore
 from tether.core.interfaces import ModelProvider, Tool
 from tether.core.types import OrchestratorConfig, ToolExecutionContext
 from tether.protocol.orchestration.chatty import ChattyAgentOrchestrator
@@ -26,8 +27,6 @@ from tether.protocol.orchestration.policies import (
 from tether.protocol.orchestration.tool_runner import ToolRunner
 from tether.protocol.parsers.sliding import SlidingParser
 from tether.protocol.wire.events import ToolCall
-
-from tests.golden.conftest import MinimalMemoryStore
 
 
 @pytest.fixture

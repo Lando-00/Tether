@@ -11,12 +11,10 @@ BLOCKING-2 + 1m OBSERVATION).
 from __future__ import annotations
 
 from pathlib import Path
-from typing import List
 
 import pytest
 
 from tether.providers.mlc.provider import MLCProvider
-
 
 # ---------------------------------------------------------------------------
 # Helpers

@@ -12,12 +12,11 @@ from tether.config.settings import (
     ConnectorsSettings,
     HttpSettings,
     InboxSettings,
-    ProvidersSettings,
     ProviderSpec,
+    ProvidersSettings,
     Settings,
     load_settings,
 )
-
 
 _MIN_PROVIDERS = {
     "model": {"impl": "x.M", "args": {}},

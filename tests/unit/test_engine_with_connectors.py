@@ -34,7 +34,6 @@ from tether.core.connector_registry import ConnectorRegistry
 from tether.core.interfaces import Tool
 from tether.runtime.hw_watchdog import HardwareWatchdog
 
-
 # ---------------------------------------------------------------------------
 # Fakes
 # ---------------------------------------------------------------------------

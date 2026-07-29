@@ -20,13 +20,11 @@ Coverage matrix:
 from __future__ import annotations
 
 import datetime
-import json
 
 import pytest
 
 from tether.connectors.types import InboundEvent
 from tether.context.inbox_store import SqliteInbox
-
 
 # ---------------------------------------------------------------------------
 # Fixtures

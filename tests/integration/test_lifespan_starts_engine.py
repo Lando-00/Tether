@@ -42,7 +42,6 @@ from tether.engine import Engine
 from tether.protocol.parsers.sliding import SlidingParser
 from tether.providers.dummy.provider import DummyProvider
 
-
 # ---------------------------------------------------------------------------
 # Test fakes
 # ---------------------------------------------------------------------------

@@ -17,7 +17,6 @@ from tether.core.errors import (
     TransientProviderError,
 )
 
-
 _TETHER_SUBCLASSES = [
     FatalProviderError,
     TransientProviderError,

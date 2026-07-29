@@ -61,10 +61,10 @@ class ModelProvider(ABC):
     def get_context_window(self, model_name: str) -> int:
         """
         Get the context window size for a specific model.
-        
+
         Args:
             model_name: Name of the model (e.g., "Qwen3-4B-q4f16_0-MLC")
-        
+
         Returns:
             Context window size in tokens
         """

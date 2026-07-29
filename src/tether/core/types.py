@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 from enum import StrEnum
-from typing import TYPE_CHECKING, TypedDict, Dict, Any, Optional
+from typing import TYPE_CHECKING, Any, Dict, Optional, TypedDict
 
 from tether.protocol.orchestration.policies import (
     LoopLimitPolicy,

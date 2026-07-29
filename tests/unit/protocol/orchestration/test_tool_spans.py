@@ -143,7 +143,7 @@ async def test_tool_error_logged_on_exception():
     assert log.get("error_kind") == "execution"
     assert "kaboom" in log.get("error_message", "")
     assert isinstance(log.get("duration_ms"), int)
-    assert "tool.end" not in [l["event"] for l in cap]
+    assert "tool.end" not in [line["event"] for line in cap]
 
 
 async def test_tool_error_logged_on_timeout():
@@ -237,4 +237,4 @@ async def test_tool_size_cap_logs_tool_error():
     assert log.get("error_kind") == "execution"
     assert isinstance(log.get("duration_ms"), int)
     # tool.end must NOT appear when result is oversized
-    assert "tool.end" not in [l["event"] for l in cap]
+    assert "tool.end" not in [line["event"] for line in cap]

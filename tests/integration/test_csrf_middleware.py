@@ -7,14 +7,12 @@ from __future__ import annotations
 
 import logging
 
-import pytest
 from fastapi import FastAPI
 from fastapi.testclient import TestClient
 
 from tether.app.http.csrf_middleware import CSRFTokenMiddleware
 from tether.app.http.middleware import RequestIdMiddleware
 from tether.config.settings import CSRFTokenSettings
-
 
 # ---------------------------------------------------------------------------
 # Helpers

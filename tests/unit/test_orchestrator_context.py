@@ -16,17 +16,15 @@ Synthesis §4 Phase 4 step 41a; §10.8 #4; connector spec §4 footer.
 from __future__ import annotations
 
 from typing import Any, AsyncGenerator, Dict, List, Optional
-from unittest.mock import AsyncMock
 
 import pytest
 
+from tests.golden.conftest import MinimalMemoryStore
 from tether.core.interfaces import ModelProvider, Tool
 from tether.core.types import OrchestratorConfig, ToolExecutionContext
 from tether.protocol.orchestration.orchestrator import orchestrate
 from tether.protocol.orchestration.tool_runner import ToolRunner
 from tether.protocol.parsers.sliding import SlidingParser
-
-from tests.golden.conftest import MinimalMemoryStore
 
 
 @pytest.fixture

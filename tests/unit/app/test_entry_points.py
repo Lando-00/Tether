@@ -33,7 +33,6 @@ import pytest
 import tether.app._entry as server_entry
 import tether.cli._entry as cli_entry
 
-
 # ---------------------------------------------------------------------------
 # Static checks: heavy import lives INSIDE main()
 # ---------------------------------------------------------------------------

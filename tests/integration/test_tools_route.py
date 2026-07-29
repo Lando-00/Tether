@@ -9,7 +9,6 @@ from __future__ import annotations
 from typing import Any, Dict
 from unittest.mock import AsyncMock
 
-import pytest
 from fastapi import APIRouter, FastAPI
 from fastapi.testclient import TestClient
 

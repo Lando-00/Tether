@@ -19,9 +19,25 @@ class RecordingResearchStore(MemoryStore):
         self.calls.append("add_user")
         await super().add_user(session_id, text, turn_id=turn_id, seq_start=seq_start)
 
-    async def add_assistant_text(self, session_id, text, thinking_text=None, save_thinking=True, *, turn_id=None, seq_start=None):
+    async def add_assistant_text(
+        self,
+        session_id,
+        text,
+        thinking_text=None,
+        save_thinking=True,
+        *,
+        turn_id=None,
+        seq_start=None,
+    ):
         self.calls.append("add_assistant_text")
-        await super().add_assistant_text(session_id, text, thinking_text, save_thinking, turn_id=turn_id, seq_start=seq_start)
+        await super().add_assistant_text(
+            session_id,
+            text,
+            thinking_text,
+            save_thinking,
+            turn_id=turn_id,
+            seq_start=seq_start,
+        )
 
     async def complete_turn(self, turn_id, *, status="completed", stop_reason=None, error_json=None):
         self.calls.append("complete_turn")

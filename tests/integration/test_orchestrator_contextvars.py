@@ -161,7 +161,7 @@ async def test_turn_id_unbound_when_start_turn_raises(tmp_path):
     of the try would leak the contextvar.
     """
     from tests.golden.conftest import MinimalMemoryStore  # noqa: WPS433
-
+    from tether.core.interfaces import ModelProvider
     from tether.core.types import OrchestratorConfig
     from tether.protocol.orchestration.chatty import (
         ChattyAgentOrchestrator,
@@ -172,7 +172,6 @@ async def test_turn_id_unbound_when_start_turn_raises(tmp_path):
     )
     from tether.protocol.orchestration.tool_runner import ToolRunner
     from tether.protocol.parsers.sliding import SlidingParser
-    from tether.core.interfaces import ModelProvider
     from tether.protocol.wire.events import Error, MessageStop
 
     class _NeverProvider(ModelProvider):

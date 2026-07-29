@@ -17,16 +17,13 @@ import json
 import os
 from pathlib import Path
 
-import pytest
-
+from tests.golden.conftest import MinimalMemoryStore, ScriptedProvider, normalize_event
 from tether.core.types import OrchestratorConfig
 from tether.protocol.orchestration.chatty import ChattyAgentOrchestrator
 from tether.protocol.orchestration.tool_runner import ToolRunner
 from tether.protocol.parsers.sliding import SlidingParser
 from tether.protocol.wire.transport_ndjson import transport_ndjson
 from tether.tools.time_tool import TimeTool
-
-from tests.golden.conftest import ScriptedProvider, MinimalMemoryStore, normalize_event
 
 # ---------------------------------------------------------------------------
 # Location of the golden fixture file

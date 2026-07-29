@@ -19,7 +19,7 @@ typed :class:`WireEvent` directly. Synthesis §3.4 + §3.5; §11.3 R1 / R7.
 from __future__ import annotations
 
 import asyncio
-from typing import AsyncGenerator, Dict, Optional, TYPE_CHECKING
+from typing import TYPE_CHECKING, AsyncGenerator, Dict, Optional
 
 from tether.core.interfaces import (
     ModelProvider,
@@ -29,8 +29,8 @@ from tether.core.interfaces import (
 )
 from tether.core.types import OrchestratorConfig
 from tether.protocol.orchestration.cancel import AsyncEventCancelToken
-from tether.protocol.orchestration.emitter import v0_compat_serialize
 from tether.protocol.orchestration.chatty import ChattyAgentOrchestrator
+from tether.protocol.orchestration.emitter import v0_compat_serialize
 from tether.protocol.orchestration.tool_runner import ToolRunner
 
 if TYPE_CHECKING:

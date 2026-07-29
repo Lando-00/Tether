@@ -12,7 +12,7 @@ import logging
 import os
 import signal
 import time
-from typing import Any, Dict, List, Optional, Tuple
+from typing import Any, Dict, List, Tuple
 from unittest.mock import MagicMock
 
 import pytest

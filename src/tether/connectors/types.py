@@ -22,7 +22,6 @@ from datetime import datetime
 from enum import Enum
 from typing import Any, Dict, Literal, Optional
 
-
 _LOGIN_PROMPT_KINDS = ("qr_code", "url", "password", "code")
 
 

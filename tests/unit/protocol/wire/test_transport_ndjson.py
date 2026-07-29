@@ -18,7 +18,6 @@ from tether.protocol.wire.events import (
 )
 from tether.protocol.wire.transport_ndjson import transport_ndjson
 
-
 # ---------------------------------------------------------------------------
 # Helpers
 # ---------------------------------------------------------------------------

@@ -28,17 +28,16 @@ in the layer logic; rs-T-C exercises it against the 20-row corpus.
 
 from __future__ import annotations
 
-from dataclasses import dataclass, field
-from datetime import datetime, timezone
 import json
 import re
+from dataclasses import dataclass, field
+from datetime import datetime, timezone
 from typing import Any, Optional
 
 import structlog
 
 from tether.core.redact import redact_text
 from tether.protocol.orchestration.notebook_state import AtomicFact
-
 
 _FENCE_RE = re.compile(r"```(?:[a-zA-Z]+)?\s*\n?(.*?)\n?```", re.DOTALL | re.IGNORECASE)
 _FACT_LINE_RE = re.compile(

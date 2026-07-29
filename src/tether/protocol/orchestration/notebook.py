@@ -10,7 +10,7 @@ import hashlib
 import uuid
 from collections.abc import Callable
 from datetime import date, datetime, timezone
-from typing import Any, AsyncGenerator, AsyncIterator, ClassVar, Optional, TYPE_CHECKING
+from typing import TYPE_CHECKING, Any, AsyncGenerator, AsyncIterator, ClassVar, Optional
 
 import structlog
 
@@ -23,6 +23,7 @@ from tether.core.interfaces import (
 )
 from tether.core.types import OrchestratorConfig as ChatSettings
 from tether.protocol.orchestration.chatty import _AWAITER_PERSIST_BUDGET_SEC, _TOOL_CANCEL_GRACE_SEC
+from tether.protocol.orchestration.notebook_input import has_entity_drift, prepare_research_input
 from tether.protocol.orchestration.notebook_parser import (
     ExtractResult,
     parse_extract_output,
@@ -37,13 +38,11 @@ from tether.protocol.orchestration.notebook_prompts import (
     SYNTHESIZER_SYSTEM_PROMPT,
     SYNTHESIZER_USER_TEMPLATE,
 )
-from tether.protocol.orchestration.notebook_input import has_entity_drift, prepare_research_input
 from tether.protocol.orchestration.notebook_state import (
     AtomicFact,
     NotebookState,
     _normalize_query,
 )
-from tether.runtime.abandoned_tasks import get_notebook_abandoned_task_tracker
 from tether.protocol.wire.events import (
     Error,
     MessageStart,
@@ -58,6 +57,7 @@ from tether.protocol.wire.events import (
     TextDelta,
     ThinkingDelta,
 )
+from tether.runtime.abandoned_tasks import get_notebook_abandoned_task_tracker
 
 if TYPE_CHECKING:
     from tether.core.tool_registry import ToolRegistry
@@ -474,7 +474,11 @@ class NotebookOrchestrator(Orchestrator):
             await self.store.add_user(session_id, prompt, turn_id=turn_id)
             prepared = prepare_research_input(prompt, prior_history)
             if prepared.clarification is not None:
-                async for event in _clarify(prepared.clarification.reason, prepared.clarification.message, prepared.clarification.candidates):
+                async for event in _clarify(
+                    prepared.clarification.reason,
+                    prepared.clarification.message,
+                    prepared.clarification.candidates,
+                ):
                     yield event
                 return
 
@@ -487,12 +491,22 @@ class NotebookOrchestrator(Orchestrator):
             planner_model = self.research_settings.planner_model or model_name
             extractor_model = self.research_settings.extractor_model or model_name
             synthesizer_model = self.research_settings.synthesizer_model or model_name
-            state = NotebookState(max_facts=self.research_settings.max_facts, max_iterations=self.research_settings.max_iterations, max_facts_per_extract=self.research_settings.max_facts_per_extract)
+            state = NotebookState(
+                max_facts=self.research_settings.max_facts,
+                max_iterations=self.research_settings.max_iterations,
+                max_facts_per_extract=self.research_settings.max_facts_per_extract,
+            )
 
             # Local facts are first-class cited notebook entries, never Brave input.
             for fact in prepared.local_facts:
                 if state.try_add_fact(fact):
-                    yield NotebookFactAdded(**_envelope(), fact_text=fact.text[:_MAX_FACT_LENGTH], source_query=fact.source_query, source_kind=fact.source_kind, total_facts=len(state.facts))
+                    yield NotebookFactAdded(
+                        **_envelope(),
+                        fact_text=fact.text[:_MAX_FACT_LENGTH],
+                        source_query=fact.source_query,
+                        source_kind=fact.source_kind,
+                        total_facts=len(state.facts),
+                    )
 
             if _is_cancelled():
                 cancelled = True
@@ -511,19 +525,29 @@ class NotebookOrchestrator(Orchestrator):
                     else:
                         plan_queries = payload
                 if any(has_entity_drift(query, question) for query in plan_queries):
-                    async for event in _clarify("ambiguous_entity", "Please clarify the entity you want me to research."):
+                    async for event in _clarify(
+                        "ambiguous_entity",
+                        "Please clarify the entity you want me to research.",
+                    ):
                         yield event
                     return
                 if not plan_queries:
                     plan_queries = sanitize_search_queries([question], max_queries=1)
                     if not plan_queries:
-                        async for event in _clarify("unsearchable_input", "Please provide a specific question I can safely research."):
+                        async for event in _clarify(
+                            "unsearchable_input",
+                            "Please provide a specific question I can safely research.",
+                        ):
                             yield event
                         return
                 for query in plan_queries:
                     state.queue.append(query)
                     state.processed_queries.add(_normalize_query(query))
-                    yield NotebookQueryAdded(**_envelope(), query=query[:_MAX_QUERY_LENGTH], queue_depth=len(state.queue))
+                    yield NotebookQueryAdded(
+                        **_envelope(),
+                        query=query[:_MAX_QUERY_LENGTH],
+                        queue_depth=len(state.queue),
+                    )
 
             while not cancelled and state.should_continue():
                 if _is_cancelled():
@@ -595,7 +619,12 @@ class NotebookOrchestrator(Orchestrator):
                     reasoning_effort=reasoning_effort,
                 ):
                     if kind == "heartbeat":
-                        yield NotebookPhaseProgress(**_envelope(), phase="extract", iteration=iteration, elapsed_ms=payload)
+                        yield NotebookPhaseProgress(
+                            **_envelope(),
+                            phase="extract",
+                            iteration=iteration,
+                            elapsed_ms=payload,
+                        )
                     else:
                         extracted = payload
                 if _is_cancelled():
@@ -615,7 +644,13 @@ class NotebookOrchestrator(Orchestrator):
                 )
                 for fact in extracted.facts:
                     if state.try_add_fact(fact):
-                        yield NotebookFactAdded(**_envelope(), fact_text=fact.text[:_MAX_FACT_LENGTH], source_query=fact.source_query, source_kind=fact.source_kind, total_facts=len(state.facts))
+                        yield NotebookFactAdded(
+                            **_envelope(),
+                            fact_text=fact.text[:_MAX_FACT_LENGTH],
+                            source_query=fact.source_query,
+                            source_kind=fact.source_kind,
+                            total_facts=len(state.facts),
+                        )
                     if state.limit_kind() == "max_facts":
                         break
                 if state.limit_kind() is not None:
@@ -655,7 +690,12 @@ class NotebookOrchestrator(Orchestrator):
                 count = len(state.facts) if state.limit_kind() == "max_facts" else state.iteration
                 yield NotebookLimitReached(**_envelope(), limit_kind=state.limit_kind(), count=count)
             if not state.facts:
-                yield NotebookNoFacts(**_envelope(), queries_attempted=state.iteration, iterations=state.iteration, note="empty plan" if not state.iteration else None)
+                yield NotebookNoFacts(
+                    **_envelope(),
+                    queries_attempted=state.iteration,
+                    iterations=state.iteration,
+                    note="empty plan" if not state.iteration else None,
+                )
             yield NotebookPhaseStart(**_envelope(), phase="synthesize", iteration=0)
             yield await _start()
             stripper = _ThinkStripper(
@@ -781,19 +821,46 @@ class NotebookOrchestrator(Orchestrator):
                 if not message_started:
                     yield await _start()
                 terminal_emitted = True
-                yield Error(**_envelope(), message="Research could not be completed.", error_type=type(exc).__name__, is_fatal=False)
+                yield Error(
+                    **_envelope(),
+                    message="Research could not be completed.",
+                    error_type=type(exc).__name__,
+                    is_fatal=False,
+                )
                 yield MessageStop(**_envelope(), stop_reason="error")
         finally:
             if turn_started:
                 status = "cancelled" if cancelled else "failed" if failed else "completed"
                 try:
-                    await asyncio.wait_for(self.store.add_assistant_text(session_id, "".join(answer_parts), thinking_text="".join(thinking_parts), save_thinking=self.config.save_thinking, turn_id=turn_id), timeout=_AWAITER_PERSIST_BUDGET_SEC)
+                    await asyncio.wait_for(
+                        self.store.add_assistant_text(
+                            session_id,
+                            "".join(answer_parts),
+                            thinking_text="".join(thinking_parts),
+                            save_thinking=self.config.save_thinking,
+                            turn_id=turn_id,
+                        ),
+                        timeout=_AWAITER_PERSIST_BUDGET_SEC,
+                    )
                 except (asyncio.TimeoutError, asyncio.CancelledError):
                     logger.warning("notebook.persist_assistant_timeout")
                 except Exception:
                     logger.warning("notebook.persist_assistant_error", exc_info=True)
                 try:
-                    await asyncio.wait_for(self.store.complete_turn(turn_id, status=status, stop_reason="cancelled" if cancelled else "error" if failed else "complete"), timeout=_AWAITER_PERSIST_BUDGET_SEC)
+                    await asyncio.wait_for(
+                        self.store.complete_turn(
+                            turn_id,
+                            status=status,
+                            stop_reason=(
+                                "cancelled"
+                                if cancelled
+                                else "error"
+                                if failed
+                                else "complete"
+                            ),
+                        ),
+                        timeout=_AWAITER_PERSIST_BUDGET_SEC,
+                    )
                 except (asyncio.TimeoutError, asyncio.CancelledError):
                     logger.warning("notebook.complete_turn_timeout")
                 except Exception:
@@ -1043,7 +1110,9 @@ def _format_notebook_block(facts: list[AtomicFact]) -> str:
     if not facts:
         return "(none)"
     return "\n".join(
-        f"{index}. {'[local calculation] ' if fact.source_kind == 'local_deterministic' else ''}{fact.text} [{fact.confidence}]"
+        f"{index}. "
+        f"{'[local calculation] ' if fact.source_kind == 'local_deterministic' else ''}"
+        f"{fact.text} [{fact.confidence}]"
         for index, fact in enumerate(facts, start=1)
     )
 

@@ -5,10 +5,9 @@ routes mounted under ``/api/v1/connectors`` behave as documented.
 """
 from __future__ import annotations
 
-from typing import Any, AsyncIterator, Dict, List, Optional
+from typing import Any, AsyncIterator, Dict, Optional
 from unittest.mock import AsyncMock
 
-import pytest
 from fastapi import APIRouter, FastAPI
 from fastapi.testclient import TestClient
 
@@ -25,7 +24,6 @@ from tether.connectors.types import (
 from tether.core.connector_registry import ConnectorRegistry
 from tether.core.interfaces import Tool
 from tether.engine import Engine
-
 
 # ---------------------------------------------------------------------------
 # Fakes

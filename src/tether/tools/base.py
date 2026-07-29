@@ -1,5 +1,5 @@
 from abc import abstractmethod
-from typing import Any, ClassVar, Dict, List, Literal, Optional, Type, TYPE_CHECKING, get_args, get_origin
+from typing import TYPE_CHECKING, Any, ClassVar, Dict, List, Literal, Optional, Type, get_args, get_origin
 
 from pydantic import BaseModel, ConfigDict
 
@@ -393,6 +393,7 @@ class BaseTool(Tool):
         """
         import inspect
         from typing import get_type_hints
+
         from pydantic.fields import FieldInfo
 
         sig = inspect.signature(self.run)

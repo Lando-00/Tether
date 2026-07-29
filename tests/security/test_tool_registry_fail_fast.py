@@ -6,8 +6,9 @@ must RAISE (not silently skip) so the service does not boot with a ghost tool.
 A non-enabled tool's construction failure is irrelevant and must be ignored.
 """
 
-import pytest
 from unittest.mock import patch
+
+import pytest
 
 
 def _make_registry(registry_cfg, enabled):

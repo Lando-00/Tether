@@ -25,6 +25,8 @@ from typing import Any
 import pytest
 import structlog
 
+from tests.fixtures.fake_research_provider import FakeResearchProvider
+from tests.fixtures.recording_research_store import RecordingResearchStore
 from tether.config.settings import ResearchSettings
 from tether.core.logging import reset_logging_for_tests
 from tether.core.types import OrchestratorConfig
@@ -36,10 +38,6 @@ from tether.protocol.wire.events import (
     NotebookLimitReached,
     NotebookPhaseStart,
 )
-from tests.fixtures.fake_research_provider import FakeResearchProvider
-
-
-from tests.fixtures.recording_research_store import RecordingResearchStore
 
 
 class _FakeStore(RecordingResearchStore):

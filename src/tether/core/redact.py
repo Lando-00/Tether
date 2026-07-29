@@ -17,7 +17,6 @@ from __future__ import annotations
 import re
 from typing import Any
 
-
 # Patterns that match secrets/tokens (broad; err on redacting too much).
 _TOKEN_PATTERNS = [
     # OpenAI / Anthropic / generic Bearer tokens (8+ char value)

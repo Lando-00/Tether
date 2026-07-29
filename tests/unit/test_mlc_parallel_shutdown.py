@@ -23,10 +23,7 @@ import weakref
 from pathlib import Path
 from typing import Optional
 
-import pytest
-
 from tether.providers.mlc.provider import MLCProvider
-
 
 # ---------------------------------------------------------------------------
 # Test helpers

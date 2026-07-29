@@ -21,7 +21,7 @@ from __future__ import annotations
 
 import asyncio
 import logging
-from typing import Dict, Mapping, Optional
+from typing import Dict, Mapping
 
 from tether.core.interfaces import Tool
 

@@ -16,14 +16,13 @@ Covers:
 """
 from __future__ import annotations
 
-from typing import Any, ClassVar, Dict, Literal, Optional, Type
+from typing import Any, ClassVar, Dict, Optional, Type
 
 import pytest
 from pydantic import Field, ValidationError
 
 from tether.core.types import ToolExecutionContext
 from tether.tools.base import BaseTool, ToolInputs
-
 
 # ---------------------------------------------------------------------------
 # Fixture inputs models + tools

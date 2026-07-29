@@ -16,7 +16,6 @@ import pytest
 
 from tether.observability.otel_adapter import _make_attrs
 
-
 # ---------------------------------------------------------------------------
 # Unit tests on _make_attrs — no OTel dependency
 # ---------------------------------------------------------------------------
@@ -186,6 +185,7 @@ def test_otel_span_status_description_is_redacted_end_to_end():
         reason="pip install tether[otel]",
     )
 
+    import structlog
     from opentelemetry import trace
     from opentelemetry.sdk.resources import Resource
     from opentelemetry.sdk.trace import TracerProvider
@@ -193,8 +193,6 @@ def test_otel_span_status_description_is_redacted_end_to_end():
     from opentelemetry.sdk.trace.export.in_memory_span_exporter import (
         InMemorySpanExporter,
     )
-
-    import structlog
 
     from tether.core.logging import (
         configure_logging,
@@ -268,6 +266,7 @@ def test_otel_record_exception_message_is_redacted_end_to_end():
         reason="pip install tether[otel]",
     )
 
+    import structlog
     from opentelemetry import trace
     from opentelemetry.sdk.resources import Resource
     from opentelemetry.sdk.trace import TracerProvider
@@ -275,8 +274,6 @@ def test_otel_record_exception_message_is_redacted_end_to_end():
     from opentelemetry.sdk.trace.export.in_memory_span_exporter import (
         InMemorySpanExporter,
     )
-
-    import structlog
 
     from tether.core.logging import (
         configure_logging,
@@ -364,6 +361,7 @@ def test_otel_span_attribute_is_redacted_end_to_end():
         reason="pip install tether[otel]",
     )
 
+    import structlog
     from opentelemetry import trace
     from opentelemetry.sdk.resources import Resource
     from opentelemetry.sdk.trace import TracerProvider
@@ -371,8 +369,6 @@ def test_otel_span_attribute_is_redacted_end_to_end():
     from opentelemetry.sdk.trace.export.in_memory_span_exporter import (
         InMemorySpanExporter,
     )
-
-    import structlog
 
     from tether.core.logging import (
         configure_logging,

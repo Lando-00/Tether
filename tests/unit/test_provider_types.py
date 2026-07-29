@@ -18,7 +18,6 @@ from tether.providers.types import (
     ProviderToolCall,
 )
 
-
 # ---------------------------------------------------------------------------
 # ProviderCapabilities (frozen dataclass)
 # ---------------------------------------------------------------------------

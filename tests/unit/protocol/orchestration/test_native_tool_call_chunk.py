@@ -18,6 +18,7 @@ from typing import Any, AsyncGenerator, Dict, List, Optional
 
 import pytest
 
+from tests.golden.conftest import MinimalMemoryStore
 from tether.core.interfaces import ModelProvider
 from tether.core.types import OrchestratorConfig
 from tether.protocol.orchestration.chatty import ChattyAgentOrchestrator
@@ -34,8 +35,6 @@ from tether.protocol.wire.events import (
     WireEvent,
 )
 from tether.tools.base import BaseTool
-
-from tests.golden.conftest import MinimalMemoryStore
 
 
 @pytest.fixture

@@ -1,14 +1,9 @@
 import asyncio
-import datetime
+from typing import Any, AsyncGenerator, Dict, List, Optional
 
 import structlog
 
 from tether.core.interfaces import ModelProvider
-from tether.core.types import Event
-
-
-from typing import List, Dict, Any, Optional, AsyncGenerator
-import asyncio
 
 _log = structlog.get_logger(__name__)
 
@@ -44,10 +39,10 @@ class DummyProvider(ModelProvider):
     def get_context_window(self, model_name: str) -> int:
         """
         Get the context window size for a dummy model.
-        
+
         Args:
             model_name: Name of the model (e.g., "dummy-model-1")
-        
+
         Returns:
             Context window size in tokens (hardcoded to 2048 for testing)
         """

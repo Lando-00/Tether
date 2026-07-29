@@ -14,13 +14,10 @@ from __future__ import annotations
 import inspect
 from typing import Any, Dict, Optional
 
-import pytest
-
 from tether.core.interfaces import Tool
 from tether.core.types import ToolExecutionContext
 from tether.tools.base import BaseTool
 from tether.tools.time_tool import TimeTool
-
 
 # ---------------------------------------------------------------------------
 # Fixture connector tool — illustrates Phase 4.5+ pattern

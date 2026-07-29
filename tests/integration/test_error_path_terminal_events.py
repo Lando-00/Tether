@@ -13,7 +13,7 @@ Synthesis §3.5; §11.3 R18.
 from __future__ import annotations
 
 import json
-from typing import Any, AsyncGenerator, Dict, List, Optional
+from typing import Any, AsyncGenerator, Dict
 
 import pytest
 from fastapi import APIRouter, FastAPI
@@ -21,7 +21,6 @@ from fastapi.testclient import TestClient
 
 from tether.app.http.api import lifespan
 from tether.app.http.routers.chat import router as chat_router
-
 
 # ---------------------------------------------------------------------------
 # Failing engine stub — chat() / stream() raise mid-iteration so the chat
@@ -104,20 +103,20 @@ def test_v0_error_path_emits_error_then_done(failing_client):
     """
     resp = _post(failing_client, accept="application/x-ndjson; version=0")
     assert resp.status_code == 200
-    lines = [json.loads(l) for l in resp.text.splitlines() if l.strip()]
-    types = [l["type"] for l in lines]
+    lines = [json.loads(line) for line in resp.text.splitlines() if line.strip()]
+    types = [line["type"] for line in lines]
     assert "error" in types
     assert types[-1] == "done", f"v0 last event must be 'done', got types={types}"
 
     # F7: error frame's ``ts`` is an ISO timestamp, not None.
-    err = next(l for l in lines if l["type"] == "error")
+    err = next(line for line in lines if line["type"] == "error")
     assert err["ts"] is not None
     assert isinstance(err["ts"], str) and "T" in err["ts"], (
         f"expected ISO timestamp on v0 error.ts, got {err['ts']!r}"
     )
 
     # F7: terminal ``done`` frame is well-formed.
-    done = next(l for l in lines if l["type"] == "done")
+    done = next(line for line in lines if line["type"] == "done")
     assert done["session_id"] == "sid-f7"
     assert isinstance(done["ts"], str) and "T" in done["ts"]
 
@@ -133,14 +132,14 @@ def test_v2_error_path_emits_error_then_message_stop(failing_client):
     """
     resp = _post(failing_client, accept="application/x-ndjson")
     assert resp.status_code == 200
-    lines = [json.loads(l) for l in resp.text.splitlines() if l.strip()]
-    types = [l["type"] for l in lines]
+    lines = [json.loads(line) for line in resp.text.splitlines() if line.strip()]
+    types = [line["type"] for line in lines]
     assert "error" in types
     assert types[-1] == "message_stop", (
         f"v2 last event must be 'message_stop', got types={types}"
     )
 
-    stop = next(l for l in lines if l["type"] == "message_stop")
+    stop = next(line for line in lines if line["type"] == "message_stop")
     assert stop["stop_reason"] == "error"
     # v2 envelope fields are present.
     assert stop["protocol_version"] == "1.0"
@@ -173,9 +172,9 @@ def test_sse_error_path_emits_error_then_message_stop(failing_client):
     # Each SSE frame is "event: X\ndata: {...}\n\n".
     data_line = next(
         (
-            l
-            for l in after_stop.splitlines()
-            if l.startswith("data: ")
+            line
+            for line in after_stop.splitlines()
+            if line.startswith("data: ")
         ),
         None,
     )

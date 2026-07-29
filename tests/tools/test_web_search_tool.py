@@ -21,41 +21,43 @@ mock client now assign ``tool._client = mock_client`` directly (bypassing
 :meth:`startup` for targeted unit tests). The lifecycle itself is covered
 by ``tests/unit/tools/test_web_search_tool_lifecycle.py``.
 """
+from unittest.mock import AsyncMock
+
 import pytest
 from pydantic import ValidationError
-from unittest.mock import AsyncMock
-from tether.tools.web_search_tool import WebSearchTool, WebSearchInputs
+
 from tether.tools.base import BaseTool
+from tether.tools.web_search_tool import WebSearchTool
 
 
 class TestWebSearchToolSchema:
     """Test schema generation and tool metadata."""
-    
+
     def test_tool_inherits_from_base(self):
         """Verify WebSearchTool properly inherits from BaseTool."""
         tool = WebSearchTool()
         assert isinstance(tool, BaseTool)
-    
+
     def test_schema_has_correct_parameters(self):
         """Test that auto-generated schema includes new Brave params."""
         tool = WebSearchTool()
         schema = tool.auto_schema
-        
+
         # Verify schema structure
         assert "function" in schema
         assert "name" in schema["function"]
         assert "parameters" in schema["function"]
-        
+
         params = schema["function"]["parameters"]
         properties = params["properties"]
-        
+
         # New Brave parameters should be present
         assert "query" in properties
         assert "count" in properties
         assert "country" in properties
         assert "search_lang" in properties
         assert "freshness" in properties
-        
+
         # Old NewsAPI parameters should NOT be present
         assert "sources" not in properties
         assert "domains" not in properties
@@ -64,16 +66,16 @@ class TestWebSearchToolSchema:
         assert "from_param" not in properties
         assert "to" not in properties
         assert "page" not in properties
-    
+
     def test_schema_required_fields(self):
         """Test that only 'query' is required."""
         tool = WebSearchTool()
         schema = tool.auto_schema
-        
+
         required = schema["function"]["parameters"]["required"]
         assert required == ["query"]
         assert len(required) == 1
-    
+
     def test_registry_name_injection(self):
         """Test that the @tool decorator name is reflected in the schema."""
         tool = WebSearchTool()

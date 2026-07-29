@@ -15,11 +15,10 @@ from unittest.mock import AsyncMock, MagicMock
 
 import pytest
 
-from tether.core.interfaces import ModelProvider, SessionStore, StreamParser, Tool
+from tether.core.interfaces import ModelProvider, SessionStore, StreamParser
 from tether.core.types import OrchestratorConfig
 from tether.protocol.orchestration.orchestrator import orchestrate
 from tether.protocol.orchestration.tool_runner import ToolRunner
-
 
 # ---------------------------------------------------------------------------
 # Helper: a scripted provider that records whether its finally block ran
@@ -68,9 +67,19 @@ class _NullStore(SessionStore):
     async def delete_session(self, session_id: str) -> bool: return False
     async def delete_all_sessions(self) -> int: return 0
     async def add_user(self, session_id: str, text: str, *, turn_id=None, seq_start=None) -> None: pass
-    async def add_assistant_text(self, session_id, text, thinking_text=None, save_thinking=True, *, turn_id=None, seq_start=None): pass
-    async def add_assistant_toolcall(self, session_id, tool_name, args, *, turn_id=None, tool_call_id=None, seq_start=None): pass
-    async def add_tool_result(self, session_id, tool_name, result, *, turn_id=None, tool_call_id=None, seq_start=None, status="ok", error=None, duration_ms=None): pass
+    async def add_assistant_text(
+        self, session_id, text, thinking_text=None, save_thinking=True,
+        *, turn_id=None, seq_start=None,
+    ): pass
+    async def add_assistant_toolcall(
+        self, session_id, tool_name, args,
+        *, turn_id=None, tool_call_id=None, seq_start=None,
+    ): pass
+    async def add_tool_result(
+        self, session_id, tool_name, result,
+        *, turn_id=None, tool_call_id=None, seq_start=None,
+        status="ok", error=None, duration_ms=None,
+    ): pass
     async def get_history(self, session_id, include_thinking=False): return []
     async def ensure_system_prompt(self, session_id, prompt): pass
     async def start_turn(self, session_id, turn_id, *, model_name=None): pass
@@ -222,7 +231,11 @@ async def test_provider_stream_aclosed_on_tool_call():
 
     # Minimal tool fake so ToolRunner doesn't crash
     fake_time_tool = MagicMock()
-    fake_time_tool.schema = {"name": "time", "description": "t", "parameters": {"type": "object", "properties": {}, "required": []}}
+    fake_time_tool.schema = {
+        "name": "time",
+        "description": "t",
+        "parameters": {"type": "object", "properties": {}, "required": []},
+    }
     fake_time_tool.run = AsyncMock(return_value={"time": "12:00"})
     tools = {"time": fake_time_tool}
 

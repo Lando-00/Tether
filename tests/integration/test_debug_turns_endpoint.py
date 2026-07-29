@@ -17,6 +17,13 @@ import pytest
 from fastapi import APIRouter, FastAPI
 from fastapi.testclient import TestClient
 
+from tether.app.http.api import lifespan
+from tether.app.http.routers.debug import router as debug_router
+from tether.app.http.routers.health import router as health_router
+from tether.config.settings import Settings
+from tether.engine import Engine
+from tether.runtime.watchdog_mode import WatchdogMode
+
 # yoyo 8.x imports pkg_resources which emits UserWarning attributed to
 # yoyo.migrations (stacklevel=2). Suppress so -W error sweeps stay clean.
 # Same pattern as test_engine_applies_migrations_on_startup.py.
@@ -24,15 +31,6 @@ pytestmark = pytest.mark.filterwarnings(
     "ignore::DeprecationWarning:yoyo",
     "ignore::UserWarning:yoyo",
 )
-
-from tether.app.http.api import lifespan
-from tether.app.http.routers.debug import router as debug_router
-from tether.app.http.routers.health import router as health_router
-from tether.config.settings import Settings
-from tether.context.migration_runner import apply_pending_migrations
-from tether.engine import Engine
-from tether.runtime.watchdog_mode import WatchdogMode
-
 
 # ---------------------------------------------------------------------------
 # Helpers

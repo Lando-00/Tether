@@ -5,13 +5,11 @@ middleware is enabled, and pass through when disabled (default).
 """
 from __future__ import annotations
 
-import pytest
 from fastapi import FastAPI
 from fastapi.middleware.trustedhost import TrustedHostMiddleware
 from fastapi.testclient import TestClient
 
 from tether.config.settings import TrustedHostSettings
-
 
 # ---------------------------------------------------------------------------
 # Helpers
