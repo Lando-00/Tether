@@ -4,6 +4,14 @@ updates:
     directory: "/"
     schedule:
       interval: "weekly"
+    # requirements.txt is a fully-resolved lockfile, so an ungrouped run
+    # opens one PR per transitive package — and because they all edit that
+    # single file, every PR after the first lands in conflict. Group them
+    # into one so the batch applies cleanly.
+    groups:
+      python-dependencies:
+        patterns:
+          - "*"
     # These are pinned to the mlc-venv2 baseline on purpose (see the comment
     # block in pyproject.toml and refactor/fu-pin-fastapi-pydantic-versions).
     # MLC/TVM Adreno wheels are installed out-of-band against that exact
@@ -44,3 +52,7 @@ updates:
     directory: "/"
     schedule:
       interval: "weekly"
+    groups:
+      github-actions:
+        patterns:
+          - "*"
