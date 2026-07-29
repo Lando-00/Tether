@@ -47,6 +47,21 @@ updates:
         update-types:
           - "version-update:semver-major"
           - "version-update:semver-minor"
+      # setuptools is a compatibility CEILING, not a stale pin. yoyo 8.x does
+      # `import pkg_resources` at module scope and setuptools removed that
+      # module in 81, so raising the bound breaks every migration-backed test
+      # with ModuleNotFoundError. Dependabot proposed <84 and turned CI red.
+      # Ignore outright — the bound moves only when yoyo reaches 9.x.
+      - dependency-name: "setuptools"
+      # neonize is pinned EXACTLY on purpose (ADR-0018 D1): .post0 releases are
+      # DLL-only, but minor-version moves may break the adapter's BLOCKER
+      # workarounds. tests/unit/connectors/whatsapp/test_pip_extra_resolves.py
+      # guards the exact pin, so a bump fails CI by design.
+      - dependency-name: "neonize"
+      # phonenumbers is held at <9 to stay aligned with the pinned neonize.
+      - dependency-name: "phonenumbers"
+        update-types:
+          - "version-update:semver-major"
 
   - package-ecosystem: "github-actions"
     directory: "/"

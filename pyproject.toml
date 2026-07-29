@@ -36,7 +36,7 @@ dependencies = [
     # Both the bound and the dependency go away when yoyo moves to 9.x.
     "setuptools<81",
     "platformdirs>=4.0,<5",
-    "structlog>=24.1,<26",
+    "structlog>=24.1,<27",
 ]
 
 [project.optional-dependencies]
