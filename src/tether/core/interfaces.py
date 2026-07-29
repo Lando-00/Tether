@@ -435,6 +435,24 @@ class Tool(ABC):
         ...
 
 
+    async def startup(self) -> None:
+        """Optional async initialisation, awaited once at engine startup.
+
+        Default no-op so simple tools need not implement it. Declared on the
+        ABC (rather than only on BaseTool) because
+        :func:`tether.tools.lifecycle.startup_all` calls it on every entry of
+        the tool registry, which is typed as this interface.
+        """
+        return None
+
+    async def shutdown(self) -> None:
+        """Optional async teardown, awaited once during engine shutdown.
+
+        Default no-op; see :meth:`startup`.
+        """
+        return None
+
+
 class Orchestrator(ABC):
     """Drives one turn of model → parser → tool-execution.
 

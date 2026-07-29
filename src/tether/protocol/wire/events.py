@@ -21,6 +21,16 @@ from pydantic import BaseModel, ConfigDict, Field
 
 PROTOCOL_VERSION = "1.0"
 
+# Terminal reason carried by :class:`MessageStop`. Exported so orchestrators
+# can annotate the value they compute instead of widening it to ``str``.
+StopReason = Literal[
+    "complete",
+    "tool_loop_exhausted",
+    "cancelled",
+    "client_disconnect",
+    "error",
+]
+
 
 class _Base(BaseModel):
     """Common envelope fields for every :data:`WireEvent`.
@@ -77,13 +87,7 @@ class MessageStop(_Base):
     """
 
     type: Literal["message_stop"] = "message_stop"
-    stop_reason: Literal[
-        "complete",
-        "tool_loop_exhausted",
-        "cancelled",
-        "client_disconnect",
-        "error",
-    ]
+    stop_reason: StopReason
 
 
 class TextDelta(_Base):

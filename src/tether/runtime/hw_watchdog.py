@@ -75,6 +75,7 @@ class HardwareWatchdog:
         # Preserve a list for existing callers/tests while also retaining the
         # Engine's provider IDs. A raw list remains supported for direct,
         # single-provider use and intentionally has no reset routing key.
+        entries: list[tuple[Optional[str], Any]]
         if isinstance(providers, Mapping):
             entries = list(providers.items())
             self._provider_ids_are_available = True

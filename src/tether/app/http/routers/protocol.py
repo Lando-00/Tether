@@ -46,7 +46,7 @@ def get_schema() -> Dict[str, Any]:
     negotiation; Phase 8 step 91 will land a checked-in artifact at
     ``docs/protocol/events.schema.json`` with a CI freshness check.
     """
-    adapter = TypeAdapter(WireEvent)
+    adapter: TypeAdapter[Any] = TypeAdapter(WireEvent)
     return {
         "protocol_version": PROTOCOL_VERSION,
         "schema": adapter.json_schema(),

@@ -83,6 +83,7 @@ from typing import (
     Dict,
     List,
     Optional,
+    cast,
 )
 
 import structlog
@@ -123,6 +124,7 @@ from tether.protocol.wire.events import (
     HwReset,
     MessageStart,
     MessageStop,
+    StopReason,
     TextDelta,
     ThinkingDelta,
     ToolCall,
@@ -599,9 +601,9 @@ class ChattyAgentOrchestrator(OrchestratorABC):
             ):
                 for parser_evt in _residue:
                     logger.debug(f"Parser finalize event: {parser_evt}")
-                    wire = self._wire(parser_evt, _envelope())
-                    if wire is not None:
-                        yield wire
+                    residue_wire = self._wire(parser_evt, _envelope())
+                    if residue_wire is not None:
+                        yield residue_wire
 
             # Cancellation contract step 2: cancel in-flight tool task
             # with 250 ms grace.
@@ -979,7 +981,9 @@ class ChattyAgentOrchestrator(OrchestratorABC):
         tc = chunk[0]
         if not isinstance(tc, dict):
             return None
-        fn = tc.get("function") if isinstance(tc.get("function"), dict) else {}
+        fn = tc.get("function")
+        if not isinstance(fn, dict):
+            fn = {}
         name = fn.get("name") or tc.get("name")
         if not name:
             return None
@@ -1359,7 +1363,7 @@ class ChattyAgentOrchestrator(OrchestratorABC):
         *,
         cancelled: bool,
         final_stop_reason: Optional[str],
-    ) -> str:
+    ) -> StopReason:
         """Choose the terminal :class:`MessageStop.stop_reason`.
 
         Precedence (synthesis §11.3 R1):
@@ -1375,7 +1379,9 @@ class ChattyAgentOrchestrator(OrchestratorABC):
         if cancelled:
             return "cancelled"
         if final_stop_reason is not None:
-            return final_stop_reason
+            # The loop only ever assigns members of StopReason; cast rather
+            # than re-validating a value we just produced ourselves.
+            return cast(StopReason, final_stop_reason)
         return "complete"
 
     def _tool_descriptors(self) -> List[ToolDescriptor]:

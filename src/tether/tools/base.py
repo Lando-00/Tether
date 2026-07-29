@@ -301,8 +301,9 @@ class BaseTool(Tool):
 
         Synthesis §4 Phase 4 step 43 + step 41 (auto_schema); A2 step 5/7.
         """
-        if self.Inputs is not None:
-            params, required = self._schema_from_inputs(type(self).Inputs)
+        inputs_cls = type(self).Inputs
+        if inputs_cls is not None:
+            params, required = self._schema_from_inputs(inputs_cls)
         else:
             params, required = self._schema_from_run_signature()
         return self.build_schema(

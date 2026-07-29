@@ -48,7 +48,9 @@ def _atomic_write_token(path: Path, token: str) -> None:
     fd, tmp_path = tempfile.mkstemp(prefix=".csrf_token.", dir=str(path.parent))
     try:
         try:
-            os.fchmod(fd, 0o600)
+            # os.fchmod is POSIX-only; the except also covers Windows, where
+            # the module attribute is absent entirely.
+            os.fchmod(fd, 0o600)  # type: ignore[attr-defined,unused-ignore]
         except (AttributeError, NotImplementedError, OSError):
             pass
         with os.fdopen(fd, "w", encoding="utf-8") as f:

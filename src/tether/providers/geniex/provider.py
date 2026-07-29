@@ -11,7 +11,7 @@ Capabilities: streaming, marker-based tools, cancel via stream close.
 from __future__ import annotations
 
 import time
-from typing import Any, AsyncGenerator, AsyncIterator, Callable, Dict, List, Optional
+from typing import Any, AsyncGenerator, AsyncIterator, Callable, Dict, List, Literal, Optional
 
 import httpx
 import structlog
@@ -209,11 +209,12 @@ class GenieXProvider(ModelProvider):
         return self._model_names()
 
     def list_model_info(self) -> List[ModelDetails]:
+        source: Literal["local", "remote"] = "local"
         return [
             ModelDetails(
                 id=name,
                 provider_kind=self.kind,
-                source=self.source,
+                source=source,
                 context_window=self._context_window,
                 supports_thinking=False,
                 supports_reasoning_effort=False,

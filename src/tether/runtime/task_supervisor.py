@@ -36,7 +36,7 @@ Citations:
 from __future__ import annotations
 
 import asyncio
-from typing import Any, Awaitable, Callable, Optional
+from typing import Any, Callable, Coroutine, Optional
 
 from tether.core.logging import logger
 
@@ -54,7 +54,7 @@ class SupervisedTask:
 
     def __init__(
         self,
-        coro_factory: Callable[[], Awaitable[Any]],
+        coro_factory: Callable[[], Coroutine[Any, Any, Any]],
         *,
         name: str,
     ) -> None:

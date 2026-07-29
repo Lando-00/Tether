@@ -23,7 +23,7 @@ def load(dotted: str, **kwargs: Any) -> Any:
     obj = getattr(mod, cls)
 
     if isinstance(obj, type):
-        sig = inspect.signature(obj.__init__)
+        sig = inspect.signature(obj)
         params = list(sig.parameters.values())
         accepts_kwargs = any(p.kind == p.VAR_KEYWORD for p in params)
         if accepts_kwargs:

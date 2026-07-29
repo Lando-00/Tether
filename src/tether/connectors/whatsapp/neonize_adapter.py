@@ -40,8 +40,12 @@ class NeonizeWhatsAppClientAdapter(WhatsAppClientAdapter):
     def __init__(self, *, uuid: str = "tether-wa") -> None:
         self._uuid = uuid
         self._auth_dir: Path | None = None
-        self._client = None
-        self._factory = None
+        # neonize is an optional extra and ships no type information, so the
+        # client/factory are Any. Without the annotation mypy infers the
+        # declared type as None from this initialiser and then rejects every
+        # attribute access on them after they are assigned in start().
+        self._client: Any = None
+        self._factory: Any = None
         self._started = False
         self._connect_task: asyncio.Task | None = None
         self._qr_future: asyncio.Future[bytes] | None = None

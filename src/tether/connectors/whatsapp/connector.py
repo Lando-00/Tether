@@ -9,7 +9,7 @@ import asyncio
 import base64
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
-from typing import TYPE_CHECKING, Any, AsyncIterator, Callable, ClassVar
+from typing import TYPE_CHECKING, Any, AsyncIterator, Callable, ClassVar, cast
 
 import structlog
 
@@ -83,7 +83,14 @@ def _qr_prompt_from_bytes(
 
 
 class _InboundInboxProxy:
-    """Delegates inbox calls to the connector's current injected inbox."""
+    """Delegates inbox calls to the connector's current injected inbox.
+
+    Structurally an :class:`~tether.context.inbox_store.InboundInbox` — it
+    implements every abstract method — but deliberately does not inherit it.
+    ``InboundInbox`` is a TYPE_CHECKING-only import here so that importing
+    the connector package does not drag in the context/store layer (R8 lazy
+    imports). Call sites therefore pass it through ``_as_inbox``.
+    """
 
     def __init__(self, owner: "WhatsAppConnector") -> None:
         self._owner = owner
@@ -121,6 +128,14 @@ class _InboundInboxProxy:
         return await self._target().prune_older_than(retention_days)
 
 
+def _as_inbox(proxy: _InboundInboxProxy) -> "InboundInbox":
+    """Narrow the structural proxy to the nominal InboundInbox type.
+
+    See :class:`_InboundInboxProxy` for why it cannot simply inherit.
+    """
+    return cast("InboundInbox", proxy)
+
+
 class WhatsAppConnector(Connector):
     """WhatsApp Web connector — long-lived link to a single user account."""
 
@@ -152,7 +167,6 @@ class WhatsAppConnector(Connector):
         self._inbound_task_handle: AsyncIterator[InboundEvent] | None = None
         self._adapter_started = False
         self._inbox_proxy = _InboundInboxProxy(self)
-
         self._adapter: WhatsAppClientAdapter | None = self._build_adapter()
         self._tools: dict[str, Tool] = self._build_tools()
 
@@ -481,16 +495,16 @@ class WhatsAppConnector(Connector):
                 state_provider=_state_provider,
             ),
             "whatsapp_list_unread": WhatsAppListUnreadTool(
-                inbox=self._inbox_proxy,
+                inbox=_as_inbox(self._inbox_proxy),
                 state_provider=_state_provider,
             ),
             "whatsapp_get_thread": WhatsAppGetThreadTool(
-                inbox=self._inbox_proxy,
+                inbox=_as_inbox(self._inbox_proxy),
                 target_resolver_fn=_resolver_fn,
                 state_provider=_state_provider,
             ),
             "whatsapp_inbox_mark_seen": WhatsAppInboxMarkSeenTool(
-                inbox=self._inbox_proxy,
+                inbox=_as_inbox(self._inbox_proxy),
                 state_provider=_state_provider,
             ),
             "whatsapp_mark_platform_read": WhatsAppMarkPlatformReadTool(

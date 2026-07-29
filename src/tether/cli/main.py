@@ -318,7 +318,9 @@ def _print_connector_health(connector: str) -> None:
     for item in connectors:
         if not isinstance(item, dict) or item.get("id") != connector:
             continue
-        health = item.get("health") if isinstance(item.get("health"), dict) else {}
+        health = item.get("health")
+        if not isinstance(health, dict):
+            health = {}
         state = health.get("state") or "unknown"
         detail = health.get("detail")
         suffix = f" ({detail})" if detail else ""
@@ -1180,10 +1182,12 @@ def main(
                             f"[yellow]Model '{model_name}' does not support reasoning effort.[/yellow]"
                         )
                     else:
-                        selected = selected_from_command or Prompt.ask(
-                            "Reasoning effort",
-                            choices=[*options, "default"],
-                            default=reasoning_effort or "default",
+                        selected = selected_from_command or str(
+                            Prompt.ask(
+                                "Reasoning effort",
+                                choices=[*options, "default"],
+                                default=reasoning_effort or "default",
+                            )
                         )
                         normalized = selected.lower()
                         if normalized in {"default", "none", "off"}:

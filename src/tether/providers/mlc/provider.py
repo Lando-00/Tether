@@ -290,7 +290,7 @@ class MLCProvider(ModelProvider):
             if not self._engine_cache:
                 _log.debug("provider.shutdown.no_models")
                 return
-            items = list(self._engine_cache.items())
+            items: list[tuple[str, Any]] = list(self._engine_cache.items())
             self._engine_cache = {}  # detach in O(1)
 
         n = len(items)
@@ -333,9 +333,9 @@ class MLCProvider(ModelProvider):
             futures = [executor.submit(_terminate_one, k, e) for k, e in items]
             # Drop the list-level engine refs immediately so only worker
             # frames keep the engines alive. Without this, `items` would
-            # pin every engine until after the as_completed loop.
+            # pin every engine until after the as_completed loop. clear()
+            # is what releases them; rebinding the name adds nothing.
             items.clear()
-            items = None
 
             # Bound total wall time by the provider's shutdown budget.
             # Per-engine timeout already caps each worker; the outer cap

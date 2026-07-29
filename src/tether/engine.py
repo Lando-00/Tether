@@ -136,10 +136,11 @@ class Engine:
         if parser_factory is None:
             # Back-compat: callers passing a single instance get a closure
             # that returns the same instance. Single-threaded use only.
-            _shared = parser
-            self._parser_factory: Callable[[], StreamParser] = (
-                lambda: _shared  # type: ignore[return-value]
-            )
+            # The `parser is None and parser_factory is None` guard above
+            # already proved `parser` is not None; bind it to a non-Optional
+            # local so the closure's return type is StreamParser.
+            _shared: StreamParser = parser  # type: ignore[assignment]
+            self._parser_factory: Callable[[], StreamParser] = lambda: _shared
         else:
             self._parser_factory = parser_factory
 
@@ -646,10 +647,10 @@ class Engine:
         # Pass the in-tree tool names as the M5 forbidden set so connector
         # tools cannot shadow them (connector spec §3.3).
         connectors: List[Any] = []
-        for cid, spec in settings.connectors.registry.items():
-            if not spec.enabled:
+        for cid, connector_spec in settings.connectors.registry.items():
+            if not connector_spec.enabled:
                 continue
-            conn = load(spec.impl, **spec.args)
+            conn = load(connector_spec.impl, **connector_spec.args)
             connectors.append(conn)
         connector_registry = ConnectorRegistry(
             connectors, tool_names=set(tools.keys()), inbox=inbox

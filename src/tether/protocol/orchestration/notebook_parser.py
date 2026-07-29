@@ -32,7 +32,7 @@ import json
 import re
 from dataclasses import dataclass, field
 from datetime import datetime, timezone
-from typing import Any, Optional
+from typing import Any, Dict, Optional, TypeGuard
 
 import structlog
 
@@ -516,7 +516,9 @@ def _first_balanced_object(raw: str) -> Optional[str]:
     return objects[0] if objects else None
 
 
-def _is_schema_candidate(result: Any, required_key: str) -> bool:
+def _is_schema_candidate(
+    result: Any, required_key: str
+) -> TypeGuard[Dict[str, Any]]:
     return isinstance(result, dict) and isinstance(result.get(required_key), list) and not (
         isinstance(result.get("name"), str) and "arguments" in result
     )

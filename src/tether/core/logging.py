@@ -17,7 +17,7 @@ import logging
 import logging.handlers
 import sys
 from pathlib import Path
-from typing import TYPE_CHECKING, Optional
+from typing import TYPE_CHECKING, Any, Optional
 
 import structlog
 
@@ -164,6 +164,7 @@ def configure_logging(settings: Optional["Settings"] = None) -> None:
     # structlog configuration.
     # The stdlib LoggerFactory bridges structlog → stdlib so that
     # structlog.get_logger(...).info(...) flows through the handlers above.
+    renderer: Any
     if log_settings.format == "json":
         renderer = structlog.processors.JSONRenderer()
     else:

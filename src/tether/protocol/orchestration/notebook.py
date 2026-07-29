@@ -10,7 +10,7 @@ import hashlib
 import uuid
 from collections.abc import Callable
 from datetime import date, datetime, timezone
-from typing import TYPE_CHECKING, Any, AsyncGenerator, AsyncIterator, ClassVar, Optional
+from typing import TYPE_CHECKING, Any, AsyncGenerator, AsyncIterator, Literal, Optional
 
 import structlog
 
@@ -385,7 +385,7 @@ class NotebookOrchestrator(Orchestrator):
     research settings via inspect.signature.
     """
 
-    is_implemented: ClassVar[bool] = True
+    is_implemented: bool = True
 
     def __init__(
         self,
@@ -448,7 +448,11 @@ class NotebookOrchestrator(Orchestrator):
             return MessageStart(**_envelope(), available_tools=[])
 
         async def _clarify(
-            reason: str, message: str, candidates: tuple[str, ...] = ()
+            reason: Literal[
+                "ambiguous_correction", "ambiguous_entity", "unsearchable_input"
+            ],
+            message: str,
+            candidates: tuple[str, ...] = (),
         ) -> AsyncIterator["WireEvent"]:
             nonlocal terminal_emitted
             yield await _start()
@@ -686,9 +690,12 @@ class NotebookOrchestrator(Orchestrator):
                 terminal_emitted = True
                 yield MessageStop(**_envelope(), stop_reason="cancelled")
                 return
-            if state.limit_kind() is not None and state.queue:
-                count = len(state.facts) if state.limit_kind() == "max_facts" else state.iteration
-                yield NotebookLimitReached(**_envelope(), limit_kind=state.limit_kind(), count=count)
+            limit_kind = state.limit_kind()
+            if limit_kind is not None and state.queue:
+                count = len(state.facts) if limit_kind == "max_facts" else state.iteration
+                yield NotebookLimitReached(
+                    **_envelope(), limit_kind=limit_kind, count=count
+                )
             if not state.facts:
                 yield NotebookNoFacts(
                     **_envelope(),
@@ -984,7 +991,7 @@ class NotebookOrchestrator(Orchestrator):
         facts: list[AtomicFact],
         today_iso: str,
         reasoning_effort: Optional[str] = None,
-    ) -> AsyncIterator[str]:
+    ) -> AsyncGenerator[str, None]:
         """Stream synthesizer text directly; never route through SlidingParser."""
         with structlog.contextvars.bound_contextvars(phase="synthesize"):
             logger.info("notebook.phase_start", phase="synthesize")

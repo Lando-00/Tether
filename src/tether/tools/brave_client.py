@@ -160,7 +160,7 @@ class BraveSearchClient:
         start_time = time.time()
 
         # Build query params with explicit Brave API param names
-        params = {
+        params: Dict[str, Any] = {
             "q": q,
             "count": min(count, 20),  # Cap at 20
             "cc": country,  # country → cc (Brave param)
