@@ -283,12 +283,15 @@ class GenieXProvider(ModelProvider):
         tools: Optional[List[Dict[str, Any]]] = None,
         *,
         request_id: Optional[str] = None,
+        reasoning_effort: Optional[str] = None,
     ) -> AsyncGenerator[str, None]:
         """Legacy string-chunk stream.
 
-        Deliberately ignores the ``tools`` argument — GenieX uses
-        marker-based tool calling only via system prompt instructions.
-        Never sends tools/tool_choice/functions to the server.
+        Deliberately ignores ``tools`` and ``reasoning_effort`` — GenieX uses
+        marker-based tool calling only via system prompt instructions and does
+        not advertise reasoning-effort support, so the hint is accepted for
+        interface parity and dropped. Never sends tools/tool_choice/functions
+        to the server.
         """
         async for content in self._client.stream_completion(
             model=self._resolve_request_model(model_name),

@@ -359,10 +359,16 @@ class Engine:
             ):
                 # A cached inventory can be stale rather than the name wrong,
                 # so re-probe once (throttled) before rejecting the model.
-                if self._reprobe_all_inventories() and model_name in (
-                    self._known_models_by_provider.get(provider_id) or set()
-                ):
-                    return provider_id
+                if self._reprobe_all_inventories():
+                    # The forced re-read may itself have failed. That is a
+                    # typed 503, never a "model not found" 422.
+                    failure = self._provider_inventory_failures.get(provider_id)
+                    if failure is not None:
+                        raise ProviderUnhealthyError(provider_id, failure)
+                    if model_name in (
+                        self._known_models_by_provider.get(provider_id) or set()
+                    ):
+                        return provider_id
                 raise UnknownModelError(model_name, provider_id)
             return provider_id
 
@@ -377,12 +383,24 @@ class Engine:
         ]
         if not owners and self._reprobe_all_inventories():
             # Same staleness guard as the explicit-provider path: a model that
-            # appeared after the last cached read must still be routable.
+            # appeared after the last cached read must still be routable. Only
+            # providers whose inventory is currently readable may be selected —
+            # a stale cache for a provider we just failed to re-read is not
+            # evidence of ownership.
             owners = [
                 pid
                 for pid in self.providers
-                if model_name in (self._known_models_by_provider.get(pid) or set())
+                if pid not in self._provider_inventory_failures
+                and model_name in (self._known_models_by_provider.get(pid) or set())
             ]
+            if not owners:
+                # A provider we could not re-read may be the real owner, so
+                # fail closed with a typed 503 instead of reporting the model
+                # unknown or routing past an unverified inventory.
+                for pid in self.providers:
+                    failure = self._provider_inventory_failures.get(pid)
+                    if failure is not None:
+                        raise ProviderUnhealthyError(pid, failure)
         if len(owners) == 1:
             return owners[0]
         if len(owners) > 1:
@@ -1093,6 +1111,15 @@ class Engine:
                         pid,
                     )
                     self.provider = new_legacy_provider
+            else:
+                # Warm-up can reveal models that only exist once the provider
+                # has reached its backend — GenieX discovers the server's
+                # catalogue here. Refresh immediately so routing and /models
+                # see them instead of waiting out the inventory TTL.
+                try:
+                    self._remember_provider_models(pid, prov, force=True)
+                except ProviderUnhealthyError:
+                    continue
 
     async def __aenter__(self) -> "Engine":
         """Phase 4 step 41: run startup() on every tool concurrently.

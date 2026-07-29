@@ -455,6 +455,68 @@ async def test_reasoning_effort_reaches_selected_provider():
     assert provider.reasoning_efforts == ["high"]
 
 
+class _WarmUpDiscoveringProvider(_StaticProvider):
+    """Provider that only learns its catalogue once ``warm_up`` has run.
+
+    Mirrors GenieXProvider, which reads the external server's model list
+    during warm-up rather than at construction time.
+    """
+
+    def __init__(self, initial: list[str], discovered: list[str]) -> None:
+        super().__init__(initial)
+        self._discovered = discovered
+
+    @property
+    def capabilities(self):
+        from tether.providers.types import ProviderCapabilities
+
+        return ProviderCapabilities(warm_up_required=True, warm_up_on_startup=True)
+
+    async def warm_up(self, model_name: str) -> None:
+        self._models = list(self._discovered)
+
+
+def test_reprobe_failure_on_explicit_provider_is_typed_unavailability():
+    """A failed forced re-probe is a 503, never a 'model not found' 422."""
+    provider = _FlakyProvider(["known-model"])
+    engine = _direct_engine({"mlc": provider}, default="mlc")
+    # Cache is primed and fresh, so the first read is served from cache and
+    # only the miss-triggered re-probe actually hits the provider.
+    provider.inventory_error = RuntimeError("inventory transport failed")
+
+    with pytest.raises(ProviderUnhealthyError) as exc_info:
+        engine.resolve_provider_id("absent-model", provider_id="mlc")
+
+    assert exc_info.value.provider_id == "mlc"
+
+
+def test_reprobe_failure_fails_closed_for_automatic_routing():
+    """An unreadable provider may own the model, so refuse to answer."""
+    failing = _FlakyProvider(["known-model"])
+    healthy = _StaticProvider(["other-model"])
+    engine = _direct_engine({"mlc": failing, "geniex": healthy}, default="mlc")
+    failing.inventory_error = RuntimeError("inventory transport failed")
+
+    with pytest.raises(ProviderUnhealthyError) as exc_info:
+        engine.resolve_provider_id("absent-model")
+
+    assert exc_info.value.provider_id == "mlc"
+
+
+@pytest.mark.anyio
+async def test_warm_up_discovered_models_are_visible_immediately():
+    """Startup warm-up must refresh the inventory, not wait out the TTL."""
+    provider = _WarmUpDiscoveringProvider(["alias"], ["alias", "discovered"])
+    engine = _direct_engine({"geniex": provider}, default="geniex")
+
+    assert "discovered" not in engine.list_models()
+
+    await engine._warm_up_providers_degraded()
+
+    assert "discovered" in engine.list_models()
+    assert engine.resolve_provider_id("discovered") == "geniex"
+
+
 @pytest.fixture
 def anyio_backend():
     return "asyncio"
