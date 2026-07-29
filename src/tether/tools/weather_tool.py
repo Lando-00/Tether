@@ -26,7 +26,12 @@ WEATHER_API_URL = "https://api.open-meteo.com/v1/forecast"
 
 def _get_location_lat_lon(location: str) -> Dict[str, Any]:
     """Helper to get latitude and longitude for a location."""
-    params = {"name": location, "count": 1, "language": "en", "format": "json"}
+    params: Dict[str, Any] = {
+        "name": location,
+        "count": 1,
+        "language": "en",
+        "format": "json",
+    }
     try:
         response = requests.get(GEOCODING_API_URL, params=params)
         response.raise_for_status()
@@ -72,7 +77,7 @@ class GetWeatherTool(BaseTool):
         if "error" in location_info:
             return location_info
 
-        params = {
+        params: Dict[str, Any] = {
             "latitude": location_info["latitude"],
             "longitude": location_info["longitude"],
             "current_weather": "true",
@@ -145,7 +150,7 @@ class GetForecastTool(BaseTool):
         # time, so a hand-rolled caller could pass days=0 or days=999.
         days = max(1, min(16, days))
 
-        params = {
+        params: Dict[str, Any] = {
             "latitude": location_info["latitude"],
             "longitude": location_info["longitude"],
             "daily": "weathercode,temperature_2m_max,temperature_2m_min,precipitation_probability_max",
