@@ -10,6 +10,11 @@ from pathlib import Path
 
 import pytest
 
+# MLCProvider imports mlc_llm at module scope. Those are the Qualcomm
+# CodeLinaro Adreno wheels, installed out-of-band and only available on
+# the Snapdragon target, so skip rather than fail collection elsewhere.
+pytest.importorskip("mlc_llm")
+
 from tether.providers.mlc.provider import MLCProvider
 
 
