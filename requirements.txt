@@ -196,7 +196,7 @@ uvicorn[standard]==0.37.0
     # via tether (pyproject.toml)
 watchfiles==1.1.1
     # via uvicorn
-wcwidth==0.7.0
+wcwidth==0.8.2
     # via prompt-toolkit
 websockets==16.0
     # via uvicorn
