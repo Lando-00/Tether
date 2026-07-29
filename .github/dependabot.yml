@@ -4,6 +4,34 @@ updates:
     directory: "/"
     schedule:
       interval: "weekly"
+    # These are pinned to the mlc-venv2 baseline on purpose (see the comment
+    # block in pyproject.toml and refactor/fu-pin-fastapi-pydantic-versions).
+    # MLC/TVM Adreno wheels are installed out-of-band against that exact
+    # environment, so a major/minor bump here silently desynchronises the
+    # lockfile from the interpreter the service actually runs on. Patch
+    # releases still come through, which is what the pin ranges allow.
+    # Re-baselining is a deliberate task, not a dependency-bot decision.
+    ignore:
+      - dependency-name: "fastapi"
+        update-types:
+          - "version-update:semver-major"
+          - "version-update:semver-minor"
+      - dependency-name: "uvicorn"
+        update-types:
+          - "version-update:semver-major"
+          - "version-update:semver-minor"
+      - dependency-name: "pydantic"
+        update-types:
+          - "version-update:semver-major"
+          - "version-update:semver-minor"
+      - dependency-name: "pydantic-settings"
+        update-types:
+          - "version-update:semver-major"
+          - "version-update:semver-minor"
+      - dependency-name: "yoyo-migrations"
+        update-types:
+          - "version-update:semver-major"
+          - "version-update:semver-minor"
 
   - package-ecosystem: "github-actions"
     directory: "/"
