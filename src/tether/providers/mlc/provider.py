@@ -1,3 +1,5 @@
+from __future__ import annotations
+
 import asyncio
 import json
 import os
@@ -6,14 +8,16 @@ import re
 import uuid
 from pathlib import Path
 from threading import Lock
-from typing import Any, AsyncGenerator, Dict, List, Optional
+from typing import TYPE_CHECKING, Any, AsyncGenerator, Dict, List, Optional
 
 import structlog
-from mlc_llm import AsyncMLCEngine
 
 from tether.core.interfaces import ModelProvider
 from tether.providers.hw import HwErrorClass, HwHealth
 from tether.runtime.daemon_call import daemon_thread_call
+
+if TYPE_CHECKING:  # pragma: no cover - typing only
+    from mlc_llm import AsyncMLCEngine
 
 _log = structlog.get_logger(__name__)
 
@@ -174,7 +178,7 @@ class MLCProvider(ModelProvider):
         self.marker_only_tools = marker_only_tools
 
         # Instance-level cache and locks (not shared across providers)
-        self._engine_cache: Dict[str, AsyncMLCEngine] = {}
+        self._engine_cache: Dict[str, "AsyncMLCEngine"] = {}
         self._cache_lock = Lock()
         self._init_locks: Dict[str, asyncio.Lock] = {}
 
@@ -663,8 +667,16 @@ class MLCProvider(ModelProvider):
             )
             return 4096
 
-    def _get_engine(self, model_name: str) -> AsyncMLCEngine:
+    def _get_engine(self, model_name: str) -> "AsyncMLCEngine":
         """Get a cached engine instance or create a new one for a specific model."""
+        # Imported here, not at module scope: mlc_llm is the Qualcomm
+        # CodeLinaro Adreno build, installed out-of-band and only present on
+        # the Snapdragon target. Keeping it lazy means the provider module
+        # imports (and MLCProvider constructs) anywhere, and the dependency
+        # is only required when a model is actually loaded. Matches the R8
+        # lazy-import rule the rest of the codebase follows.
+        from mlc_llm import AsyncMLCEngine
+
         self._validate_model_name(model_name)
         model_dir = self.models_root / model_name
         if not model_dir.exists():
@@ -688,7 +700,7 @@ class MLCProvider(ModelProvider):
             self._engine_cache[cache_key] = engine
             return engine
 
-    async def _ensure_engine(self, model_name: str) -> AsyncMLCEngine:
+    async def _ensure_engine(self, model_name: str) -> "AsyncMLCEngine":
         """Ensure the engine for a specific model is initialized."""
         self._validate_model_name(model_name)
         # Check if engine is already cached (fast path)
