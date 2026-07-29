@@ -273,12 +273,12 @@ class TestModelAlias:
 
 
 # ---------------------------------------------------------------------------
-# Static model list
+# Model list before discovery (server never reached)
 # ---------------------------------------------------------------------------
 
 
 class TestStaticModelList:
-    """list_models returns statically configured model(s)."""
+    """Before any successful discovery, list_models degrades to the config."""
 
     def test_list_models_returns_configured_model(self):
         transport = _make_transport()
@@ -304,6 +304,150 @@ class TestStaticModelList:
 
         models = provider.list_models()
         assert "qwen3-npu" in models
+
+
+# ---------------------------------------------------------------------------
+# Server-side model discovery
+# ---------------------------------------------------------------------------
+
+
+class TestModelDiscovery:
+    """GenieX advertises every model the server serves, like MLC does for disk.
+
+    Before this, ``list_models`` returned the single configured ``model_id``
+    regardless of what the server actually hosted, so model-name routing could
+    never reach a second GenieX model.
+    """
+
+    def _provider(self, model_ids, **kwargs):
+        transport = _make_transport(model_ids=model_ids)
+        client = httpx.AsyncClient(transport=transport, base_url="http://test")
+        return GenieXProvider(
+            base_url="http://test",
+            http_client=client,
+            **kwargs,
+        )
+
+    @pytest.mark.anyio
+    async def test_warm_up_discovers_all_server_models(self):
+        provider = self._provider(["m-a", "m-b", "m-c"], model_id="m-a")
+
+        assert provider.list_models() == ["m-a"]  # not yet discovered
+        await provider.warm_up("m-a")
+
+        assert provider.list_models() == ["m-a", "m-b", "m-c"]
+
+    @pytest.mark.anyio
+    async def test_configured_alias_is_not_duplicated(self):
+        """The display alias replaces its wire id rather than appearing twice."""
+        provider = self._provider(
+            ["unsloth/Qwen3-1.7B-GGUF:Q4_0", "m-b"],
+            model_id="qwen3-npu",
+            request_model_id="unsloth/Qwen3-1.7B-GGUF:Q4_0",
+        )
+
+        await provider.warm_up("qwen3-npu")
+
+        models = provider.list_models()
+        assert models == ["qwen3-npu", "m-b"]
+        assert "unsloth/Qwen3-1.7B-GGUF:Q4_0" not in models
+
+    @pytest.mark.anyio
+    async def test_unreachable_server_falls_back_to_configured_id(self):
+        """A down server must still advertise the configured model.
+
+        The Engine relies on this to report a meaningful unhealthy status
+        instead of an empty provider.
+        """
+        transport = _make_transport(model_ids=["m-a"], health_ok=False)
+        client = httpx.AsyncClient(transport=transport, base_url="http://test")
+        provider = GenieXProvider(
+            base_url="http://test", model_id="m-a", http_client=client
+        )
+
+        with pytest.raises(Exception):
+            await provider.warm_up("m-a")
+
+        assert provider.list_models() == ["m-a"]
+
+    @pytest.mark.anyio
+    async def test_refresh_failure_keeps_previous_cache(self):
+        """Discovery is best-effort: a failed refresh never empties routing."""
+        calls = {"n": 0}
+
+        def _handler(request: httpx.Request) -> httpx.Response:
+            if request.url.path == "/v1/models":
+                calls["n"] += 1
+                if calls["n"] == 1:
+                    return httpx.Response(200, json=_models_response(["m-a", "m-b"]))
+                return httpx.Response(503, text="gone")
+            return httpx.Response(200, text='"GenieX-CLI is running"')
+
+        client = httpx.AsyncClient(
+            transport=httpx.MockTransport(_handler), base_url="http://test"
+        )
+        provider = GenieXProvider(
+            base_url="http://test", model_id="m-a", http_client=client
+        )
+
+        await provider.warm_up("m-a")
+        assert provider.list_models() == ["m-a", "m-b"]
+
+        assert await provider.refresh_models(force=True) == ["m-a", "m-b"]
+        assert provider.list_models() == ["m-a", "m-b"]
+
+    @pytest.mark.anyio
+    async def test_refresh_is_throttled(self):
+        """Unknown-model lookups must not become a round-trip per request."""
+        calls = {"n": 0}
+
+        def _handler(request: httpx.Request) -> httpx.Response:
+            if request.url.path == "/v1/models":
+                calls["n"] += 1
+                return httpx.Response(200, json=_models_response(["m-a"]))
+            return httpx.Response(200, text='"GenieX-CLI is running"')
+
+        client = httpx.AsyncClient(
+            transport=httpx.MockTransport(_handler), base_url="http://test"
+        )
+        provider = GenieXProvider(
+            base_url="http://test", model_id="m-a", http_client=client
+        )
+
+        await provider.warm_up("m-a")
+        assert calls["n"] == 1
+
+        for _ in range(5):
+            await provider.refresh_models()
+        assert calls["n"] == 1, "throttle should suppress repeat refreshes"
+
+        await provider.refresh_models(force=True)
+        assert calls["n"] == 2
+
+    @pytest.mark.anyio
+    async def test_discovered_model_is_routed_on_the_wire(self):
+        """Requesting a discovered model must not silently serve the default."""
+        captured: Dict[str, Any] = {}
+        transport = _make_transport(model_ids=["m-a", "m-b"], capture_request=captured)
+        client = httpx.AsyncClient(transport=transport, base_url="http://test")
+        provider = GenieXProvider(
+            base_url="http://test", model_id="m-a", http_client=client
+        )
+
+        await provider.warm_up("m-a")
+        await _drain(provider, model_name="m-b")
+
+        assert captured["body"]["model"] == "m-b"
+
+    @pytest.mark.anyio
+    async def test_list_model_info_marks_only_configured_as_default(self):
+        provider = self._provider(["m-a", "m-b"], model_id="m-a")
+        await provider.warm_up("m-a")
+
+        info = {d.id: d for d in provider.list_model_info()}
+        assert set(info) == {"m-a", "m-b"}
+        assert info["m-a"].is_default is True
+        assert info["m-b"].is_default is False
 
 
 # ---------------------------------------------------------------------------
@@ -354,7 +498,9 @@ class TestCapabilities:
         assert caps.tools_marker is True
         assert caps.warm_up_required is True
         assert caps.warm_up_on_startup is True
-        assert caps.multi_model is False
+        # The server can serve several models; the set is discovered at
+        # warm-up rather than fixed by config.
+        assert caps.multi_model is True
 
     def test_context_window_returns_configured(self):
         transport = _make_transport()

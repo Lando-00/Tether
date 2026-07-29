@@ -10,6 +10,7 @@ Capabilities: streaming, marker-based tools, cancel via stream close.
 """
 from __future__ import annotations
 
+import time
 from typing import Any, AsyncGenerator, AsyncIterator, Callable, Dict, List, Optional
 
 import httpx
@@ -27,13 +28,20 @@ from tether.providers.types import (
 
 _log = structlog.get_logger(__name__)
 
+# Minimum seconds between un-forced GET /v1/models refreshes, so a stream of
+# requests for unknown model names cannot turn into a stream of round-trips
+# to the external server.
+_MODEL_REFRESH_MIN_INTERVAL_S = 30.0
+
 _CAPABILITIES = ProviderCapabilities(
     streaming=True,
     tools_native=False,
     tools_marker=True,
     thinking_channel=False,
     cancel_inflight=True,
-    multi_model=False,
+    # The server can serve several models; which ones is discovered at
+    # warm-up rather than fixed by config (see refresh_models).
+    multi_model=True,
     warm_up_required=True,
     # Warm-up here is a cheap HTTP reachability probe (GET /v1/ + GET
     # /v1/models), not a weight load, so the Engine runs it at boot to
@@ -94,6 +102,13 @@ class GenieXProvider(ModelProvider):
         self._temperature = temperature
         self._max_tokens = max_tokens
 
+        # Discovery cache (see refresh_models). ``None`` means "the server has
+        # never been reached", which is distinct from "the server reported no
+        # models" (an empty list) — only the former falls back to the
+        # configured id so /readyz can still describe an unreachable server.
+        self._discovered: List[str] | None = None
+        self._discovered_at: float = 0.0
+
         self._client = GenieXClient(
             base_url=base_url,
             timeout_seconds=timeout_seconds,
@@ -123,29 +138,88 @@ class GenieXProvider(ModelProvider):
         return self._model_id
 
     # ------------------------------------------------------------------
-    # Model listing (static — always returns configured model)
+    # Model listing (discovered from the server; see refresh_models)
     # ------------------------------------------------------------------
 
-    def list_models(self) -> List[str]:
-        """Return configured model ID regardless of server state.
+    def _model_names(self) -> List[str]:
+        """Resolve the advertised model list.
 
-        This enables Engine 503 unhealthy routing: even when the GenieX
-        server is down, the provider reports its configured model so the
-        engine can surface a meaningful unhealthy status.
+        The configured ``model_id`` is always first and always present — it is
+        the display alias for ``request_model_id`` and is what
+        ``default_model()`` returns. Any *other* model the server advertises is
+        appended under its own server-side id.
+
+        When the server has never been reached, this degrades to the configured
+        id alone so the Engine can still surface a meaningful unhealthy status
+        for a down server rather than an empty provider.
         """
-        return [self._model_id]
+        if self._discovered is None:
+            return [self._model_id]
+        extra = [
+            name
+            for name in self._discovered
+            if name != self._request_model_id and name != self._model_id
+        ]
+        return [self._model_id, *extra]
+
+    def _resolve_request_model(self, model_name: str) -> str:
+        """Map a caller-facing model name onto the id sent on the wire.
+
+        ``model_id`` is an alias for ``request_model_id``; every other
+        discovered name is already a server-side id and passes through. An
+        empty/absent name falls back to the configured default so callers that
+        do not care which model they get keep working.
+        """
+        if not model_name or model_name == self._model_id:
+            return self._request_model_id
+        return model_name
+
+    async def refresh_models(self, *, force: bool = False) -> List[str]:
+        """Re-read ``GET /v1/models`` into the discovery cache.
+
+        Throttled to one call per :data:`_MODEL_REFRESH_MIN_INTERVAL_S` unless
+        ``force`` is set, so a stream of requests for unknown model names
+        cannot turn into a stream of HTTP round-trips.
+
+        Never raises: a failed refresh leaves the previous cache in place (or
+        leaves it unpopulated), because discovery is best-effort metadata and
+        must not take down request routing.
+        """
+        now = time.monotonic()
+        if (
+            not force
+            and self._discovered is not None
+            and (now - self._discovered_at) < _MODEL_REFRESH_MIN_INTERVAL_S
+        ):
+            return self._model_names()
+        try:
+            self._discovered = await self._client.list_models()
+            self._discovered_at = now
+        except Exception as exc:  # noqa: BLE001 - discovery is best-effort
+            _log.warning("geniex.refresh_models.failed", error=str(exc))
+        return self._model_names()
+
+    def list_models(self) -> List[str]:
+        """Return the models this provider serves.
+
+        Synchronous by contract (:class:`ModelProvider`), so it reads the cache
+        populated by :meth:`warm_up` / :meth:`refresh_models` rather than
+        issuing HTTP itself.
+        """
+        return self._model_names()
 
     def list_model_info(self) -> List[ModelDetails]:
         return [
             ModelDetails(
-                id=self._model_id,
+                id=name,
                 provider_kind=self.kind,
                 source=self.source,
                 context_window=self._context_window,
                 supports_thinking=False,
                 supports_reasoning_effort=False,
-                is_default=True,
+                is_default=(name == self._model_id),
             )
+            for name in self._model_names()
         ]
 
     def get_context_window(self, model_name: str) -> int:
@@ -186,6 +260,11 @@ class GenieXProvider(ModelProvider):
                 f"Available: {server_models}"
             )
 
+        # Warm-up is the one guaranteed round-trip at boot, so it doubles as
+        # the discovery pass that seeds list_models() for routing.
+        self._discovered = server_models
+        self._discovered_at = time.monotonic()
+
         _log.info(
             "geniex.warm_up.ok",
             model_id=self._model_id,
@@ -212,7 +291,7 @@ class GenieXProvider(ModelProvider):
         Never sends tools/tool_choice/functions to the server.
         """
         async for content in self._client.stream_completion(
-            model=self._request_model_id,
+            model=self._resolve_request_model(model_name),
             messages=messages,
             temperature=self._temperature,
             max_tokens=self._max_tokens,
@@ -248,7 +327,7 @@ class GenieXProvider(ModelProvider):
         )
 
         async for content in self._client.stream_completion(
-            model=self._request_model_id,
+            model=self._resolve_request_model(model_name),
             messages=messages,
             temperature=self._temperature,
             max_tokens=effective_max,
