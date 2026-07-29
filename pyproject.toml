@@ -34,9 +34,9 @@ dependencies = [
     # dependency resolves to a version that does not provide it. Python 3.12
     # venvs also no longer ship setuptools implicitly, hence declaring it.
     # Both the bound and the dependency go away when yoyo moves to 9.x.
-    "setuptools<81",
+    "setuptools<84",
     "platformdirs>=4.0,<5",
-    "structlog>=24.1,<26",
+    "structlog>=24.1,<27",
 ]
 
 [project.optional-dependencies]
@@ -53,8 +53,8 @@ sqlcipher = [] # Reserved for optional encrypted SQLite support.
 # may break the adapter's BLOCKER workarounds (wa-D-neonize.md §10).
 # phonenumbers is used by TargetResolver for E.164 normalisation.
 whatsapp = [
-    "neonize==0.3.17.post0",
-    "phonenumbers>=8.13,<9",
+    "neonize==0.4.3.post0",
+    "phonenumbers>=8.13,<10",
 ]
 otel = [
     "opentelemetry-api>=1.20.0",
