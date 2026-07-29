@@ -168,7 +168,7 @@ structlog==25.5.0
     # via tether (pyproject.toml)
 tabulate==0.10.0
     # via yoyo-migrations
-typer==0.25.1
+typer==0.27.0
     # via tether (pyproject.toml)
 typing-extensions==4.15.0
     # via
