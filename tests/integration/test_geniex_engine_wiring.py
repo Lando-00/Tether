@@ -367,6 +367,7 @@ class _FakeGenieXProvider(ModelProvider):
             tools_native=False,
             tools_marker=True,
             warm_up_required=True,
+            warm_up_on_startup=True,
             multi_model=False,
         )
 

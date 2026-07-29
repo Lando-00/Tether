@@ -849,13 +849,19 @@ class Engine:
         ProviderUnhealthyError (HTTP 503). The configured default is never
         replaced; its legacy singular-provider shim may point at another
         healthy provider without affecting request routing.
+
+        Gated on ``capabilities.warm_up_on_startup``, NOT on
+        ``warm_up_required``. The latter only means "warming makes the first
+        inference fast" and is True for MLC, whose ``warm_up`` loads model
+        weights onto the GPU — booting the server must never trigger that.
+        See :class:`~tether.providers.types.ProviderCapabilities`.
         """
         if not self.providers:
             return
         for pid in list(self.providers.keys()):
             prov = self.providers[pid]
             caps = getattr(prov, "capabilities", None)
-            if caps is None or not getattr(caps, "warm_up_required", False):
+            if caps is None or not getattr(caps, "warm_up_on_startup", False):
                 continue
             model = None
             try:

@@ -353,6 +353,7 @@ class TestCapabilities:
         assert caps.tools_native is False
         assert caps.tools_marker is True
         assert caps.warm_up_required is True
+        assert caps.warm_up_on_startup is True
         assert caps.multi_model is False
 
     def test_context_window_returns_configured(self):

@@ -35,6 +35,10 @@ _CAPABILITIES = ProviderCapabilities(
     cancel_inflight=True,
     multi_model=False,
     warm_up_required=True,
+    # Warm-up here is a cheap HTTP reachability probe (GET /v1/ + GET
+    # /v1/models), not a weight load, so the Engine runs it at boot to
+    # classify health for degraded-mode routing.
+    warm_up_on_startup=True,
 )
 
 

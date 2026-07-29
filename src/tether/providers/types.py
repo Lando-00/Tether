@@ -100,6 +100,23 @@ class ProviderCapabilities:
     HTTP: False (server holds state). The orchestrator may invoke
     ``warm_up`` in advance."""
 
+    warm_up_on_startup: bool = False
+    """Engine should call :meth:`ModelProvider.warm_up` during startup to
+    classify the provider's health for degraded-mode routing.
+
+    Deliberately distinct from :attr:`warm_up_required`. That flag is a
+    *hint to the orchestrator* that warming makes the first inference fast;
+    it says nothing about when warming is affordable. For MLC, ``warm_up``
+    loads model weights onto the GPU and takes seconds to minutes, so
+    booting the server must NOT trigger it — the lazy engine cache exists
+    precisely to defer that cost to the first real request.
+
+    Providers set this True only when warm-up is a *cheap reachability
+    probe* whose result the Engine needs at boot: external HTTP-backed
+    providers (GenieX) verify the server is up and enumerate its models,
+    which is what lets a dead external server be demoted to
+    ``_provider_start_failures`` instead of failing requests later."""
+
 
 @dataclass(frozen=True)
 class ModelInfo:
