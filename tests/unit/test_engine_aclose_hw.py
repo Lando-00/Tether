@@ -9,7 +9,7 @@ Synthesis §4 Phase 3 step 35; §11.3 R22 (placeholder superseded).
 """
 from __future__ import annotations
 
-from unittest.mock import MagicMock
+from unittest.mock import AsyncMock, MagicMock
 
 import pytest
 
@@ -140,6 +140,25 @@ async def test_engine_aclose_fallback_no_watchdog_no_shutdown_all():
     # Must not raise.
     await eng.aclose()
     assert eng._closed is True
+
+
+@pytest.mark.anyio
+async def test_engine_aclose_direct_non_hw_provider_closes_once():
+    """The provider-map fan-out owns async close for direct engines."""
+    provider = MagicMock(spec=[])
+    provider.aclose = AsyncMock()
+    eng = Engine(
+        provider=provider,
+        parser=MagicMock(),
+        session_store=MagicMock(),
+        tools={},
+        system_prompt="",
+        hw_watchdog=None,
+    )
+
+    await eng.aclose()
+
+    provider.aclose.assert_awaited_once()
 
 
 def test_engine_watchdog_mode_library_default(settings):

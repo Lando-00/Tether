@@ -19,7 +19,7 @@ from pathlib import Path
 from typing import Any, Dict, List, Literal, Optional
 
 import yaml
-from pydantic import Field, model_validator
+from pydantic import Field, model_serializer, model_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 from tether.config._strict import StrictModel
@@ -83,7 +83,10 @@ class ProvidersSettings(StrictModel):
     @model_validator(mode="after")
     def _promote_legacy_and_validate(self) -> "ProvidersSettings":
         # 1. Reject ambiguous config.
-        if self.model is not None and self.model_registry:
+        if {
+            "model",
+            "model_registry",
+        }.issubset(self.model_fields_set):
             raise ConfigError(
                 "providers.model (singular, deprecated) and "
                 "providers.model_registry are mutually exclusive. "
@@ -134,6 +137,15 @@ class ProvidersSettings(StrictModel):
                 f"(known ids: {sorted(self.model_registry)})."
             )
         return self
+
+    @model_serializer(mode="wrap")
+    def _serialize_canonical_registry(self, handler):
+        """Avoid serializing both mutually exclusive provider config shapes."""
+        data = handler(self)
+        if "model_registry" in data:
+            data.pop("model", None)
+        return data
+
 
 
 class ToolSpec(StrictModel):

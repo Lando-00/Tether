@@ -49,6 +49,7 @@ def _chat_payload(
     model_name: str,
     mode: ChatMode,
     provider_id: Optional[str] = None,
+    reasoning_effort: Optional[str] = None,
 ) -> dict[str, str]:
     """Build the `/chat/stream` request body."""
     body: dict[str, str] = {
@@ -59,6 +60,8 @@ def _chat_payload(
     }
     if provider_id is not None:
         body["provider_id"] = provider_id
+    if reasoning_effort is not None:
+        body["reasoning_effort"] = reasoning_effort
     return body
 
 
@@ -363,6 +366,29 @@ def get_available_model_details() -> list:
         return response.json()
     except requests.RequestException:
         return []
+
+
+def _reasoning_efforts_for_model(
+    model_name: str,
+    provider_id: Optional[str],
+) -> Optional[list[str]]:
+    """Return accepted reasoning efforts, or ``None`` when metadata is ambiguous."""
+    matching = [
+        detail
+        for detail in get_available_model_details()
+        if detail.get("id") == model_name
+        and (
+            provider_id is None
+            or detail.get("provider_id") in (_PROVIDER_ID_SENTINEL, provider_id)
+        )
+    ]
+    if provider_id is None and len(matching) != 1:
+        return None
+    if provider_id is not None and len(matching) != 1:
+        return None
+    if not matching or not matching[0].get("supports_reasoning_effort", False):
+        return []
+    return list(matching[0].get("reasoning_efforts") or [])
 
 
 def get_provider_health() -> tuple[Optional[dict], Optional[str]]:
@@ -719,6 +745,24 @@ def _interactive_model_select(
     table.add_column("Context", justify="right")
 
     sorted_details = sorted(details, key=lambda d: (d.get("provider_id", ""), d.get("id", "")))
+    default_choice = next(
+        (
+            index
+            for index, info in enumerate(sorted_details, 1)
+            if (
+                info.get("provider_id") == default_pid
+                and info.get("is_default", False)
+            )
+        ),
+        next(
+            (
+                index
+                for index, info in enumerate(sorted_details, 1)
+                if info.get("provider_id") == default_pid
+            ),
+            1,
+        ),
+    )
     for i, info in enumerate(sorted_details, 1):
         pid = info.get("provider_id", "")
         is_default = info.get("is_default", False)
@@ -732,7 +776,10 @@ def _interactive_model_select(
     console.print(table)
 
     while True:
-        choice_str = Prompt.ask("Select model #", default="1")
+        choice_str = Prompt.ask(
+            "Select model #",
+            default=str(default_choice),
+        )
         try:
             choice = int(choice_str.strip() or "1")
             if 1 <= choice <= len(sorted_details):
@@ -1076,6 +1123,10 @@ def main(
     info_table.add_row(
         f"Provider: {provider_id or 'default'}", "Type [bold cyan]\\providers[/bold cyan] to list providers"
     )
+    info_table.add_row(
+        f"Reasoning effort: {reasoning_effort or 'provider default'}",
+        "Type [bold cyan]\\reasoning[/bold cyan] to change",
+    )
     info_table.add_row("", "Type [bold cyan]\\exit[/bold cyan] or [bold cyan]\\quit[/bold cyan] to end")
     console.print(Panel(info_table, title="Chat Info", border_style="dim"))
 
@@ -1107,6 +1158,52 @@ def main(
                 console.print(f"Show thinking is now {thinking_status}.")
                 console.rule()
                 continue  # Go to next prompt
+            if stripped_prompt == "\\reasoning" or stripped_prompt.startswith("\\reasoning "):
+                parts = user_prompt.strip().split(maxsplit=1)
+                selected_from_command = parts[1].strip() if len(parts) == 2 else None
+                if selected_from_command and selected_from_command.lower() in {
+                    "default",
+                    "none",
+                    "off",
+                }:
+                    reasoning_effort = None
+                    console.print("[green]Reasoning effort reset to the provider default.[/green]")
+                else:
+                    options = _reasoning_efforts_for_model(model_name, provider_id)
+                    if options is None:
+                        console.print(
+                            "[yellow]Reasoning-effort metadata is unavailable or "
+                            "ambiguous for the current model.[/yellow]"
+                        )
+                    elif not options:
+                        console.print(
+                            f"[yellow]Model '{model_name}' does not support reasoning effort.[/yellow]"
+                        )
+                    else:
+                        selected = selected_from_command or Prompt.ask(
+                            "Reasoning effort",
+                            choices=[*options, "default"],
+                            default=reasoning_effort or "default",
+                        )
+                        normalized = selected.lower()
+                        if normalized in {"default", "none", "off"}:
+                            reasoning_effort = None
+                            console.print("[green]Reasoning effort reset to the provider default.[/green]")
+                        else:
+                            option_by_lower = {
+                                option.lower(): option for option in options
+                            }
+                            if normalized not in option_by_lower:
+                                console.print(
+                                    f"[red]Choose one of: {', '.join(options)}, default.[/red]"
+                                )
+                            else:
+                                reasoning_effort = option_by_lower[normalized]
+                                console.print(
+                                    f"[green]Reasoning effort set to {reasoning_effort}.[/green]"
+                                )
+                console.rule()
+                continue
             if stripped_prompt in {"\\chat", "\\research", "\\mode"} or stripped_prompt.startswith("\\mode "):
                 try:
                     if stripped_prompt == "\\chat":
@@ -1161,6 +1258,16 @@ def main(
                     )
                     model_name = new_model
                     provider_id = new_pid
+                    new_efforts = _reasoning_efforts_for_model(model_name, provider_id)
+                    if (
+                        reasoning_effort is not None
+                        and new_efforts is not None
+                        and reasoning_effort not in new_efforts
+                    ):
+                        reasoning_effort = None
+                        console.print(
+                            "[yellow]Reasoning effort reset: the selected model does not accept it.[/yellow]"
+                        )
                 else:
                     console.print(f"[dim]Keeping current model: {model_name}[/dim]")
                 console.rule()
@@ -1188,6 +1295,7 @@ def main(
                     model_name=model_name,
                     mode=current_mode,
                     provider_id=provider_id,
+                    reasoning_effort=reasoning_effort,
                 ),
                 headers=_mutating_headers(
                     {
@@ -1334,10 +1442,28 @@ def main(
                                 )
 
                         elif evt_type == "notebook_clarification_requested":
-                            message = str(event.get("message", "Please clarify your question."))
+                            message = str(
+                                event.get(
+                                    "message",
+                                    "Please clarify your question.",
+                                )
+                            )
                             candidates = event.get("candidates", [])
-                            candidate_text = "\n".join(f"• {item}" for item in candidates if isinstance(item, str))
-                            console.print(Panel(message + (f"\n\nCandidates:\n{candidate_text}" if candidate_text else ""), title="Research clarification", border_style="yellow"))
+                            candidate_text = "\n".join(
+                                f"• {item}"
+                                for item in candidates
+                                if isinstance(item, str)
+                            )
+                            content = message
+                            if candidate_text:
+                                content += f"\n\nCandidates:\n{candidate_text}"
+                            console.print(
+                                Panel(
+                                    content,
+                                    title="Research clarification",
+                                    border_style="yellow",
+                                )
+                            )
 
                         elif evt_type == "notebook_query_added":
                             if debug:

@@ -829,7 +829,7 @@
     },
     "/api/v1/readyz": {
       "get": {
-        "description": "Readiness probe: verifies store and provider(s) are functional.\n\nADR-0021 P2.A: response is additive. New top-level keys:\n\n  - ``providers``: ``{pid: {healthy, kind, source, error}}`` from\n    ``engine.list_provider_health()``.\n  - ``default_provider_id``: the engine's current default.\n\nLegacy keys preserved on every response path:\n\n  - ``ready`` — overall flag; now also requires ≥1 healthy provider.\n  - ``store`` — DB connectivity.\n  - ``provider`` — True iff ≥1 healthy provider.\n  - ``hw_health`` — HW watchdog summary (or absent when no watchdog).\n  - ``connectors`` / ``connector_start_failures`` — connector layer.",
+        "description": "Readiness probe: verifies store and provider(s) are functional.\n\nADR-0021 P2.A: response is additive. New top-level keys:\n\n  - ``providers``: ``{pid: {healthy, kind, source, error}}`` from\n    ``engine.list_provider_health()``.\n  - ``default_provider_id``: the engine's current default.\n\nLegacy keys preserved on every response path:\n\n  - ``ready`` — overall flag; now also requires ≥1 healthy provider.\n  - ``store`` — DB connectivity.\n  - ``provider`` — True iff ≥1 healthy provider.\n  - ``hw_health`` — HW watchdog summary (or absent when no watchdog).\n  - ``connectors`` / ``connector_start_failures`` — connector layer.\n  - ``operational_health.notebook_cleanup`` — abandoned notebook cleanup\n    diagnostics; never changes readiness or triggers recovery.",
         "operationId": "readyz_api_v1_readyz_get",
         "responses": {
           "200": {

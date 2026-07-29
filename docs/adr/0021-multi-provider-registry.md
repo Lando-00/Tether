@@ -67,6 +67,12 @@ default. The provider_id is a stable identifier set by config (registry key),
 NOT the provider's `.kind` property — multiple providers of the same kind are
 permitted (e.g. two Copilot accounts under different ids).
 
+Research phase model overrides (`planner_model`, `extractor_model`, and
+`synthesizer_model`) are likewise resolved against the request's selected
+provider. NotebookOrchestrator has one provider instance per request, so an
+override owned only by another provider is rejected with 422 before streaming
+rather than being sent to the wrong backend.
+
 ### 2. Failure isolation: degraded mode (locked)
 
 `Engine.from_settings` constructs every entry in

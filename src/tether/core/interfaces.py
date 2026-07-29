@@ -25,6 +25,7 @@ class ModelProvider(ABC):
         tools: Optional[List[Dict[str, Any]]] = None,
         *,
         request_id: Optional[str] = None,
+        reasoning_effort: Optional[str] = None,
     ) -> AsyncGenerator[str | List[Dict[str, Any]], None]:
         """Stream raw text chunks for a given model, history, and tools.
 
@@ -38,6 +39,11 @@ class ModelProvider(ABC):
         contextvars by RequestIdMiddleware). Providers accept it so any
         internal log calls they make can include it for cross-layer
         correlation. Phase 7 step 72.
+
+        ``reasoning_effort`` is an optional provider-specific inference hint.
+        HTTP validates it against :meth:`list_model_info` before streaming.
+        Providers that do not advertise support must accept and ignore it so
+        direct library callers retain a stable stream contract.
         """
         ...
 
@@ -460,6 +466,7 @@ class Orchestrator(ABC):
         prompt: str,
         model_name: str,
         cancel_token: Optional["CancelToken"] = None,
+        reasoning_effort: Optional[str] = None,
     ) -> AsyncIterator["WireEvent"]:
         """Run one turn. Yields typed WireEvent objects.
 

@@ -6,8 +6,21 @@ from copy import deepcopy
 import pytest
 
 from tether.config.settings import Settings
-from tether.core.errors import ConfigError
+from tether.core.errors import ConfigError, UnknownModelError
 from tether.engine import Engine
+from tether.providers.dummy.provider import DummyProvider
+
+
+class _InventoryFailingProvider(DummyProvider):
+    """Provider fixture whose model listing is transiently unavailable."""
+
+    def list_models(self) -> list[str]:
+        raise RuntimeError("synthetic inventory failure")
+
+
+class _ConstructionFailingProvider:
+    def __init__(self, **kwargs: object) -> None:
+        raise RuntimeError("synthetic construction failure")
 
 
 def _settings_dict(tmp_path) -> dict:
@@ -116,5 +129,59 @@ def test_per_phase_model_override_valid_passes(tmp_path):
     engine = Engine.from_settings(settings)
     try:
         assert isinstance(engine, Engine)
+    finally:
+        _close(engine)
+
+
+def test_per_phase_override_inventory_failure_defers_to_request(tmp_path):
+    raw = _settings_dict(tmp_path)
+    raw["providers"].pop("model")
+    raw["providers"]["model_registry"] = {
+        "unavailable": {
+            "impl": (
+                "tests.unit.config.test_engine_research_boot."
+                "_InventoryFailingProvider"
+            ),
+            "args": {},
+        }
+    }
+    raw["providers"]["default_model_provider"] = "unavailable"
+    raw["orchestrator"]["research"] = {
+        "planner_model": "research-model",
+    }
+
+    engine = Engine.from_settings(Settings.model_validate(raw))
+    try:
+        assert "unavailable" in engine._provider_inventory_failures
+    finally:
+        _close(engine)
+
+
+def test_per_phase_override_construction_failure_defers_to_request(tmp_path):
+    raw = _settings_dict(tmp_path)
+    raw["providers"].pop("model")
+    raw["providers"]["model_registry"] = {
+        "healthy": {
+            "impl": "tether.providers.dummy.provider.DummyProvider",
+            "args": {},
+        },
+        "failed": {
+            "impl": (
+                "tests.unit.config.test_engine_research_boot."
+                "_ConstructionFailingProvider"
+            ),
+            "args": {},
+        },
+    }
+    raw["providers"]["default_model_provider"] = "healthy"
+    raw["orchestrator"]["research"] = {
+        "planner_model": "failed-provider-model",
+    }
+
+    engine = Engine.from_settings(Settings.model_validate(raw))
+    try:
+        assert "failed" in engine._provider_start_failures
+        with pytest.raises(UnknownModelError):
+            engine.validate_research_model_overrides("healthy")
     finally:
         _close(engine)

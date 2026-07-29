@@ -26,6 +26,20 @@ def test_singular_model_synthesises_registry():
     assert isinstance(p.model, ProviderSpec)
 
 
+def test_legacy_model_dump_round_trips_as_canonical_registry():
+    with pytest.warns(DeprecationWarning):
+        legacy = ProvidersSettings.model_validate(
+            {"model": _SPEC_A, "parser": _PARSER, "session_store": _STORE}
+        )
+
+    dumped = legacy.model_dump()
+
+    assert "model" not in dumped
+    reloaded = ProvidersSettings.model_validate(dumped)
+    assert reloaded.model_registry == legacy.model_registry
+    assert reloaded.default_model_provider == "default"
+
+
 def test_explicit_registry_works():
     with warnings.catch_warnings():
         warnings.simplefilter("error", DeprecationWarning)
@@ -40,6 +54,7 @@ def test_explicit_registry_works():
     assert set(p.model_registry) == {"a", "b"}
     assert p.default_model_provider == "a"
     assert p.model is None
+    assert "model" not in p.model_dump()
 
 
 def test_both_singular_and_registry_raises_config_error():
@@ -48,6 +63,29 @@ def test_both_singular_and_registry_raises_config_error():
             {
                 "model": _SPEC_A,
                 "model_registry": {"a": _SPEC_A},
+                "default_model_provider": "a",
+                "parser": _PARSER,
+                "session_store": _STORE,
+            }
+        )
+
+
+@pytest.mark.parametrize(
+    "model,model_registry",
+    [
+        (_SPEC_A, {}),
+        (None, {"a": _SPEC_A}),
+    ],
+)
+def test_explicitly_specifying_both_provider_shapes_raises(
+    model,
+    model_registry,
+):
+    with pytest.raises(ConfigError, match="mutually exclusive"):
+        ProvidersSettings.model_validate(
+            {
+                "model": model,
+                "model_registry": model_registry,
                 "default_model_provider": "a",
                 "parser": _PARSER,
                 "session_store": _STORE,

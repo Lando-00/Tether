@@ -40,6 +40,14 @@ rules supersede the corresponding snippets below:
    hardware failure does not make another healthy provider unready, and an
    unscoped fatal reset is refused for keyed provider mappings. Legacy raw-list
    callers retain their historical fan-out recovery behavior.
+7. Model inventory failures are typed provider unavailability, not empty model
+   lists. Automatic routing must return 503 rather than silently selecting a
+   different provider when ownership cannot be determined.
+8. Research phase overrides must belong to the selected provider because
+   NotebookOrchestrator owns one provider instance per request.
+   Boot-time validation defers unavailable inventories and construction-failed
+   providers; request-time validation returns typed unavailability or
+   wrong-provider errors before research streaming begins.
 
 ## 1. Settings (`src/tether/config/settings.py`)
 

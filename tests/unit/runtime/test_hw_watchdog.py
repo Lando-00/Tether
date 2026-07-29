@@ -327,13 +327,17 @@ async def test_watchdog_reset_after_refuses_unscoped_multi_provider_reset():
     assert geniex.reset_calls == []
 
 
-async def test_watchdog_reset_after_keeps_legacy_list_fanout():
-    """Raw-list callers retain the pre-registry reset behavior."""
+async def test_watchdog_reset_after_keeps_legacy_list_fanout_with_provider_id():
+    """Raw-list callers retain fan-out even with Engine's synthetic ID."""
     first = FakeHWProvider(classify_result=HwErrorClass.FATAL_RECOVERABLE)
     second = FakeHWProvider(classify_result=HwErrorClass.FATAL_RECOVERABLE)
     wd = HardwareWatchdog([first, second])
 
-    did_reset = await wd.reset_after(RuntimeError("legacy"), model_name="m")
+    did_reset = await wd.reset_after(
+        RuntimeError("legacy"),
+        model_name="m",
+        provider_id="default",
+    )
 
     assert did_reset is True
     assert first.reset_calls == ["m"]

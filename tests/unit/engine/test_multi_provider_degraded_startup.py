@@ -21,7 +21,7 @@ from unittest.mock import MagicMock
 import pytest
 
 from tether import Engine
-from tether.config.settings import Settings
+from tether.config.settings import ResearchSettings, Settings
 from tether.core.errors import (
     AmbiguousModelError,
     ConfigError,
@@ -60,6 +60,52 @@ class _StaticProvider(ModelProvider):
 
     def get_context_window(self, model_name: str) -> int:
         return 4096
+
+
+class _FlakyProvider(_StaticProvider):
+    """Provider whose inventory can become temporarily unavailable."""
+
+    def __init__(self, models: list[str]) -> None:
+        super().__init__(models)
+        self.inventory_error: Exception | None = None
+        self.list_calls = 0
+
+    def list_models(self) -> list[str]:
+        self.list_calls += 1
+        if self.inventory_error is not None:
+            raise self.inventory_error
+        return super().list_models()
+
+
+class _ReasoningProvider(_StaticProvider):
+    """Captures the per-request reasoning hint passed through Engine.chat()."""
+
+    def __init__(self, models: list[str]) -> None:
+        super().__init__(models)
+        self.reasoning_efforts: list[str | None] = []
+
+    async def stream(
+        self,
+        model_name,
+        messages,
+        tools=None,
+        *,
+        request_id=None,
+        reasoning_effort=None,
+    ):
+        self.reasoning_efforts.append(reasoning_effort)
+        yield "A complete response long enough to flush the parser overlap."
+
+
+class _NoopOrchestrator:
+    is_implemented = True
+
+    def __init__(self) -> None:
+        pass
+
+    async def run(self, **kwargs):
+        if False:
+            yield kwargs
 
 
 def _direct_engine(
@@ -314,6 +360,99 @@ def test_explicit_provider_rejects_another_provider_model():
     with pytest.raises(UnknownModelError) as exc_info:
         engine.resolve_provider_id("geniex-model", provider_id="mlc")
     assert exc_info.value.provider_id == "mlc"
+
+
+def test_inventory_failure_does_not_reroute_shared_model():
+    failing = _FlakyProvider(["shared-model"])
+    healthy = _StaticProvider(["shared-model"])
+    engine = _direct_engine(
+        {"mlc": failing, "geniex": healthy},
+        default="mlc",
+    )
+    failing.inventory_error = RuntimeError("inventory transport failed")
+    # Startup primed the inventory cache; expire it so resolution performs a
+    # real re-read and observes the transport failure.
+    engine._model_inventory_at.clear()
+
+    with pytest.raises(ProviderUnhealthyError) as exc_info:
+        engine.resolve_provider_id("shared-model")
+
+    assert exc_info.value.provider_id == "mlc"
+    health = engine.list_provider_health()
+    assert health["mlc"]["healthy"] is False
+    assert "inventory unavailable" in health["mlc"]["error"]
+
+
+def test_research_override_must_belong_to_selected_provider():
+    engine = _direct_engine(
+        {
+            "mlc": _StaticProvider(["mlc-model"]),
+            "geniex": _StaticProvider(["geniex-model"]),
+        },
+        default="mlc",
+    )
+    engine._research_settings = ResearchSettings(planner_model="geniex-model")
+
+    with pytest.raises(UnknownModelError) as exc_info:
+        engine.validate_research_model_overrides("mlc")
+
+    assert exc_info.value.model_name == "geniex-model"
+    assert exc_info.value.provider_id == "mlc"
+
+
+@pytest.mark.anyio
+async def test_http_resolved_provider_does_not_reprobe_inventory(monkeypatch):
+    provider = _FlakyProvider(["mlc-model"])
+    engine = _direct_engine({"mlc": provider}, default="mlc")
+    provider.inventory_error = RuntimeError("inventory changed after HTTP check")
+    calls_before = provider.list_calls
+
+    from tether.protocol.orchestration import registry as registry_module
+
+    monkeypatch.setattr(
+        registry_module,
+        "resolve_orchestrator_class",
+        lambda *_args, **_kwargs: _NoopOrchestrator,
+    )
+
+    events = await _drain(
+        engine.chat(
+            session_id="s1",
+            prompt="hi",
+            model_name="mlc-model",
+            _resolved_provider_id="mlc",
+        )
+    )
+
+    assert events == []
+    assert provider.list_calls == calls_before
+
+
+@pytest.mark.anyio
+async def test_reasoning_effort_reaches_selected_provider():
+    from tether.context.memory_store import MemoryStore
+
+    provider = _ReasoningProvider(["reasoning-model"])
+    engine = Engine(
+        providers={"reasoning": provider},
+        default_provider_id="reasoning",
+        parser=SlidingParser(),
+        session_store=MemoryStore(),
+        tools={},
+        system_prompt="test",
+    )
+
+    await _drain(
+        engine.chat(
+            session_id="s1",
+            prompt="hi",
+            model_name="reasoning-model",
+            provider_id="reasoning",
+            reasoning_effort="high",
+        )
+    )
+
+    assert provider.reasoning_efforts == ["high"]
 
 
 @pytest.fixture

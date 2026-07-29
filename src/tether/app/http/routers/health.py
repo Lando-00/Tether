@@ -76,30 +76,6 @@ async def readyz(request: Request):
         ``engine.list_provider_health()``.
       - ``default_provider_id``: the engine's current default.
 
-    Behavior:
-      - Store: read history for a sentinel session (exercises DB connectivity).
-      - Provider (HW path): when ``engine.hw_watchdog`` is present (always
-        true for engines built via ``Engine.from_settings``), aggregate health
-        across HW providers. ``error`` → ready=false. ``healthy`` /
-        ``degraded`` → ready=true (cold-cache MLC providers report
-        ``degraded`` until a model is loaded; that's normal).
-      - Provider (fallback): no watchdog (engine constructed directly without
-        ``from_settings``) → fall back to ``list_models()``.
-      - Connectors (Phase 4.5 step 47e): when ``engine.connector_registry``
-        is present, append a ``connectors`` array with each connector's
-        ``{id, state, detail}`` snapshot. Connector failures do NOT flip
-        ``ready`` — connectors in UNCONFIGURED / LOGGED_OUT / ERROR are an
-        expected steady state until the user runs the login flow (connector
-        spec §3.3).
-      - Connector start failures (P0-F / Tribunal P0-07 / A2-F2): when a
-        connector that was READY at config time raised from ``start()``
-        during ``Engine.__aenter__``, the failing id is included in the
-        ``connector_start_failures`` array and ``ready`` is set to false
-        so process supervisors can take action. The response remains 200.
-      - Operational health: ``operational_health.notebook_cleanup`` reports
-        bounded abandoned-task tracking for diagnostics only. Its state never
-        changes readiness or initiates recovery.
-
     Legacy keys preserved on every response path:
 
       - ``ready`` — overall flag; now also requires ≥1 healthy provider.
@@ -107,12 +83,22 @@ async def readyz(request: Request):
       - ``provider`` — True iff ≥1 healthy provider.
       - ``hw_health`` — HW watchdog summary (or absent when no watchdog).
       - ``connectors`` / ``connector_start_failures`` — connector layer.
+      - ``operational_health.notebook_cleanup`` — abandoned notebook cleanup
+        diagnostics; never changes readiness or triggers recovery.
     """
     svc = request.app.state.gen_svc
+    operational_health = _operational_health_block()
 
     # ADR-0021 P2.A: per-provider health block.
     providers_block: Dict[str, Dict[str, Any]] = {}
     default_provider_id: Optional[str] = None
+    refresh_inventory = getattr(
+        svc,
+        "refresh_provider_inventory_health",
+        None,
+    )
+    if callable(refresh_inventory):
+        refresh_inventory()
     if hasattr(svc, "list_provider_health"):
         try:
             providers_block = svc.list_provider_health()
@@ -133,7 +119,7 @@ async def readyz(request: Request):
         "connectors": [],
         "connector_start_failures": [],
         # Informational only — never gates readiness (Phase 9.8 cleanup policy).
-        "operational_health": _operational_health_block(),
+        "operational_health": operational_health,
     }
     if providers_block:
         body["providers"] = providers_block

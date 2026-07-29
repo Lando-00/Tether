@@ -19,6 +19,7 @@ adds it at the HTTP boundary. Tests here verify the HTTP layer only.
 from __future__ import annotations
 
 from datetime import datetime, timezone
+from types import SimpleNamespace
 from typing import Dict, List, Optional
 from unittest.mock import AsyncMock
 
@@ -89,6 +90,7 @@ class _FakeEngine:
 
         # Records: list of provider_id kwargs received by chat() / stream().
         self.captured_chat_provider_ids: List[Optional[str]] = []
+        self.captured_chat_reasoning_efforts: List[Optional[str]] = []
         self.captured_stream_provider_ids: List[Optional[str]] = []
 
         # Optional overrides for list_model_info (per-test metadata).
@@ -164,6 +166,7 @@ class _FakeEngine:
     ):
         """Record provider_id and yield a minimal valid v2 event stream."""
         self.captured_chat_provider_ids.append(provider_id)
+        self.captured_chat_reasoning_efforts.append(reasoning_effort)
         from datetime import datetime, timezone
 
         from tether.protocol.wire.events import MessageStart, MessageStop, TextDelta
@@ -218,15 +221,21 @@ class _FakeEngine:
 class _SimpleProvider(ModelProvider):
     kind = "fake-simple"
 
-    def __init__(self, label: str, model_infos: List[ModelDetails]) -> None:
+    def __init__(
+        self,
+        label: str,
+        model_infos: List[ModelDetails],
+        models: Optional[List[str]] = None,
+    ) -> None:
         self.label = label
         self._model_infos = model_infos
+        self._models = models
 
     async def stream(self, model_name, messages, tools=None, *, request_id=None, reasoning_effort=None):  # type: ignore
         yield "ok"
 
     def list_models(self) -> List[str]:
-        return [m.id for m in self._model_infos]
+        return self._models or [m.id for m in self._model_infos]
 
     def list_model_info(self) -> List[ModelDetails]:
         return list(self._model_infos)
@@ -387,6 +396,26 @@ def test_ambiguous_model_without_provider_returns_422():
     assert engine.captured_chat_provider_ids == []
 
 
+def test_research_override_must_belong_to_selected_provider():
+    provider_a = _SimpleProvider("a", _make_reasoning_infos("a", supports=True))
+    engine = _FakeEngine({"a": provider_a}, default_pid="a")
+
+    def reject_override(provider_id: str) -> None:
+        raise UnknownModelError("research-only-model", provider_id)
+
+    engine.validate_research_model_overrides = reject_override  # type: ignore[attr-defined]
+    with TestClient(_build_app(engine)) as client:
+        response = client.post(
+            "/api/v1/chat/stream",
+            json=_chat_body(mode="research", provider_id="a"),
+        )
+
+    assert response.status_code == 422
+    assert "research-only-model" in response.json()["detail"]
+    assert "provider 'a'" in response.json()["detail"]
+    assert engine.captured_chat_provider_ids == []
+
+
 def test_unknown_provider_id_returns_422():
     """provider_id not in engine.providers and not in failures → 422 before streaming."""
     provider_a = _SimpleProvider("a", _make_reasoning_infos("a", supports=True))
@@ -449,6 +478,7 @@ def test_reasoning_effort_validated_against_chosen_provider():
             json=_chat_body(reasoning_effort="low", provider_id="a"),
         )
         assert resp_ok.status_code == 200
+        assert engine.captured_chat_reasoning_efforts == ["low"]
 
         # Provider 'b' does NOT support reasoning → 422
         resp_fail = client.post(
@@ -459,3 +489,91 @@ def test_reasoning_effort_validated_against_chosen_provider():
         detail = resp_fail.json()["detail"]
         assert "does not support reasoning_effort" in detail
         assert "provider 'b'" in detail
+
+
+def test_reasoning_effort_requires_matching_provider_metadata():
+    provider = _SimpleProvider(
+        "a",
+        _make_reasoning_infos("a", supports=True),
+    )
+    engine = _FakeEngine(
+        {"a": provider},
+        default_pid="a",
+        model_infos=[],
+    )
+
+    with TestClient(_build_app(engine)) as client:
+        response = client.post(
+            "/api/v1/chat/stream",
+            json=_chat_body(reasoning_effort="low", provider_id="a"),
+        )
+
+    assert response.status_code == 503
+    assert "Could not fetch model metadata" in response.json()["detail"]
+    assert engine.captured_chat_provider_ids == []
+
+
+def test_reasoning_effort_validates_research_phase_overrides():
+    provider = _SimpleProvider(
+        "a",
+        [
+            *_make_reasoning_infos("a", supports=True, model_id="smart-model"),
+            *_make_reasoning_infos("a", supports=False, model_id="planner-model"),
+        ],
+    )
+    engine = _FakeEngine({"a": provider}, default_pid="a")
+    engine._research_settings = SimpleNamespace(  # type: ignore[attr-defined]
+        planner_model="planner-model",
+        extractor_model=None,
+        synthesizer_model=None,
+    )
+
+    with TestClient(_build_app(engine)) as client:
+        response = client.post(
+            "/api/v1/chat/stream",
+            json=_chat_body(
+                mode="research",
+                reasoning_effort="low",
+                provider_id="a",
+            ),
+        )
+
+    assert response.status_code == 422
+    assert "planner-model" in response.json()["detail"]
+    assert engine.captured_chat_provider_ids == []
+
+
+def test_reasoning_effort_skips_unused_base_model_in_research():
+    phase_models = ["planner-model", "extractor-model", "synthesizer-model"]
+    provider = _SimpleProvider(
+        "a",
+        [
+            info
+            for phase_model in phase_models
+            for info in _make_reasoning_infos(
+                "a",
+                supports=True,
+                model_id=phase_model,
+            )
+        ],
+        models=["smart-model", *phase_models],
+    )
+    engine = _FakeEngine({"a": provider}, default_pid="a")
+    engine._research_settings = SimpleNamespace(  # type: ignore[attr-defined]
+        planner_model="planner-model",
+        extractor_model="extractor-model",
+        synthesizer_model="synthesizer-model",
+    )
+
+    with TestClient(_build_app(engine)) as client:
+        response = client.post(
+            "/api/v1/chat/stream",
+            json=_chat_body(
+                mode="research",
+                reasoning_effort="low",
+                provider_id="a",
+            ),
+        )
+
+    assert response.status_code == 200
+    assert engine.captured_chat_reasoning_efforts == ["low"]

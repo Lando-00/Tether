@@ -116,6 +116,64 @@ def test_chat_command_interactive_mode_switch_to_research(
     assert "Mode switched to research" in stream.getvalue()
 
 
+def test_chat_command_reasoning_effort_is_sent(
+    cli_harness: tuple[io.StringIO, Mock],
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    stream, post = cli_harness
+    prompts = iter(["\\reasoning high", "hello", "\\exit"])
+    monkeypatch.setattr(cli_main, "ptk_prompt", lambda *args, **kwargs: next(prompts))
+    monkeypatch.setattr(
+        cli_main,
+        "get_available_model_details",
+        lambda: [
+            {
+                "id": "model-a",
+                "provider_id": "_unwrapped_",
+                "supports_reasoning_effort": True,
+                "reasoning_efforts": ["low", "high"],
+            }
+        ],
+    )
+
+    cli_main.main(
+        model_name="model-a",
+        api_url="http://testserver/api/v1",
+        debug=False,
+        show_thinking=True,
+        mode=cli_main.ChatMode.chat,
+    )
+
+    assert post.call_args.kwargs["json"]["reasoning_effort"] == "high"
+    assert "Reasoning effort set to high" in stream.getvalue()
+
+
+def test_chat_command_reasoning_reset_clears_startup_effort(
+    cli_harness: tuple[io.StringIO, Mock],
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    stream, post = cli_harness
+    prompts = iter(["\\reasoning off", "hello", "\\exit"])
+    monkeypatch.setattr(cli_main, "ptk_prompt", lambda *args, **kwargs: next(prompts))
+    monkeypatch.setattr(
+        cli_main,
+        "_reasoning_efforts_for_model",
+        lambda *_args: pytest.fail("reset must not require model metadata"),
+    )
+
+    cli_main.main(
+        model_name="model-a",
+        api_url="http://testserver/api/v1",
+        debug=False,
+        show_thinking=True,
+        mode=cli_main.ChatMode.chat,
+        reasoning_effort="high",
+    )
+
+    assert "reasoning_effort" not in post.call_args.kwargs["json"]
+    assert "reset to the provider default" in stream.getvalue()
+
+
 def test_chat_command_mode_toggle_back_to_chat(
     cli_harness: tuple[io.StringIO, Mock],
     monkeypatch: pytest.MonkeyPatch,

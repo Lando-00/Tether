@@ -18,9 +18,11 @@ from __future__ import annotations
 
 import asyncio
 import logging
+import time
 from typing import TYPE_CHECKING, Any, AsyncGenerator, Callable, Dict, List, Optional
 
 from tether.config.settings import Settings
+from tether.core.errors import ProviderUnhealthyError
 from tether.core.interfaces import (
     ModelProvider,
     SessionStore,
@@ -42,6 +44,15 @@ if TYPE_CHECKING:
 
 
 logger = logging.getLogger(__name__)
+
+# How long a successful provider model inventory stays usable without a
+# re-read. MLC's list_models() scans models_root from disk, so resolving a
+# request must not re-scan every provider on every call.
+_MODEL_INVENTORY_TTL_S = 30.0
+
+# Lower bound between forced re-probes triggered by a routing miss, so a
+# stream of unknown or typo'd model names cannot force a disk scan per request.
+_MODEL_INVENTORY_MISS_REPROBE_MIN_INTERVAL_S = 5.0
 
 
 class Engine:
@@ -189,9 +200,24 @@ class Engine:
         # cache, while failed providers use it only to surface a typed 503 for
         # a previously known model.
         self._known_models_by_provider: Dict[str, set[str]] = {}
+        self._provider_inventory_failures: Dict[str, str] = {}
+        # Per-provider monotonic timestamp of the last successful inventory
+        # read, so routing can serve a slightly stale list instead of calling
+        # list_models() on every request (see _remember_provider_models).
+        self._model_inventory_at: Dict[str, float] = {}
+        self._last_miss_reprobe: float = 0.0
         if self._strict_model_routing:
             for pid, registered_provider in self.providers.items():
-                self._remember_provider_models(pid, registered_provider)
+                try:
+                    self._remember_provider_models(
+                        pid, registered_provider, force=True
+                    )
+                except ProviderUnhealthyError:
+                    # Startup remains degraded-but-available when a provider's
+                    # inventory probe is transiently unavailable. Request
+                    # routing retries the probe and returns a typed 503 until
+                    # it succeeds.
+                    continue
         # ``self.parser`` is retained for back-compat reads (tests +
         # introspection). It's the parser produced by the factory at
         # construction time; new code should call ``self._parser_factory()``
@@ -242,16 +268,41 @@ class Engine:
         self,
         provider_id: str,
         provider: ModelProvider,
+        *,
+        force: bool = False,
     ) -> list[str]:
         """Refresh the model inventory for a healthy provider.
 
-        A listing failure must not silently route to another provider. The
-        empty result makes automatic resolution reject the model until the
-        provider can advertise it again.
+        A listing failure must not silently route to another provider. It is
+        recorded as transient provider unavailability and surfaced as a typed
+        503 to callers that need to resolve model ownership.
+
+        Successful results are cached for :data:`_MODEL_INVENTORY_TTL_S`.
+        Resolution runs this once per provider per request, and
+        ``list_models()`` is not free — MLC scans ``models_root`` from disk —
+        so an uncached read would put a directory scan per provider on every
+        chat request. Pass ``force=True`` to bypass the cache when a stale
+        answer would be wrong (a routing miss, startup priming, or an explicit
+        health re-probe). Failures are never cached: an unhealthy provider is
+        re-probed on the next call so recovery is not delayed by the TTL.
         """
+        now = time.monotonic()
+        if not force and provider_id not in self._provider_inventory_failures:
+            cached = self._known_models_by_provider.get(provider_id)
+            if (
+                cached is not None
+                and (now - self._model_inventory_at.get(provider_id, 0.0))
+                < _MODEL_INVENTORY_TTL_S
+            ):
+                return list(cached)
         try:
             models = list(provider.list_models())
         except Exception as exc:  # noqa: BLE001 - provider introspection guard
+            message = (
+                "model inventory unavailable: "
+                f"{type(exc).__name__}: {exc}"
+            )
+            self._provider_inventory_failures[provider_id] = message
             logger.warning(
                 "provider.list_models_failed provider_id=%s error_class=%s "
                 "error_message=%s",
@@ -259,7 +310,9 @@ class Engine:
                 type(exc).__name__,
                 str(exc),
             )
-            return []
+            raise ProviderUnhealthyError(provider_id, message) from exc
+        self._provider_inventory_failures.pop(provider_id, None)
+        self._model_inventory_at[provider_id] = now
         self._known_models_by_provider[provider_id] = set(models)
         return models
 
@@ -304,6 +357,12 @@ class Engine:
             if model_name not in self._remember_provider_models(
                 provider_id, provider
             ):
+                # A cached inventory can be stale rather than the name wrong,
+                # so re-probe once (throttled) before rejecting the model.
+                if self._reprobe_all_inventories() and model_name in (
+                    self._known_models_by_provider.get(provider_id) or set()
+                ):
+                    return provider_id
                 raise UnknownModelError(model_name, provider_id)
             return provider_id
 
@@ -316,6 +375,14 @@ class Engine:
             for pid, provider in self.providers.items()
             if model_name in self._remember_provider_models(pid, provider)
         ]
+        if not owners and self._reprobe_all_inventories():
+            # Same staleness guard as the explicit-provider path: a model that
+            # appeared after the last cached read must still be routable.
+            owners = [
+                pid
+                for pid in self.providers
+                if model_name in (self._known_models_by_provider.get(pid) or set())
+            ]
         if len(owners) == 1:
             return owners[0]
         if len(owners) > 1:
@@ -332,6 +399,71 @@ class Engine:
                 pid, self._provider_start_failures[pid]
             )
         raise UnknownModelError(model_name)
+
+    def validate_research_model_overrides(self, provider_id: str) -> None:
+        """Ensure research phase overrides belong to the selected provider.
+
+        NotebookOrchestrator receives one provider instance for every phase.
+        A global override that only another provider owns would otherwise be
+        sent to the selected backend and could silently run the wrong model.
+        """
+        if self._research_settings is None or not self._strict_model_routing:
+            return
+
+        provider = self._healthy_provider(provider_id)
+        available_models = set(
+            self._remember_provider_models(provider_id, provider)
+        )
+        overrides = (
+            ("planner_model", self._research_settings.planner_model),
+            ("extractor_model", self._research_settings.extractor_model),
+            ("synthesizer_model", self._research_settings.synthesizer_model),
+        )
+        from tether.core.errors import UnknownModelError
+
+        for phase_name, model_name in overrides:
+            if model_name is not None and model_name not in available_models:
+                raise UnknownModelError(model_name, provider_id)
+
+    def _reprobe_all_inventories(self) -> bool:
+        """Force-refresh every healthy provider's inventory, throttled.
+
+        Called when a model resolved to nothing, so a model that appeared after
+        the last cached read is still routable. Throttled by
+        :data:`_MODEL_INVENTORY_MISS_REPROBE_MIN_INTERVAL_S` so a stream of
+        unknown or typo'd model names cannot force a disk scan per request.
+
+        A provider that is unavailable during the re-probe is left recorded as
+        such rather than aborting the sweep; the caller still resolves against
+        whichever providers answered.
+
+        Returns True when a re-probe actually ran.
+        """
+        now = time.monotonic()
+        if (
+            now - self._last_miss_reprobe
+        ) < _MODEL_INVENTORY_MISS_REPROBE_MIN_INTERVAL_S:
+            return False
+        self._last_miss_reprobe = now
+        for pid, provider in self.providers.items():
+            try:
+                self._remember_provider_models(pid, provider, force=True)
+            except ProviderUnhealthyError:
+                continue
+        return True
+
+    def refresh_provider_inventory_health(self) -> None:
+        """Retry only inventories previously marked transiently unavailable."""
+        for provider_id in tuple(self._provider_inventory_failures):
+            provider = self.providers.get(provider_id)
+            if provider is None:
+                self._provider_inventory_failures.pop(provider_id, None)
+                continue
+            try:
+                self._remember_provider_models(provider_id, provider, force=True)
+            except ProviderUnhealthyError:
+                continue
+
 
     @classmethod
     def from_settings(
@@ -572,11 +704,35 @@ class Engine:
             )
             if any(override is not None for _, override in phase_model_overrides):
                 # Check across all healthy providers for model availability.
+                # A provider whose inventory is transiently unavailable must
+                # not abort server startup with a raw exception. Per-request
+                # selected-provider validation below enforces ownership before
+                # research starts once that provider can be queried.
                 provider_models: set[str] = set()
+                # A provider that failed construction is as unavailable for
+                # global discovery as one whose inventory probe failed. Keep
+                # the server in degraded mode and validate the override for
+                # the request-selected provider before research streaming.
+                inventory_unavailable = bool(provider_failures)
                 for _p in providers.values():
-                    provider_models.update(_p.list_models())
+                    try:
+                        provider_models.update(_p.list_models())
+                    except Exception as exc:  # noqa: BLE001 - degraded startup
+                        inventory_unavailable = True
+                        logger.warning(
+                            "provider.model_inventory_deferred "
+                            "provider_class=%s error_class=%s "
+                            "error_message=%s",
+                            type(_p).__name__,
+                            type(exc).__name__,
+                            str(exc),
+                        )
                 for phase_name, override in phase_model_overrides:
-                    if override is not None and override not in provider_models:
+                    if (
+                        override is not None
+                        and override not in provider_models
+                        and not inventory_unavailable
+                    ):
                         raise ConfigError(
                             f"orchestrator.research.{phase_name}={override!r} "
                             "is not a registered model across any provider. "
@@ -627,6 +783,7 @@ class Engine:
         cancel_event: Optional[asyncio.Event] = None,
         reasoning_effort: Optional[str] = None,
         provider_id: Optional[str] = None,
+        _resolved_provider_id: Optional[str] = None,
     ) -> AsyncGenerator[bytes, None]:
         """Drive the core orchestration to stream NDJSON bytes (v0 vocabulary).
 
@@ -654,6 +811,7 @@ class Engine:
             cancel_token=cancel_token,
             reasoning_effort=reasoning_effort,
             provider_id=provider_id,
+            _resolved_provider_id=_resolved_provider_id,
         ):
             bytes_out = v0_compat_serialize(wire_event)
             if bytes_out:  # MessageStart returns b"" — skip
@@ -669,6 +827,7 @@ class Engine:
         cancel_token: Optional["CancelToken"] = None,
         reasoning_effort: Optional[str] = None,
         provider_id: Optional[str] = None,
+        _resolved_provider_id: Optional[str] = None,
     ) -> AsyncGenerator["WireEvent", None]:
         """Library-mode typed event stream (synthesis §3.4).
 
@@ -682,18 +841,21 @@ class Engine:
         to ``self._orchestrator_default_mode`` ("chat") when None.
         Briefing §2 Seam B item 4; synthesis §3.5.
         """
-        # Resolve model ownership before any orchestrator work. The HTTP
-        # boundary invokes the same resolver eagerly so typed 422/503 errors
-        # are returned before streaming starts; this second call protects
-        # library consumers.
+        # Resolve model ownership before any orchestrator work. HTTP uses the
+        # private resolved-provider handoff after its eager pre-stream
+        # validation; direct library callers still resolve here.
         from tether.protocol.orchestration.registry import (
             resolve_orchestrator_class,
         )
 
-        pid = self.resolve_provider_id(model_name, provider_id=provider_id)
-        provider = self.providers[pid]
-
         effective_mode = mode if mode is not None else self._orchestrator_default_mode
+        if _resolved_provider_id is None:
+            pid = self.resolve_provider_id(model_name, provider_id=provider_id)
+            if effective_mode == "research":
+                self.validate_research_model_overrides(pid)
+        else:
+            pid = _resolved_provider_id
+        provider = self._healthy_provider(pid)
         orchestrator_cls = resolve_orchestrator_class(
             effective_mode, self._orchestrator_registry
         )
@@ -737,11 +899,24 @@ class Engine:
         }
 
         orch = orchestrator_cls(**_orch_kwargs)
+        _run_sig = _inspect.signature(orch.run)
+        _run_params = _run_sig.parameters
+        _run_kwargs: Dict[str, Any] = {
+            "session_id": session_id,
+            "prompt": prompt,
+            "model_name": model_name,
+            "cancel_token": cancel_token,
+        }
+        if (
+            "reasoning_effort" in _run_params
+            or any(
+                parameter.kind is _inspect.Parameter.VAR_KEYWORD
+                for parameter in _run_params.values()
+            )
+        ):
+            _run_kwargs["reasoning_effort"] = reasoning_effort
         async for wire_event in orch.run(
-            session_id=session_id,
-            prompt=prompt,
-            model_name=model_name,
-            cancel_token=cancel_token,
+            **_run_kwargs,
         ):
             yield wire_event
 
@@ -780,7 +955,11 @@ class Engine:
         result: List[str] = []
         seen: set[str] = set()
         for pid, prov in self.providers.items():
-            for model_name in self._remember_provider_models(pid, prov):
+            try:
+                models = self._remember_provider_models(pid, prov)
+            except ProviderUnhealthyError:
+                continue
+            for model_name in models:
                 if model_name not in seen:
                     result.append(model_name)
                     seen.add(model_name)
@@ -823,11 +1002,12 @@ class Engine:
                 source = "unknown"
             if source not in ("local", "remote"):
                 source = "unknown"
+            inventory_failure = self._provider_inventory_failures.get(pid)
             out[pid] = {
-                "healthy": True,
+                "healthy": inventory_failure is None,
                 "kind": kind,
                 "source": source,
-                "error": None,
+                "error": inventory_failure,
             }
         for pid, msg in self._provider_start_failures.items():
             out[pid] = {

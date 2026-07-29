@@ -123,45 +123,81 @@ def _validate_reasoning_effort(
     model_name: str,
     reasoning_effort: str,
     provider_id: Optional[str] = None,
+    *,
+    details=None,
 ) -> None:
     """Reject unsupported ``reasoning_effort`` values BEFORE streaming starts.
 
     When ``provider_id`` is supplied (ADR-0021), only ``ModelDetails`` rows
     whose ``provider_id`` matches are considered.
     """
-    try:
-        details = engine.list_model_info()
-    except Exception as exc:
+    if details is None:
+        try:
+            details = engine.list_model_info()
+        except Exception as exc:
+            raise HTTPException(
+                status_code=503,
+                detail=f"Could not fetch model metadata: {exc}",
+            ) from exc
+
+    matching = [
+        info
+        for info in details
+        if info.id == model_name
+        and (
+            provider_id is None
+            or info.provider_id in ("_unwrapped_", provider_id)
+        )
+    ]
+    if len(matching) != 1:
+        suffix = f" on provider '{provider_id}'" if provider_id else ""
         raise HTTPException(
             status_code=503,
-            detail=f"Could not fetch model metadata: {exc}",
+            detail=(
+                f"Could not fetch model metadata for '{model_name}'{suffix}. "
+                "Retry when the provider is healthy."
+            ),
         )
-    for info in details:
-        if info.id != model_name:
-            continue
-        if provider_id is not None and info.provider_id not in ("_unwrapped_", provider_id):
-            continue
-        if not info.supports_reasoning_effort:
-            raise HTTPException(
-                status_code=422,
-                detail=(
-                    f"Model '{model_name}' does not support reasoning_effort"
-                    + (f" on provider '{provider_id}'" if provider_id else "")
-                    + "; omit the field or pick a model with "
-                    "supports_reasoning_effort=true in /models/details."
-                ),
-            )
-        accepted = info.reasoning_efforts or []
-        if reasoning_effort not in accepted:
-            raise HTTPException(
-                status_code=422,
-                detail=(
-                    f"reasoning_effort='{reasoning_effort}' not accepted by "
-                    f"model '{model_name}'. Accepted values: {accepted}."
-                ),
-            )
-        return
-    return
+
+    info = matching[0]
+    if not info.supports_reasoning_effort:
+        raise HTTPException(
+            status_code=422,
+            detail=(
+                f"Model '{model_name}' does not support reasoning_effort"
+                + (f" on provider '{provider_id}'" if provider_id else "")
+                + "; omit the field or pick a model with "
+                "supports_reasoning_effort=true in /models/details."
+            ),
+        )
+    accepted = info.reasoning_efforts or []
+    if reasoning_effort not in accepted:
+        raise HTTPException(
+            status_code=422,
+            detail=(
+                f"reasoning_effort='{reasoning_effort}' not accepted by "
+                f"model '{model_name}'. Accepted values: {accepted}."
+            ),
+        )
+
+
+def _reasoning_models_for_request(
+    engine,
+    *,
+    mode: str,
+    model_name: str,
+) -> tuple[str, ...]:
+    """Return every model that receives a request-scoped reasoning effort."""
+    if mode != "research":
+        return (model_name,)
+
+    research_settings = getattr(engine, "_research_settings", None)
+    phase_models = (
+        getattr(research_settings, "planner_model", None) or model_name,
+        getattr(research_settings, "extractor_model", None) or model_name,
+        getattr(research_settings, "synthesizer_model", None) or model_name,
+    )
+    return tuple(dict.fromkeys(phase_models))
 
 
 def _resolve_provider_id(
@@ -169,12 +205,25 @@ def _resolve_provider_id(
     *,
     model_name: str,
     requested_provider_id: Optional[str],
+    mode: str,
 ) -> Optional[str]:
     """Resolve a request before streaming so route errors keep HTTP status."""
     resolver = getattr(engine, "resolve_provider_id", None)
     if callable(resolver):
         try:
-            return resolver(model_name, provider_id=requested_provider_id)
+            provider_id = resolver(
+                model_name,
+                provider_id=requested_provider_id,
+            )
+            if mode == "research":
+                validate_overrides = getattr(
+                    engine,
+                    "validate_research_model_overrides",
+                    None,
+                )
+                if callable(validate_overrides):
+                    validate_overrides(provider_id)
+            return provider_id
         except ProviderUnhealthyError as exc:
             logger.error(
                 "/chat/stream provider unhealthy: provider_id=%s",
@@ -274,12 +323,36 @@ async def stream(request: Request, body: StreamRequest):
         engine,
         model_name=body.model_name,
         requested_provider_id=body.provider_id,
+        mode=body.mode,
     )
     _provider_kwarg: dict = {"provider_id": pid} if pid is not None else {}
+    if (
+        pid is not None
+        and callable(getattr(engine, "resolve_provider_id", None))
+    ):
+        _provider_kwarg["_resolved_provider_id"] = pid
 
     # Validate reasoning_effort against chosen model's metadata BEFORE streaming.
     if body.reasoning_effort is not None:
-        _validate_reasoning_effort(engine, body.model_name, body.reasoning_effort, provider_id=pid)
+        try:
+            details = engine.list_model_info()
+        except Exception as exc:
+            raise HTTPException(
+                status_code=503,
+                detail=f"Could not fetch model metadata: {exc}",
+            ) from exc
+        for reasoning_model in _reasoning_models_for_request(
+            engine,
+            mode=body.mode,
+            model_name=body.model_name,
+        ):
+            _validate_reasoning_effort(
+                engine,
+                reasoning_model,
+                body.reasoning_effort,
+                provider_id=pid,
+                details=details,
+            )
 
     # Eagerly resolve the Orchestrator class to return 501 before streaming
     # begins if the mode is a stub (is_implemented=False). Pydantic's Literal

@@ -236,6 +236,7 @@ class ChattyAgentOrchestrator(OrchestratorABC):
         prompt: str,
         model_name: str,
         cancel_token: Optional[CancelToken] = None,
+        reasoning_effort: Optional[str] = None,
     ) -> AsyncIterator[WireEvent]:
         """Run one turn of the model→parser→tool-execution loop.
 
@@ -339,6 +340,7 @@ class ChattyAgentOrchestrator(OrchestratorABC):
                     session_id=session_id,
                     model_name=model_name,
                     cancel_token=cancel_token,
+                    reasoning_effort=reasoning_effort,
                     envelope_factory=_envelope,
                     turn_state=turn_state,
                 ):
@@ -745,6 +747,7 @@ class ChattyAgentOrchestrator(OrchestratorABC):
         session_id: str,
         model_name: str,
         cancel_token: Optional[CancelToken],
+        reasoning_effort: Optional[str],
         envelope_factory,
         turn_state: Dict[str, Any],
     ) -> AsyncIterator[WireEvent]:
@@ -790,13 +793,16 @@ class ChattyAgentOrchestrator(OrchestratorABC):
         _plog.info("provider.stream.start", model_id=model_name)
 
         try:
+            stream_kwargs: Dict[str, Any] = {
+                "model_name": model_name,
+                "messages": messages,
+                "tools": tool_schemas,
+                "request_id": _caller_rid,
+            }
+            if reasoning_effort is not None:
+                stream_kwargs["reasoning_effort"] = reasoning_effort
             async with aclosing(
-                self.provider.stream(
-                    model_name=model_name,
-                    messages=messages,
-                    tools=tool_schemas,
-                    request_id=_caller_rid,
-                )
+                self.provider.stream(**stream_kwargs)
             ) as provider_stream:
                 async for chunk in provider_stream:
                     _stream_chunks += 1

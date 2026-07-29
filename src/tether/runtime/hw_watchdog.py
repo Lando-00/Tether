@@ -190,13 +190,16 @@ class HardwareWatchdog:
 
         Synthesis §4 Phase 3 step 36; B6 step 7.
         """
-        if provider_id is not None:
+        if not self._provider_ids_are_available:
+            # Legacy/direct Engine callers pass a raw provider list. Their
+            # synthesized "default" routing ID has no corresponding map
+            # entry, so preserve the historical fan-out recovery semantics.
+            candidates = self._hw_providers
+        elif provider_id is not None:
             provider = self._hw_providers_by_id.get(provider_id)
             if provider is None:
                 return False
             candidates = [provider]
-        elif not self._provider_ids_are_available:
-            candidates = self._hw_providers
         else:
             logger.warning(
                 "HardwareWatchdog.reset_after: refusing unscoped reset across %d hardware providers",

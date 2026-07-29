@@ -724,6 +724,7 @@ class MLCProvider(ModelProvider):
         tools: Optional[List[Dict[str, Any]]] = None,
         *,
         request_id: Optional[str] = None,
+        reasoning_effort: Optional[str] = None,
     ) -> AsyncGenerator[str | List[Dict[str, Any]], None]:
         """Stream raw text chunks from the MLC engine for a specific model."""
         engine = await self._ensure_engine(model_name)

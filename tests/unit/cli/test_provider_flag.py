@@ -311,3 +311,49 @@ def test_unconstrained_interactive_selection_includes_all_providers(
 
     assert (first_model, first_provider) == ("geniex-model", "geniex")
     assert (second_model, second_provider) == ("mlc-model", "mlc")
+
+
+def test_interactive_selector_defaults_to_configured_provider_model(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    details = [
+        _model_detail("first", "aaa"),
+        _model_detail("server-default", "zzz", is_default=True),
+    ]
+    monkeypatch.setattr(cli_main, "get_available_model_details", lambda: details)
+    monkeypatch.setattr(
+        cli_main,
+        "get_provider_health",
+        lambda: ({}, "zzz"),
+    )
+    prompt_spy = Mock()
+    prompt_spy.ask = Mock(return_value="2")
+    monkeypatch.setattr(cli_main, "Prompt", prompt_spy)
+
+    model_name, provider_id = cli_main.select_model(None)
+
+    assert (model_name, provider_id) == ("server-default", "zzz")
+    prompt_spy.ask.assert_called_with("Select model #", default="2")
+
+
+def test_interactive_selector_falls_back_to_default_provider_row(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    details = [
+        _model_detail("geniex-model", "aaa", is_default=True),
+        _model_detail("mlc-model", "zzz"),
+    ]
+    monkeypatch.setattr(cli_main, "get_available_model_details", lambda: details)
+    monkeypatch.setattr(
+        cli_main,
+        "get_provider_health",
+        lambda: ({}, "zzz"),
+    )
+    prompt_spy = Mock()
+    prompt_spy.ask = Mock(return_value="2")
+    monkeypatch.setattr(cli_main, "Prompt", prompt_spy)
+
+    model_name, provider_id = cli_main.select_model(None)
+
+    assert (model_name, provider_id) == ("mlc-model", "zzz")
+    prompt_spy.ask.assert_called_with("Select model #", default="2")
