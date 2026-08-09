@@ -38,7 +38,7 @@ colorama==0.4.6
     #   uvicorn
 fastapi==0.117.1
     # via tether (pyproject.toml)
-googleapis-common-protos==1.75.0
+googleapis-common-protos==1.75.1
     # via
     #   opentelemetry-exporter-otlp-proto-grpc
     #   opentelemetry-exporter-otlp-proto-http
@@ -102,7 +102,7 @@ opentelemetry-sdk==1.44.0
     #   tether (pyproject.toml)
 opentelemetry-semantic-conventions==0.65b0
     # via opentelemetry-sdk
-packaging==26.2
+packaging==26.3
     # via
     #   build
     #   pytest
@@ -156,7 +156,7 @@ rich==15.0.0
     # via
     #   tether (pyproject.toml)
     #   typer
-ruff==0.16.0
+ruff==0.16.1
     # via tether (pyproject.toml)
 shellingham==1.5.4
     # via typer
@@ -168,7 +168,7 @@ structlog==26.1.0
     # via tether (pyproject.toml)
 tabulate==0.10.0
     # via yoyo-migrations
-typer==0.27.0
+typer==0.27.1
     # via tether (pyproject.toml)
 typing-extensions==4.16.0
     # via
@@ -198,7 +198,7 @@ watchfiles==1.2.0
     # via uvicorn
 wcwidth==0.8.2
     # via prompt-toolkit
-websockets==16.1.1
+websockets==17.0.1
     # via uvicorn
 yoyo-migrations==8.2.0
     # via tether (pyproject.toml)
