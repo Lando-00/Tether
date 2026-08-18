@@ -107,6 +107,7 @@ from tether.core.interfaces import (
 from tether.core.logging import logger
 from tether.core.types import OrchestratorConfig, ToolExecutionContext
 from tether.protocol.orchestration.cancel import CancelToken
+from tether.protocol.orchestration.context_budget import fit_to_context
 from tether.protocol.orchestration.policies import (
     LoopLimitPolicy,
     ToolErrorPolicy,
@@ -288,6 +289,43 @@ class ChattyAgentOrchestrator(OrchestratorABC):
             session_id,
             include_thinking=self.config.include_thinking_in_history,
         )
+
+    def _fit_to_context(
+        self, messages: List[Dict[str, Any]], *, model_name: str, session_id: str
+    ) -> List[Dict[str, Any]]:
+        """Trim old turns so the provider never has to evict the front.
+
+        Providers do not reject an over-long prompt; they silently drop the
+        oldest tokens and still return HTTP 200. For marker-only providers the
+        system prompt is the only place the ``<<function_call>>`` convention is
+        stated, so front-eviction silently disables tool calling in long
+        conversations. Trimming here drops the oldest *non-system* turns
+        instead, which keeps both the calling convention and recency.
+
+        Providers that cannot report a context window are left alone.
+        """
+        get_window = getattr(self.provider, "get_context_window", None)
+        if get_window is None:
+            return messages
+        try:
+            window = int(get_window(model_name))
+        except Exception:
+            # A provider that cannot answer must not break the turn; the
+            # provider-side eviction is then no worse than today's behaviour.
+            logger.debug("Context window unavailable; skipping budget check")
+            return messages
+
+        fitted, dropped = fit_to_context(messages, context_window=window)
+        if dropped:
+            logger.info(
+                "Context budget: dropped %d old message(s) to fit %d-token "
+                "window for session_id=%s (kept %d)",
+                dropped,
+                window,
+                session_id,
+                len(fitted),
+            )
+        return fitted
 
     # --- Public entry point ------------------------------------------------
 
@@ -834,6 +872,9 @@ class ChattyAgentOrchestrator(OrchestratorABC):
         """
         messages = await self._history(session_id)
         messages = self._with_tool_roster(messages)
+        messages = self._fit_to_context(
+            messages, model_name=model_name, session_id=session_id
+        )
         tool_schemas = [tool.schema for tool in self.tools.values()]
 
         full_response_text = ""
