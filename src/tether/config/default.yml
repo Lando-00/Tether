@@ -8,7 +8,8 @@ system:
     <<function_call>>
     followed by a single JSON object on the same line, e.g.:
     <<function_call>> {"name":"time","arguments":{"timezone":"Europe/Dublin","format":"human"}}
-    Use the exact tool name from the registry (e.g. "time", "weather", "forecast", "web_search").
+    Use the exact tool name from the list of available tools you are given.
+    Do not invent tool names, and do not call a tool that is not in that list.
     Do not include extra commentary on that line. After I run the tool, I will stream the result back to you.
 
     Tool results arrive wrapped in <<tool_result name="...">>...<</tool_result>> sentinels.

@@ -5,7 +5,7 @@ Contract locked by tests/contract/test_session_store_history_contract.py
 (Phase 5 → Phase 6 gate, synthesis §11.3 R19).
 """
 import json
-from typing import Any, Dict, List, Optional
+from typing import Any, Dict, Iterable, List, Optional
 
 from tether.core.interfaces import SessionStore
 
@@ -142,16 +142,24 @@ class MemoryStore(SessionStore):
     # ------------------------------------------------------------------
 
     async def get_history(
-        self, session_id: str, include_thinking: bool = False
+        self,
+        session_id: str,
+        include_thinking: bool = False,
+        *,
+        exclude_tools: Optional[Iterable[str]] = None,
     ) -> List[Dict[str, Any]]:
         """Reconstruct the canonical model-facing history.
 
         Output shape MUST match SqliteSessionStore.get_history() — see
         tests/contract/test_session_store_history_contract.py.
 
+        ``exclude_tools`` drops the named tools' call/result entries from the
+        model-facing view (the entries themselves are retained in memory).
+
         Phase 6 step 65: thinking entries (role='thinking') are merged into
         the following assistant entry. Synthesis §3.6.
         """
+        excluded = set(exclude_tools or ())
         history: List[Dict[str, Any]] = []
         pending_thinking: Optional[str] = None
 
@@ -185,6 +193,8 @@ class MemoryStore(SessionStore):
                 history.append({"role": "system", "content": message.get("content", "")})
             elif role == "tool":
                 tool_name = message.get("tool")
+                if tool_name in excluded:
+                    continue
                 args = message.get("args") or {}
                 tool_call_json = json.dumps({"name": tool_name, "arguments": args})
                 history.append({
@@ -193,6 +203,8 @@ class MemoryStore(SessionStore):
                 })
             elif role == "tool_result":
                 tool_name = message.get("tool")
+                if tool_name in excluded:
+                    continue
                 result = message.get("result")
                 result_text = json.dumps(result, indent=2)
                 # P0-B1: wrap tool results in unambiguous sentinels so the model

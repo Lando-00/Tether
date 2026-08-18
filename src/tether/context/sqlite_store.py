@@ -36,7 +36,7 @@ from __future__ import annotations
 
 import datetime
 import json
-from typing import Any, Dict, List, Optional
+from typing import Any, Dict, Iterable, List, Optional
 
 import aiosqlite  # noqa: F401 - retained for typing/back-compat re-imports
 
@@ -269,7 +269,11 @@ class SqliteSessionStore(AsyncSqliteStore, SessionStore):
     # ------------------------------------------------------------------
 
     async def get_history(
-        self, session_id: str, include_thinking: bool = False
+        self,
+        session_id: str,
+        include_thinking: bool = False,
+        *,
+        exclude_tools: Optional[Iterable[str]] = None,
     ) -> List[Dict[str, Any]]:
         """Reconstruct the model-facing history from the messages table.
 
@@ -284,9 +288,17 @@ class SqliteSessionStore(AsyncSqliteStore, SessionStore):
           - Back-compat: legacy assistant rows with thinking_text column populated
             (pre-Phase-6-step-65) are rendered as if a thinking row preceded them.
 
+        ``exclude_tools`` drops the ``tool`` / ``tool_result`` rows of the named
+        tools from the reconstructed context. Disabling a tool would otherwise
+        leave its past calls and (often bulky) results in every subsequent
+        prompt, which both wastes context and invites a small model to keep
+        calling a tool that is no longer available. The rows stay in the
+        database — this filters the *model-facing view*, not the transcript.
+
         This shape is verified by tests/contract/test_session_store_history_contract.py.
         Phase 6 step 65: thinking stored as separate role='thinking' rows.
         """
+        excluded = set(exclude_tools or ())
         conn = await self._ensure_connected()
         # ORDER BY ts ASC, id ASC: stable insertion order when ts ties.
         async with conn.execute(
@@ -331,6 +343,8 @@ class SqliteSessionStore(AsyncSqliteStore, SessionStore):
                 history.append({"role": "system", "content": r["content"] or ""})
             elif role == "tool":
                 tool_name = r["tool_name"]
+                if tool_name in excluded:
+                    continue
                 args = json.loads(r["args"] or "{}")
                 tool_call_json = json.dumps({"name": tool_name, "arguments": args})
                 history.append({
@@ -339,6 +353,8 @@ class SqliteSessionStore(AsyncSqliteStore, SessionStore):
                 })
             elif role == "tool_result":
                 tool_name = r["tool_name"]
+                if tool_name in excluded:
+                    continue
                 result = json.loads(r["result"] or "{}")
                 result_text = json.dumps(result, indent=2)
                 # P0-B1: wrap tool results in unambiguous sentinels so the model

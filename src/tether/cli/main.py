@@ -360,6 +360,30 @@ def get_available_tools() -> list:
         return []
 
 
+def set_tool_enabled(name: str, enabled: bool) -> bool:
+    """Toggle a tool server-side; returns True on success.
+
+    Disabling drops the tool's schema *and* its past calls/results from the
+    model-facing context on the next turn, which is the point of the feature on
+    small models.
+    """
+    try:
+        response = requests.post(
+            f"{API_BASE_URL}/tools/{name}/enabled",
+            json={"enabled": enabled},
+            headers=_mutating_headers(),
+            timeout=5,
+        )
+        if response.status_code == 404:
+            console.print(f"[red]Unknown tool:[/red] {name}")
+            return False
+        response.raise_for_status()
+        return True
+    except requests.RequestException as e:
+        console.print(f"[red]Could not update tool:[/red] {e}")
+        return False
+
+
 def get_available_model_details() -> list:
     """Fetch ``GET /models/details`` and return the list of ModelDetails dicts."""
     try:
@@ -1288,13 +1312,26 @@ def main(
                     console.print(f"[dim]{_mode_hint(current_mode)}[/dim]")
                 console.rule()
                 continue
-            if stripped_prompt == "\\tools":
+            if stripped_prompt == "\\tools" or stripped_prompt.startswith("\\tools "):
+                parts = stripped_prompt.split()
+                # `\tools on|off <name>` toggles a tool for later turns.
+                if len(parts) == 3 and parts[1].lower() in {"on", "off"}:
+                    enable = parts[1].lower() == "on"
+                    if set_tool_enabled(parts[2], enable):
+                        state = "enabled" if enable else "disabled"
+                        console.print(
+                            f"[green]{parts[2]}[/green] is now [bold]{state}[/bold]"
+                            f"{'' if enable else ' (its schema and past results are dropped from context)'}"
+                        )
+                    console.rule()
+                    continue
                 tools_info = get_available_tools()
                 if not tools_info:
                     console.print("[yellow]No tools available (registry empty or server unreachable).[/yellow]")
                 else:
                     tools_table = Table(title=f"Available tools ({len(tools_info)})", border_style="cyan")
                     tools_table.add_column("Name", style="bold cyan")
+                    tools_table.add_column("On", justify="center")
                     tools_table.add_column("Description")
                     tools_table.add_column("Params", style="dim", justify="right")
                     for tool in tools_info:
@@ -1303,8 +1340,19 @@ def main(
                         params = tool.get("parameters", {})
                         prop_names = list((params.get("properties") or {}).keys())
                         param_summary = ", ".join(prop_names) if prop_names else "—"
-                        tools_table.add_row(name, desc, param_summary)
+                        # Absent `enabled` means an older server that cannot
+                        # toggle; treat those tools as on rather than unknown.
+                        on = tool.get("enabled", True)
+                        tools_table.add_row(
+                            name,
+                            "[green]y[/green]" if on else "[red]n[/red]",
+                            desc if on else f"[dim]{desc}[/dim]",
+                            param_summary,
+                        )
                     console.print(tools_table)
+                    console.print(
+                        "[dim]\\tools off <name> to disable · \\tools on <name> to re-enable[/dim]"
+                    )
                 console.rule()
                 continue
             if stripped_prompt == "\\models":

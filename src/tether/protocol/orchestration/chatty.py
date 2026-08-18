@@ -81,6 +81,7 @@ from typing import (
     Any,
     AsyncIterator,
     Dict,
+    Iterable,
     List,
     Optional,
     cast,
@@ -209,11 +210,16 @@ class ChattyAgentOrchestrator(OrchestratorABC):
         provider_id: Optional[str] = None,
         confirm_intent_classifier: "ConfirmIntentClassifier | None" = None,
         audit_store_args: bool = False,
+        excluded_tools: Optional[Iterable[str]] = None,
     ):
         self.provider = provider
         self.parser = parser
         self.store = store
         self.tools = tools
+        # Names of tools disabled at runtime. Their past calls/results are
+        # pruned from the model-facing history so a switched-off tool stops
+        # consuming context and stops inviting further calls.
+        self.excluded_tools: set[str] = set(excluded_tools or ())
         self.system_prompt = system_prompt
         self.config = config
         self.tool_runner = tool_runner
@@ -228,6 +234,60 @@ class ChattyAgentOrchestrator(OrchestratorABC):
 
             confirm_intent_classifier = NullConfirmIntentClassifier()
         self._confirm_intent_classifier = confirm_intent_classifier
+
+    def _with_tool_roster(
+        self, messages: List[Dict[str, Any]]
+    ) -> List[Dict[str, Any]]:
+        """Append an ephemeral system message naming the currently-usable tools.
+
+        Marker-only providers (GenieX, and MLC with ``marker_only_tools``)
+        deliberately drop the ``tools=`` parameter, so the *only* place a model
+        learns which tools exist is the prompt. If that list is static, a tool
+        disabled at runtime stays advertised in the model's context and a small
+        model will keep emitting calls for it — which is exactly what happened
+        before this existed: disabling ``web_search`` still produced five
+        ``web_search`` calls and a ``tool_loop_exhausted`` turn.
+
+        The roster is rebuilt per turn from the enabled tools and is **not**
+        persisted, so toggling a tool changes the model's context immediately
+        without rewriting any session's stored system prompt.
+        """
+        if not self.tools:
+            return messages
+        lines: List[str] = []
+        for name in sorted(self.tools):
+            schema = getattr(self.tools[name], "auto_schema", None) or {}
+            body = schema.get("function", schema)
+            description = (body.get("description") or "").strip().splitlines()
+            summary = description[0] if description else ""
+            params = (body.get("parameters") or {}).get("properties") or {}
+            arg_names = ", ".join(params) if params else "no arguments"
+            lines.append(f"- {name}({arg_names}): {summary}")
+        roster = (
+            "Tools available to you right now (use these exact names):\n"
+            + "\n".join(lines)
+            + "\nDo not call any other tool. If none of these fit, answer directly."
+        )
+        return [*messages, {"role": "system", "content": roster}]
+
+    async def _history(self, session_id: str) -> List[Dict[str, Any]]:
+        """Model-facing history, minus any disabled tools' calls/results.
+
+        ``exclude_tools`` is only passed when something is actually excluded so
+        that session stores predating the parameter (including third-party
+        implementations of :class:`SessionStore`) keep working unchanged on the
+        common path.
+        """
+        if self.excluded_tools:
+            return await self.store.get_history(
+                session_id,
+                include_thinking=self.config.include_thinking_in_history,
+                exclude_tools=self.excluded_tools,
+            )
+        return await self.store.get_history(
+            session_id,
+            include_thinking=self.config.include_thinking_in_history,
+        )
 
     # --- Public entry point ------------------------------------------------
 
@@ -772,10 +832,8 @@ class ChattyAgentOrchestrator(OrchestratorABC):
         Synthesis §3.5 — this is the streaming half of the seam pair
         (the other half is :meth:`_dispatch_tools`).
         """
-        messages = await self.store.get_history(
-            session_id,
-            include_thinking=self.config.include_thinking_in_history,
-        )
+        messages = await self._history(session_id)
+        messages = self._with_tool_roster(messages)
         tool_schemas = [tool.schema for tool in self.tools.values()]
 
         full_response_text = ""

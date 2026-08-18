@@ -419,8 +419,19 @@ class SessionStore(ABC):
 
     @abstractmethod
     async def get_history(
-        self, session_id: str, include_thinking: bool = False
+        self,
+        session_id: str,
+        include_thinking: bool = False,
+        *,
+        exclude_tools: Optional[Iterable[str]] = None,
     ) -> List[Dict[str, Any]]:
+        """Return the model-facing message history for a session.
+
+        ``exclude_tools`` omits the named tools' call/result entries from the
+        reconstructed view. Callers use it so a tool that has been disabled
+        stops occupying context in later turns; the underlying rows are never
+        deleted.
+        """
         ...
 
     @abstractmethod

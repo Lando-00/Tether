@@ -146,6 +146,21 @@
         "title": "StreamRequest",
         "type": "object"
       },
+      "ToolEnableRequest": {
+        "description": "Body for ``POST /tools/{name}/enabled``.",
+        "properties": {
+          "enabled": {
+            "description": "True to enable the tool, False to disable it.",
+            "title": "Enabled",
+            "type": "boolean"
+          }
+        },
+        "required": [
+          "enabled"
+        ],
+        "title": "ToolEnableRequest",
+        "type": "object"
+      },
       "UnloadRequest": {
         "properties": {
           "model_name": {
@@ -996,7 +1011,7 @@
     },
     "/api/v1/tools": {
       "get": {
-        "description": "Return the registered tools' auto-schemas, sorted by name.\n\nEach entry contains:\n  * ``name``: tool name (registry key, e.g. ``\"web_search\"``).\n  * ``description``: first paragraph of the tool's docstring.\n  * ``parameters``: JSON Schema object describing arguments.\n\nEmpty list when no tools are configured (settings.tools.registry / .enabled\nboth empty). 200 always; this route never errors on a healthy server.",
+        "description": "Return the registered tools, sorted by name.\n\nEach entry contains:\n  * ``name``: tool name (registry key, e.g. ``\"web_search\"``).\n  * ``description``: first paragraph of the tool's docstring.\n  * ``parameters``: JSON Schema object describing arguments.\n  * ``enabled``: whether the model can currently see and call it.\n\n``BaseTool.auto_schema`` emits the OpenAI-style nested shape\n(``{\"type\": \"function\", \"function\": {...}}``). This route flattens it so\nclients get ``name``/``description``/``parameters`` at the top level\nregardless of the tool implementation.\n\nEmpty list when no tools are configured (settings.tools.registry / .enabled\nboth empty). 200 always; this route never errors on a healthy server.",
         "operationId": "list_tools_api_v1_tools_get",
         "responses": {
           "200": {
@@ -1016,6 +1031,61 @@
           }
         },
         "summary": "List Tools",
+        "tags": [
+          "tools"
+        ]
+      }
+    },
+    "/api/v1/tools/{name}/enabled": {
+      "post": {
+        "description": "Enable or disable a tool for subsequent turns.\n\nTakes effect on the next turn — orchestrators are constructed per turn, so\nno restart is needed. Returns 404 for an unknown tool name.",
+        "operationId": "set_tool_enabled_api_v1_tools__name__enabled_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "name",
+            "required": true,
+            "schema": {
+              "title": "Name",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ToolEnableRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "additionalProperties": true,
+                  "title": "Response Set Tool Enabled Api V1 Tools  Name  Enabled Post",
+                  "type": "object"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Set Tool Enabled",
         "tags": [
           "tools"
         ]

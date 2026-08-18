@@ -230,6 +230,10 @@ class Engine:
         self.parser = parser if parser is not None else self._parser_factory()
         self.store = session_store
         self.tools = tools
+        # Tools switched off at runtime. Kept as names (not by removing the
+        # instance) so a tool can be re-enabled without reconstructing it, and
+        # so ``aclose`` still shuts down every constructed tool.
+        self._disabled_tools: set[str] = set()
         self.system_prompt = system_prompt
         self.watchdog_mode = watchdog_mode
         self.hw_watchdog = hw_watchdog
@@ -899,11 +903,12 @@ class Engine:
         from datetime import date as _date
         _orch_sig = _inspect.signature(orchestrator_cls.__init__)
         _orch_params = _orch_sig.parameters
+        _enabled_tools = self.enabled_tools()
         _full_kwargs: Dict[str, Any] = dict(
             provider=provider,
             parser=per_turn_parser,
             store=self.store,
-            tools=self.tools,
+            tools=_enabled_tools,
             system_prompt=self.system_prompt,
             config=self.orchestrator_config,
             tool_runner=self.tool_runner,
@@ -913,9 +918,12 @@ class Engine:
             confirm_intent_classifier=self._confirm_intent_classifier,
             # ADR-0020 R3: NotebookOrchestrator uses `tool_registry` (alias
             # of `tools`) and accepts `research_settings` + `clock`.
-            tool_registry=self.tools,
+            tool_registry=_enabled_tools,
             research_settings=self._research_settings,
             clock=lambda: _date.today(),
+            # Disabled tools are pruned from the model-facing history so a
+            # switched-off tool stops occupying context (see set_tool_enabled).
+            excluded_tools=self.disabled_tool_names(),
         )
         _orch_kwargs: Dict[str, Any] = {
             k: v for k, v in _full_kwargs.items() if k in _orch_params
@@ -1026,6 +1034,72 @@ class Engine:
         """Unload a model only from its resolved owning provider."""
         pid = self.resolve_provider_id(model_name, provider_id=provider_id)
         return self.providers[pid].unload_model(model_name)
+
+    def enabled_tools(self) -> Dict[str, Any]:
+        """Tools the model may currently see and call.
+
+        Orchestrators are constructed per turn with this mapping, so toggling a
+        tool takes effect on the very next turn without a restart.
+        """
+        return {
+            name: tool
+            for name, tool in self.tools.items()
+            if name not in self._disabled_tools
+        }
+
+    def disabled_tool_names(self) -> set[str]:
+        """Names of constructed-but-switched-off tools."""
+        return set(self._disabled_tools)
+
+    def set_tool_enabled(self, name: str, enabled: bool) -> bool:
+        """Enable or disable a tool at runtime.
+
+        Disabling removes the tool from three places at once, which is what
+        makes it worth doing on a small model:
+
+        * its schema is no longer advertised to the provider;
+        * it can no longer be dispatched (the registry lookup misses);
+        * its past calls and results are dropped from the model-facing history
+          (``get_history(exclude_tools=...)``), so a disabled tool stops
+          consuming context and stops tempting the model to call it again.
+
+        Returns ``True`` when the tool exists, ``False`` for an unknown name.
+        """
+        if name not in self.tools:
+            return False
+        if enabled:
+            self._disabled_tools.discard(name)
+        else:
+            self._disabled_tools.add(name)
+        logger.info(
+            "tool.enabled_changed name=%s enabled=%s", name, enabled
+        )
+        return True
+
+    def list_tool_states(self) -> List[Dict[str, Any]]:
+        """``[{name, enabled, description, parameters}]`` sorted by name.
+
+        Flattens the OpenAI-style ``auto_schema`` (``{"type": "function",
+        "function": {...}}``) so callers get one predictable shape regardless of
+        how a tool spells its schema. A tool object without ``auto_schema`` is
+        omitted rather than reported with an empty description — it cannot be
+        described to a model, so advertising it would be misleading.
+        """
+        out: List[Dict[str, Any]] = []
+        for name in sorted(self.tools):
+            schema = getattr(self.tools[name], "auto_schema", None)
+            if schema is None:
+                continue
+            body = schema.get("function", schema)
+            out.append(
+                {
+                    "name": name,
+                    "enabled": name not in self._disabled_tools,
+                    "description": body.get("description", ""),
+                    "parameters": body.get("parameters", {}),
+                }
+            )
+        return out
 
     def list_provider_health(self) -> Dict[str, Dict[str, Any]]:
         """Per-provider snapshot for ``/readyz``.
