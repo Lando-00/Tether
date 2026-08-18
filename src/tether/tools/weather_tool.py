@@ -50,6 +50,30 @@ def _get_location_lat_lon(location: str) -> Dict[str, Any]:
         return {"error": f"Failed to connect to geocoding service: {e}"}
 
 
+# Synonyms models reach for instead of the schema's exact enum values. The
+# ``Literal[...]`` annotation documents the contract but nothing enforces it at
+# runtime, so an unrecognised value used to be forwarded verbatim to open-meteo
+# and came back as a 400. Observed in the wild: an 8B model answering "what's
+# the weather in Dublin?" sent ``unit="metric"``.
+_UNIT_ALIASES: Dict[str, Literal["celsius", "fahrenheit"]] = {
+    "celsius": "celsius", "c": "celsius", "°c": "celsius",
+    "metric": "celsius", "centigrade": "celsius", "si": "celsius",
+    "fahrenheit": "fahrenheit", "f": "fahrenheit", "°f": "fahrenheit",
+    "imperial": "fahrenheit", "us": "fahrenheit",
+}
+
+
+def _normalize_unit(unit: Any) -> Literal["celsius", "fahrenheit"]:
+    """Map a model-supplied unit onto open-meteo's accepted values.
+
+    Falls back to ``celsius`` rather than raising: a wrong-but-plausible unit
+    should not turn a working weather lookup into a failed turn.
+    """
+    if not isinstance(unit, str):
+        return "celsius"
+    return _UNIT_ALIASES.get(unit.strip().lower(), "celsius")
+
+
 @tool(name="weather")
 class GetWeatherTool(BaseTool):
     """Get the current weather conditions for a location."""
@@ -73,6 +97,7 @@ class GetWeatherTool(BaseTool):
         ] = "celsius",
     ) -> Dict[str, Any]:
         """Get the current weather conditions for a location."""
+        unit = _normalize_unit(unit)
         location_info = _get_location_lat_lon(location)
         if "error" in location_info:
             return location_info
@@ -142,6 +167,7 @@ class GetForecastTool(BaseTool):
         ``days`` is clamped to the API's [1, 16] range defensively in
         case a Style B caller bypasses the schema bound.
         """
+        unit = _normalize_unit(unit)
         location_info = _get_location_lat_lon(location)
         if "error" in location_info:
             return location_info

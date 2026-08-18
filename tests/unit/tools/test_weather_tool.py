@@ -18,7 +18,7 @@ from unittest.mock import MagicMock, patch
 import pytest
 import requests
 
-from tether.tools.weather_tool import GetWeatherTool
+from tether.tools.weather_tool import GetWeatherTool, _normalize_unit
 
 
 @pytest.fixture
@@ -149,3 +149,48 @@ class TestGetWeatherToolErrors:
 
         assert "error" in result
         assert "weather" in result["error"].lower()
+
+class TestUnitNormalization:
+    """Models supply units the schema enum does not list.
+
+    The ``Literal["celsius","fahrenheit"]`` annotation documents the contract
+    but nothing enforces it at runtime, so an unrecognised value used to be
+    forwarded verbatim to open-meteo and returned a 400. Observed in the wild:
+    an 8B model answering "what's the weather in Dublin?" sent
+    ``unit="metric"``, turning a working lookup into a failed turn.
+    """
+
+    @pytest.mark.parametrize(
+        "supplied,expected",
+        [
+            ("metric", "celsius"),
+            ("Metric", "celsius"),
+            ("C", "celsius"),
+            ("centigrade", "celsius"),
+            ("imperial", "fahrenheit"),
+            ("F", "fahrenheit"),
+            ("FAHRENHEIT", "fahrenheit"),
+            ("celsius", "celsius"),
+            ("nonsense", "celsius"),
+            ("", "celsius"),
+            (None, "celsius"),
+            (7, "celsius"),
+        ],
+    )
+    def test_normalize_unit(self, supplied, expected):
+        assert _normalize_unit(supplied) == expected
+
+    @pytest.mark.asyncio
+    async def test_unknown_unit_still_produces_a_reading(self, tool: GetWeatherTool):
+        """A bad unit must degrade to celsius, not fail the turn."""
+        with patch(
+            "tether.tools.weather_tool.requests.get",
+            side_effect=[_geocoding_ok(), _weather_ok()],
+        ) as mock_get:
+            result = await tool.invoke({"location": "London", "unit": "metric"})
+
+        assert "error" not in result
+        assert result["temperature"].endswith("\u00b0C")
+        # The upstream call must carry a value open-meteo accepts.
+        weather_params = mock_get.call_args_list[1].kwargs["params"]
+        assert weather_params["temperature_unit"] == "celsius"
