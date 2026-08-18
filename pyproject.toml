@@ -37,6 +37,11 @@ dependencies = [
     "setuptools<81",
     "platformdirs>=4.0,<5",
     "structlog>=24.1,<27",
+    # Windows ships no system tz database, so zoneinfo has nothing to read and
+    # any named lookup (even "UTC") raises ZoneInfoNotFoundError. Conda envs
+    # happen to bundle one, which masks this; a stock venv does not. Required
+    # by the time tool and the orchestrator golden tests.
+    "tzdata; platform_system == 'Windows'",
 ]
 
 [project.optional-dependencies]
