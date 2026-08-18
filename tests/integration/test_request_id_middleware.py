@@ -9,11 +9,38 @@ import pytest
 from fastapi.testclient import TestClient
 
 from tether.app.http.api import create_app
+from tether.config.settings import ProviderSpec, Settings, load_settings
+
+
+def _dummy_provider_settings() -> Settings:
+    """Real settings with the provider registry swapped for ``DummyProvider``.
+
+    ``create_app()`` with no argument builds the shipped registry, whose
+    default provider talks to an external inference server. That would make
+    these middleware tests depend on that server being reachable — passing or
+    failing for reasons that have nothing to do with ``X-Request-ID``. Pinning
+    a DummyProvider here keeps them hermetic.
+    """
+    base = load_settings(env={})
+    providers = base.providers.model_copy(
+        update={
+            "model": None,
+            "model_registry": {
+                "dummy": ProviderSpec(
+                    impl="tether.providers.dummy.provider.DummyProvider"
+                )
+            },
+            "default_model_provider": "dummy",
+        }
+    )
+    return base.model_copy(update={"providers": providers})
 
 
 @pytest.fixture
 def client():
-    with TestClient(create_app(), base_url="http://localhost") as c:
+    with TestClient(
+        create_app(_dummy_provider_settings()), base_url="http://localhost"
+    ) as c:
         yield c
 
 
@@ -66,7 +93,11 @@ def test_chat_endpoint_also_gets_request_id(client):
     """The /chat/stream endpoint (POST + streaming response) also gets X-Request-ID."""
     resp = client.post(
         "/api/v1/chat/stream",
-        json={"session_id": "rid-test", "prompt": "hi", "model_name": "dummy"},
+        json={
+            "session_id": "rid-test",
+            "prompt": "hi",
+            "model_name": "dummy-model-1",
+        },
     )
     assert resp.status_code == 200
     rid = resp.headers.get("x-request-id")

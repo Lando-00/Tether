@@ -51,10 +51,21 @@ def test_settings_frozen():
 
 def test_settings_yaml_round_trip():
     s = load_settings(env={})
-    # Default YAML: host/port nested under http; MLCProvider as model impl.
+    # Default YAML: host/port nested under http; multi-provider registry with
+    # GenieX as the shipped default and MLC retained as an alternative.
     assert s.http.host == "127.0.0.1"
     assert s.http.port == 8080
-    assert s.providers.model.impl == "tether.providers.mlc.provider.MLCProvider"
+    assert s.providers.model is None  # legacy singular shape is not used
+    assert s.providers.default_model_provider == "geniex"
+    assert set(s.providers.model_registry) == {"geniex", "mlc"}
+    assert (
+        s.providers.model_registry["geniex"].impl
+        == "tether.providers.geniex.provider.GenieXProvider"
+    )
+    assert (
+        s.providers.model_registry["mlc"].impl
+        == "tether.providers.mlc.provider.MLCProvider"
+    )
     # Tools registry from default.yml.
     names = [t.name for t in s.tools.registry]
     assert "time" in names
