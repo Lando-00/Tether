@@ -25,7 +25,7 @@ from __future__ import annotations
 from typing import Any, AsyncGenerator, AsyncIterator, Dict, List, Optional
 
 from tether.core.interfaces import ModelProvider
-from tether.providers.types import ProviderCapabilities, ProviderEvent
+from tether.providers.types import ModelDetails, ProviderCapabilities, ProviderEvent
 
 
 class NexaProvider(ModelProvider):
@@ -72,6 +72,19 @@ class NexaProvider(ModelProvider):
         raise NotImplementedError(
             "NexaProvider stub: list_models requires Nexa SDK integration."
         )
+
+    def list_model_info(self) -> List["ModelDetails"]:
+        """No catalog — the stub serves no models yet.
+
+        The model-catalog contract (:meth:`ModelProvider.list_model_info`)
+        requires an empty list rather than an exception when a provider has
+        nothing to offer, so this stub stays enumerable: it can sit in the
+        registry and simply contribute no rows to the picker, instead of
+        blowing up discovery for every other provider. The rest of the stub
+        still raises loudly, because *using* it is a programming error
+        whereas *listing* it is not.
+        """
+        return []
 
     def unload_model(self, model_name: str) -> bool:
         raise NotImplementedError(

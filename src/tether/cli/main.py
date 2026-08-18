@@ -699,6 +699,10 @@ def select_model(
             details = [detail for detail in details if detail.get("provider_id") == provider]
             if not details:
                 console.print(f"[bold red]Error:[/bold red] Provider '{provider}' has no available models.")
+                health, _ = get_provider_health()
+                error = ((health or {}).get(provider) or {}).get("error")
+                if error:
+                    console.print(f"[dim]{provider}: {error}[/dim]")
                 raise typer.Exit(1)
         return _interactive_model_select(details=details)
 
@@ -706,7 +710,17 @@ def select_model(
     available_models = get_available_models()
     if not available_models:
         console.print("[bold red]Error:[/bold red] No models found.")
-        console.print("Please make sure your compiled models are correctly placed and the service is running.")
+        # Name each registered provider and why it offered nothing, instead
+        # of a generic "check your models directory" that is wrong for every
+        # provider that isn't MLC.
+        gaps = _provider_gaps([])
+        if gaps:
+            console.print("Registered providers and why they offered no models:")
+            _render_provider_gaps([])
+        else:
+            console.print(
+                "Please make sure your models are correctly configured and the service is running."
+            )
         raise typer.Exit(1)
 
     console.print("\nAvailable Models:")
@@ -727,6 +741,36 @@ def select_model(
                 )
         except ValueError:
             console.print("[red]Invalid input. Please enter a number.[/red]")
+
+
+def _provider_gaps(details: list[dict]) -> list[tuple[str, Optional[str]]]:
+    """Registered providers that contributed no models, with any error.
+
+    A provider can be registered and reachable yet still return an empty
+    catalog (nothing pulled, wheels missing, stub). Without this the picker
+    would simply not mention it, which reads as "that provider does not
+    exist" rather than "that provider has nothing to offer".
+    """
+    health, _ = get_provider_health()
+    if not health:
+        return []
+    represented = {
+        row.get("provider_id")
+        for row in details
+        if row.get("provider_id") and row.get("provider_id") != _PROVIDER_ID_SENTINEL
+    }
+    return [
+        (pid, (info or {}).get("error"))
+        for pid, info in health.items()
+        if pid not in represented
+    ]
+
+
+def _render_provider_gaps(details: list[dict]) -> None:
+    """Print one dim line per provider that offers no models."""
+    for pid, error in _provider_gaps(details):
+        reason = f" — {error}" if error else " — no models available"
+        console.print(f"[dim]![/dim] [yellow]{pid}[/yellow][dim]{reason}[/dim]")
 
 
 def _interactive_model_select(
@@ -765,17 +809,26 @@ def _interactive_model_select(
             1,
         ),
     )
+    previous_pid: Optional[str] = None
     for i, info in enumerate(sorted_details, 1):
         pid = info.get("provider_id", "")
         is_default = info.get("is_default", False)
         marker = " ★" if is_default else ""
         row = [str(i), info.get("id", "?") + marker]
         if show_provider_col:
-            row.append(pid if pid != _PROVIDER_ID_SENTINEL else "—")
+            # Only label the first row of each provider block so the table
+            # reads as grouped sections instead of a repeated column.
+            row.append(
+                (pid if pid != _PROVIDER_ID_SENTINEL else "—")
+                if pid != previous_pid
+                else ""
+            )
         row.append(info.get("source", "?"))
         row.append(str(info.get("context_window", "?")))
-        table.add_row(*row)
+        table.add_row(*row, end_section=(pid != previous_pid and i > 1))
+        previous_pid = pid
     console.print(table)
+    _render_provider_gaps(details)
 
     while True:
         choice_str = Prompt.ask(

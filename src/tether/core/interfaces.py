@@ -1,5 +1,16 @@
 from abc import ABC, abstractmethod
-from typing import TYPE_CHECKING, Any, AsyncGenerator, AsyncIterator, Dict, List, Optional
+from typing import (
+    TYPE_CHECKING,
+    Any,
+    AsyncGenerator,
+    AsyncIterator,
+    Dict,
+    Iterable,
+    List,
+    Optional,
+)
+
+import structlog
 
 from tether.protocol.parsers.events import ParserEvent
 from tether.providers.types import ModelDetails, ProviderCapabilities, ProviderEvent
@@ -8,6 +19,8 @@ if TYPE_CHECKING:
     from tether.core.types import ToolExecutionContext
     from tether.protocol.orchestration.cancel import CancelToken
     from tether.protocol.wire.events import WireEvent
+
+_log = structlog.get_logger(__name__)
 
 
 class ModelProvider(ABC):
@@ -135,24 +148,83 @@ class ModelProvider(ABC):
         return "local"
 
     def list_model_info(self) -> List[ModelDetails]:
-        """Return rich metadata for all models this provider exposes.
+        """Return rich metadata for every model this provider can serve.
 
-        Default returns a minimal ``ModelDetails`` per model from
-        :meth:`list_models`. Concrete providers override to populate
-        reasoning_efforts, context_window, etc.
+        **This is the canonical model-catalog contract.** It is the single
+        source of truth for model discovery: ``GET /api/v1/models/details``,
+        the CLI model picker, and :meth:`Engine.resolve_provider_id` all read
+        it. The plain :meth:`list_models` list is the name-only projection of
+        the same catalog and MUST stay consistent with it.
+
+        Implementations MUST honour three rules:
+
+        1. **Return every model the provider can currently serve** — not just
+           the configured default.
+        2. **Return an empty list when there are none.** "No models" is a
+           legitimate, expected answer (an unconfigured provider, a stub, an
+           unreachable server). It is not an error.
+        3. **Never raise.** A provider that cannot enumerate its catalog
+           degrades to ``[]``. Callers merge catalogs from several providers,
+           so one broken provider must not blank out the others. Report the
+           reason by logging, not by propagating.
+
+        Leave ``provider_id`` at its ``"_unwrapped_"`` sentinel;
+        :meth:`Engine.list_model_info` stamps the registry key (ADR-0021).
+
+        This default implementation derives a catalog from :meth:`list_models`,
+        :meth:`default_model`, :meth:`get_context_window`, :attr:`source` and
+        :attr:`capabilities`, and applies the rules above defensively.
+        Concrete providers SHOULD override it whenever they can describe their
+        models more precisely (per-model context windows, reasoning efforts,
+        thinking support).
         """
-        return [
-            ModelDetails(
-                id=name,
-                provider_id="_unwrapped_",
-                provider_kind=self.kind if hasattr(self, "kind") else "unknown",
-                source="local",
-                context_window=self.get_context_window(name),
-                supports_thinking=False,
-                supports_reasoning_effort=False,
+        try:
+            names = list(self.list_models())
+        except Exception as exc:  # noqa: BLE001 - catalog must not raise
+            _log.warning(
+                "provider.list_models_failed",
+                provider_kind=self._safe_kind(),
+                error=str(exc),
             )
-            for name in self.list_models()
-        ]
+            return []
+
+        try:
+            default_name = self.default_model()
+        except Exception:  # noqa: BLE001 - defensive
+            default_name = None
+
+        source = self.source if self.source in ("local", "remote") else "local"
+        try:
+            supports_thinking = bool(self.capabilities.thinking_channel)
+        except Exception:  # noqa: BLE001 - defensive
+            supports_thinking = False
+
+        catalog: List[ModelDetails] = []
+        for name in names:
+            try:
+                context_window = int(self.get_context_window(name))
+            except Exception:  # noqa: BLE001 - one bad model must not
+                # blank the whole catalog; fall back to a conservative window.
+                context_window = 4096
+            catalog.append(
+                ModelDetails(
+                    id=name,
+                    provider_kind=self._safe_kind(),
+                    source=source,  # type: ignore[arg-type]
+                    context_window=context_window,
+                    supports_thinking=supports_thinking,
+                    supports_reasoning_effort=False,
+                    is_default=(default_name is not None and name == default_name),
+                )
+            )
+        return catalog
+
+    def _safe_kind(self) -> str:
+        """``kind`` for diagnostics, tolerating providers that omit it."""
+        try:
+            return self.kind
+        except Exception:  # noqa: BLE001 - defensive
+            return "unknown"
 
     def default_model(self) -> Optional[str]:
         """Return the provider's configured default model name, or None."""

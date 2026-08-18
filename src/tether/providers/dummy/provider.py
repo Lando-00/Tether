@@ -1,9 +1,12 @@
 import asyncio
-from typing import Any, AsyncGenerator, Dict, List, Optional
+from typing import TYPE_CHECKING, Any, AsyncGenerator, Dict, List, Optional
 
 import structlog
 
 from tether.core.interfaces import ModelProvider
+
+if TYPE_CHECKING:
+    from tether.providers.types import ModelDetails
 
 _log = structlog.get_logger(__name__)
 
@@ -30,6 +33,28 @@ class DummyProvider(ModelProvider):
     def list_models(self) -> List[str]:
         """Return a fixed list of dummy models."""
         return ["dummy-model-1", "dummy-model-2"]
+
+    def list_model_info(self) -> List["ModelDetails"]:
+        """Reference implementation of the model-catalog contract.
+
+        Every model is enumerated (not just the default), the list is built
+        without any I/O that could raise, and ``dummy-model-1`` is flagged as
+        the default so selection UIs have something to pre-select.
+        """
+        from tether.providers.types import ModelDetails
+
+        return [
+            ModelDetails(
+                id=name,
+                provider_kind=self.kind,
+                source="local",
+                context_window=self.get_context_window(name),
+                supports_thinking=False,
+                supports_reasoning_effort=False,
+                is_default=(name == "dummy-model-1"),
+            )
+            for name in self.list_models()
+        ]
 
     def unload_model(self, model_name: str) -> bool:
         """Simulate unloading a model."""

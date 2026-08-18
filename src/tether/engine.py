@@ -202,6 +202,10 @@ class Engine:
         # a previously known model.
         self._known_models_by_provider: Dict[str, set[str]] = {}
         self._provider_inventory_failures: Dict[str, str] = {}
+        # Providers whose model catalog (list_model_info) raised. Kept apart
+        # from inventory failures because a provider can stream fine while
+        # only its metadata enumeration is broken.
+        self._provider_catalog_failures: Dict[str, str] = {}
         # Per-provider monotonic timestamp of the last successful inventory
         # read, so routing can serve a slightly stale list instead of calling
         # list_models() on every request (see _remember_provider_models).
@@ -985,16 +989,37 @@ class Engine:
         return result
 
     def list_model_info(self) -> List:
-        """Merged ModelDetails from all healthy providers, wrapped with provider_id."""
+        """Merged catalogs from every provider, stamped with ``provider_id``.
+
+        Providers are contractually forbidden from raising here
+        (:meth:`ModelProvider.list_model_info`), but a third-party provider
+        may still misbehave. Rather than silently dropping it — which makes a
+        broken provider indistinguishable from one that legitimately has no
+        models — the failure is logged and recorded so
+        :meth:`list_provider_health` and ``/readyz`` can report it.
+        """
         from tether.providers.types import ModelDetails
 
         result: List[ModelDetails] = []
         for pid, prov in self.providers.items():
             try:
-                for info in prov.list_model_info():
-                    result.append(info.model_copy(update={"provider_id": pid}))
-            except Exception:  # noqa: BLE001 - defensive
-                pass
+                catalog = list(prov.list_model_info())
+            except Exception as exc:  # noqa: BLE001 - one provider must not
+                # blank out the catalogs of every other provider.
+                self._provider_catalog_failures[pid] = (
+                    f"model catalog unavailable: {type(exc).__name__}: {exc}"
+                )
+                logger.warning(
+                    "provider.list_model_info_failed provider_id=%s "
+                    "error_class=%s error_message=%s",
+                    pid,
+                    type(exc).__name__,
+                    str(exc),
+                )
+                continue
+            self._provider_catalog_failures.pop(pid, None)
+            for info in catalog:
+                result.append(info.model_copy(update={"provider_id": pid}))
         return result
 
     def unload_model(self, model_name: str, *, provider_id: Optional[str] = None) -> bool:
@@ -1022,11 +1047,12 @@ class Engine:
             if source not in ("local", "remote"):
                 source = "unknown"
             inventory_failure = self._provider_inventory_failures.get(pid)
+            catalog_failure = self._provider_catalog_failures.get(pid)
             out[pid] = {
                 "healthy": inventory_failure is None,
                 "kind": kind,
                 "source": source,
-                "error": inventory_failure,
+                "error": inventory_failure or catalog_failure,
             }
         for pid, msg in self._provider_start_failures.items():
             out[pid] = {

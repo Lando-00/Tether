@@ -210,6 +210,23 @@ class MLCProvider(ModelProvider):
         models = find_models(self.models_root)
         return [m["model_name"] for m in models]
 
+    def default_model(self) -> Optional[str]:
+        """No configured default — MLC discovers models from disk.
+
+        The base implementation would return the first discovered model,
+        which makes the model picker put a "default" marker on whichever
+        directory happens to sort first. That is arbitrary and misleading,
+        so report honestly that there is no configured default. Callers that
+        need *some* model (startup warm-up) already fall back to the first
+        entry of :meth:`list_models`.
+
+        The full catalog is produced by the inherited
+        :meth:`ModelProvider.list_model_info`, which reads each model's real
+        context window via :meth:`get_context_window` and tolerates an
+        individual unreadable ``mlc-chat-config.json``.
+        """
+        return None
+
     def unload_model(self, model_name: str) -> bool:
         """Unload a specific cached engine by EXACT model_name match.
 
