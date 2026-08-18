@@ -1,8 +1,15 @@
 # Recursive Language Models (RLMs) — Orchestration Research
 
 **Date:** 2026-08
-**Hardware context:** Snapdragon X Elite, 16 GB UMA, Qwen3-1.7B via GenieX (NPU)
+**Hardware context:** Snapdragon X Elite, 16 GB UMA, `bartowski/Qwen_Qwen3-8B-GGUF:Q4_0` via GenieX (NPU)
 **Status:** Research note — no implementation decision taken yet
+
+> **Correction (2026-08-18).** Sections 6.1–6.2 below were written against an
+> assumed **Qwen3-1.7B** default. That is out of date: GenieX now ships
+> **Qwen3-8B at Q4_0** (`src/tether/config/default.yml`, `context_window: 4096`).
+> The root-capability verdict softens accordingly but does not reverse — see
+> **§6.5**, which supersedes the 1.7B framing and covers the tuned RLM weights
+> the authors actually released.
 
 ---
 
@@ -402,7 +409,6 @@ synthesis is a direct adoption of this idea. It is a future option contingent on
 routing, which is currently out of scope.
 
 ### 6.4 Does RLM-ish Recursion Conflict with Tether's "No Multi-Agent Routing" Boundary?
-
 **It depends on how strictly "multi-agent" is defined.**
 
 Tether's boundary as described: "no autonomous/multi-agent routing." The concern is autonomous
@@ -426,15 +432,59 @@ in spirit. The extracted ideas, implemented as deterministic orchestrator logic,
 
 ---
 
-## 7. Recommendation
+### 6.5 Are there tuned RLM weights we could actually run on GenieX?
 
+**Short answer: the weights exist and the base model matches ours exactly — but no
+NPU-compatible build exists, and the model is not a drop-in chat model.**
+
+The authors released exactly one post-trained model. Verified against the HF API 2026-08-18:
+
+| Repo | Format | Size | NPU-capable? |
+|---|---|---|---|
+| [`mit-oasys/rlm-qwen3-8b-v0.1`](https://huggingface.co/mit-oasys/rlm-qwen3-8b-v0.1) | safetensors (4 shards) | — | n/a — needs GGUF conversion |
+| [`mitkox/rlm-qwen3-8b-v0.1-Q4_K_M-GGUF`](https://huggingface.co/mitkox/rlm-qwen3-8b-v0.1-Q4_K_M-GGUF) | **Q4_K_M** | 4.68 GB | ❌ K-quant → CPU/GPU fallback |
+| [`cameronbergh/rlm-qwen3-8b-v0.1-gguf`](https://huggingface.co/cameronbergh/rlm-qwen3-8b-v0.1-gguf) | f16 / q8_0 | 15.26 / 8.11 GB | ❌ wrong quant *and* too large |
+
+**No `Q4_0` build exists anywhere.** Per `docs/runbooks/geniex-provider.md`, `Q4_0` is not a
+preference but the Hexagon NPU requirement — every other quantisation silently falls back off
+the NPU. So nothing here is pullable into GenieX as-is.
+
+Three further observations, in descending order of importance:
+
+1. **The base model is already ours.** `rlm-qwen3-8b-v0.1` is a fine-tune of `Qwen/Qwen3-8B`,
+   and GenieX's shipped default is `bartowski/Qwen_Qwen3-8B-GGUF:Q4_0` (4.46 GB). A self-made
+   `Q4_0` of the RLM fine-tune should land at essentially the same size and memory profile —
+   which the runbook already records as stable on its own (~1.3 s/response warm). The
+   conversion path is the standard llama.cpp one: `convert_hf_to_gguf.py` then
+   `llama-quantize … Q4_0`. This is the only genuinely promising route.
+
+2. **It is not a general chat model.** The model card is explicit: *"trained on trajectories
+   produced using a fixed system prompt. It assumes the environment/scaffold from our RLM
+   repo,"* with vLLM plus their inference code recommended. Swapping it in as a general Tether
+   model would very likely perform **worse** than base Qwen3-8B, because it is specialised for
+   emitting REPL code against a scaffold Tether does not have.
+
+3. **Context budget fights the premise.** The GGUF advertises `context_length: 40960`, but
+   GenieX runs `--nctx 4096` and `context_window: 4096`. RLM exists to exploit long context;
+   at 4 k the root has little room for REPL transcripts on top of the task.
+
+**What this does to §6.1.** The root-capability verdict softens but does not reverse. This
+tuned 8B *is* precisely the artefact that makes small-model RLM plausible — the authors built
+it because zero-shot REPL orchestration fails at this scale. But it still needs (a) a Q4_0
+conversion nobody has published, (b) the RLM scaffold including a code sandbox Tether does not
+have, and (c) more context than GenieX currently serves. Each is surmountable alone; together
+they are a project, not an experiment.
+
+---
+
+## 7. Recommendation
 ### Verdict: **Adapt — do not adopt in full; do not reject the ideas**
 
 | Aspect | Assessment |
 |---|---|
 | Full RLM (REPL + recursive self-calls) | ❌ **Reject for Tether now.** Root model capability gap (1.7B vs frontier), REPL security requirement, and latency (~2–10 min/query on NPU) are hard blockers. |
 | RLM as an ideas source | ✅ **Adopt the framing.** Context-as-variable, per-fragment extraction, progressive peeking are directly actionable. |
-| Monitoring RLM progress | ✅ **Watch.** If a sub-3B model capable of reliable REPL orchestration appears, revisit. If RLM-Qwen3-8B can be served on the NPU path alongside 1.7B, the sub-model idea becomes viable. |
+| Monitoring RLM progress | ✅ **Watch.** The tuned `mit-oasys/rlm-qwen3-8b-v0.1` exists and shares our exact base model, but ships no `Q4_0` build and assumes the RLM scaffold — see §6.5. Revisit if someone publishes a `Q4_0` repack, or if a sandbox lands. |
 
 ### Concrete Next Experiments (Smallest Steps That Settle Open Questions)
 
@@ -443,11 +493,12 @@ in spirit. The extracted ideas, implemented as deterministic orchestrator logic,
    model. Directly answers "does Notebook degrade on large single tool results?" Implement as
    a feature flag on `ResearchSettings`.
 
-2. **Qwen3-1.7B REPL smoke test (cheap, diagnostic):** Prompt Qwen3-1.7B (via GenieX) with a
-   minimal RLM system prompt and a simple REPL task (find a number in a 10k-character string
-   stored as a Python variable). Measure: does it produce valid Python? Does it terminate? How
-   many iterations? This directly answers the root-model viability question with one afternoon
-   of experiment.
+2. **Qwen3-8B REPL smoke test (cheap, diagnostic):** Prompt the shipped
+   `Qwen3-8B:Q4_0` (via GenieX) with a minimal RLM system prompt and a simple REPL task (find a
+   number in a 10k-character string stored as a Python variable). Measure: does it produce valid
+   Python? Does it terminate? How many iterations? This settles the root-model viability
+   question for the model we actually run, with one afternoon of experiment — and needs no new
+   weights. Only if this passes is a `Q4_0` conversion of the tuned model (§6.5) worth the effort.
 
 3. **Latency profiling on multi-call Notebook queries:** Instrument `NotebookOrchestrator` to
    measure per-phase wall-clock time for real research queries. Establish the baseline before
