@@ -4,18 +4,30 @@
 > see [`AGENTS.md`](../AGENTS.md). This file goes deeper into Copilot-CLI-specific
 > conventions.
 
-**Tether** is a Python/FastAPI service for session-based, streaming access to MLC-LLM models with function-calling support. It uses SQLite for chat history, follows Model-Context-Protocol (MCP) architecture, and streams **v2 NDJSON events by default** (p5-cutover-c-flip-default). Legacy v0 NDJSON is available via `Accept: application/x-ndjson; version=0`.
+**Tether** is a Python/FastAPI service for session-based, streaming access to
+local model providers with function-calling support. The committed default is
+the external GenieX NPU server; MLC/Adreno, Ollama, dummy, and a Nexa stub are
+also present. It uses SQLite for chat history, follows Model-Context-Protocol
+(MCP) architecture, and streams **v2 NDJSON events by default**. Legacy v0
+NDJSON is available via `Accept: application/x-ndjson; version=0`.
 
 ## Quick Start
 
 ```powershell
-conda activate mlc-venv2
-pip install -e ".[server,cli,brave,dev]"
-# MLC CodeLinaro wheels are installed separately; see environment-mlc-venv2.yml.
-# Or for a clean validation env: see scripts/setup_fresh_env.ps1 + environment-tether.yml.
+# Default GenieX development: python.org ARM64 Python, not conda
+<arm64-python-3.12>\python.exe -m venv <venv-path>
+& <venv-path>\Scripts\Activate.ps1
+<venv-path>\Scripts\python.exe -m pip install -e ".[cli,brave,dev]" `
+  "fastapi>=0.117.0,<0.118.0" "uvicorn>=0.37.0,<0.38.0" `
+  watchfiles websockets pyyaml python-dotenv colorama
+# Do not use the server extra in this venv: httptools has no win_arm64 wheel.
+# For MLC work, use the x64 conda env under Prism and install CodeLinaro wheels.
+
+# Run the whole stack (GenieX + server + CLI) with one command
+.\tether.ps1                               # also: status | stop | logs, and -NoCli
 
 # Run service
-python -m tether.app                       # canonical (http://localhost:8000)
+python -m tether.app                       # canonical (http://localhost:8080)
 tether-server                              # via console script
 # Or debug: .\scripts\dev\run_debug.ps1
 
@@ -27,24 +39,33 @@ python -m pytest -m hardware tests/hardware/   # opt-in hardware tests
 ## Architecture (MCP Layers)
 
 ### 1. Model (`src/tether/providers/`)
-- `mlc/provider.py`: MLC-LLM streaming interface
-- Implements `ModelProvider` interface from `core/interfaces.py`
+- `geniex/`: default external NPU provider (OpenAI-compatible HTTP)
+- `mlc/`: Adreno/OpenCL provider using CodeLinaro MLC-LLM wheels
+- `ollama/`: local/LAN Ollama provider (native and OpenAI-compatible surfaces)
+- `dummy/`: dependency-free provider for tests and development
+- `nexa/`: forward-compatibility stub
+- All providers implement `ModelProvider` from `providers/types.py`
 
 ### 2. Context (`src/tether/context/`)
-- `sqlite_store.py`: `SqliteSessionStore` (Phase 6.5 will extract `AsyncSqliteStore` + add `SqliteInbox`) (aiosqlite + WAL + yoyo-migrations)
+- `sqlite_store.py`: `SqliteSessionStore` for persisted chat history
+- `inbox_store.py`: `SqliteInbox` for connector inbound events
+- `_async_sqlite_base.py`: shared aiosqlite + WAL + yoyo-migrations base
 - **Critical**: `get_history()` must include tool calls and results for multi-turn tool execution
 - `tool_audit` table stores per-call results (capped at 256 KB)
 
 ### 3. Protocol (`src/tether/protocol/`)
-- `orchestration/orchestrator.py`: Main loop coordinating model → parser → tool execution
+- `orchestration/chatty.py`: chat-mode model → parser → tool loop
+- `orchestration/notebook.py`: implemented research-mode Notebook loop
 - `parsers/sliding.py`: Stateful parser detecting `<<function_call>>` markers in streams
 - `orchestration/tool_runner.py`: Executes tools with timeout
-- `events.py`: Typed v2 NDJSON event dataclasses (`message_start`, `text_delta`, `tool_call`, `tool_result`, `message_stop`) — **actual path**: `src/tether/protocol/wire/events.py`
+- `intent/`: explicit-send confirmation classification
+- `wire/events.py`: Typed v2 NDJSON event models
 
 ### 4. Tools (`src/tether/tools/`)
 - `base.py`: `BaseTool` abstract class with auto-schema generation (`list[T]` and `Optional[T]` supported)
 - `registration.py`: `@tool(name=...)` decorator; `ToolRegistry` auto-discovers decorated classes when `tools.registry` is empty in config
 - Connector framework: `Connector` ABC + `ConnectorRegistry` with mandatory `{connector_id}_` tool-name prefix; `ToolExecutionContext` for draft+confirm send-safety pattern
+- `src/tether/connectors/whatsapp/`: shipped neonize-backed WhatsApp connector with nine `whatsapp_*` tools
 
 ### 5. Config (`src/tether/config/`)
 - `default.yml`: System prompt, tool registry, limits (max_tool_loops)
@@ -58,6 +79,9 @@ python -m pytest -m hardware tests/hardware/   # opt-in hardware tests
 - Outbound URL allowlist (`assert_safe_url`) for all connector/tool HTTP calls
 - Optional CSRF + CORS + TrustedHost middleware
 - **Middleware order is critical** (Starlette: last-added = outermost): add-order `CSRF → CORS → TrustedHost → RequestId`; runtime order `RequestId(outermost) → TrustedHost → CORS → CSRF → handler`
+
+### 8. Runtime (`src/tether/runtime/`)
+- Hardware watchdog, daemon-thread cleanup, signal/task supervision, and abandoned-task tracking
 
 ## Tool Calling System (Critical)
 
@@ -101,19 +125,23 @@ src/tether/               # Active codebase (SOLID, config-driven)
 ├── app/                  # FastAPI app + HTTP routers (console script: tether-server)
 ├── cli/                  # CLI entry point main.py (console script: tether-cli)
 ├── config/               # YAML configs (default.yml, testing.yml)
-├── context/              # SqliteSessionStore (Phase 6.5 will extract AsyncSqliteStore + add SqliteInbox) (WAL + yoyo-migrations)
+├── connectors/           # Connector framework + shipped WhatsApp connector
+├── context/              # SqliteSessionStore + SqliteInbox (WAL + yoyo-migrations)
 ├── core/                 # Interfaces, types, factory, logging, tool registry
 ├── observability/        # structlog + RequestId middleware + optional OTel adapter
 ├── protocol/             # Orchestration, parsers, service layer
 │   ├── wire/events.py    # Typed v2 NDJSON event dataclasses (src/tether/protocol/wire/events.py)
-│   ├── orchestration/    # orchestrator.py, tool_runner.py
+│   ├── orchestration/    # chatty.py, notebook.py, tool_runner.py
+│   ├── intent/           # send-confirmation classifiers
 │   └── parsers/          # sliding.py (<<function_call>> detection)
-├── providers/            # Model providers (mlc/, dummy/)
+├── providers/            # geniex/, mlc/, ollama/, dummy/, nexa/
+├── runtime/              # Hardware/task/signal supervision
+├── security/             # Outbound URL safety
 └── tools/                # BaseTool, @tool decorator, connectors, concrete tools
 
 # tether_service/ is a deprecation alias (MetaPathFinder, single DeprecationWarning per process)
 # Pre-refactor `llm_service/` + `legacy/` reference code is on branch archive/pre-refactor (not in main).
-scripts/dev/              # Developer scripts (cli_chat.py, run_debug.{py,bat,ps1}, show_tool_schemas.py)
+scripts/dev/              # Developer scripts (cli_chat.py, run_debug.{py,bat,ps1}, launch_config.py, show_tool_schemas.py)
 models/                   # Model weights (override with TETHER_MODELS_DIR env var)
 tests/                    # pytest tests (use anyio for async)
 ├── hardware/             # Hardware-gated tests (opt-in: -m hardware)
@@ -124,7 +152,7 @@ tests/                    # pytest tests (use anyio for async)
 
 ## Development Tips
 
-- **Trace a request**: `src/tether/app/__main__.py` → `app/http/routers/chat.py` → `protocol/service/generation_service.py` → `protocol/orchestration/orchestrator.py`
+- **Trace a request**: `src/tether/app/__main__.py` → `app/http/routers/chat.py` → `engine.py` → `protocol/orchestration/chatty.py` or `notebook.py`
 - **Debug tool calls**: Enable logging in `core/logging.py`, check for `tool_call` / `tool_result` events (v2 vocab)
 - **Add new tool**: Create in `src/tether/tools/`, decorate with `@tool(name=...)`, restart server
 - **Test parser**: `python -m pytest tests/protocol/parsers/test_sliding_parser.py -v` (tests chunk boundaries, nested JSON, etc.)
@@ -210,13 +238,13 @@ class WebSearchTool(BaseTool):
    ↓
 2. app/http/routers/chat.py::stream()
    ↓
-3. protocol/service/generation_service.py::stream()
+3. engine.py::stream() / engine.py::chat()
    ↓
-4. protocol/orchestration/orchestrator.py::orchestrate()
+4. Selected orchestrator::run()
    │
    ├─ Loop (up to max_tool_loops=5):
    │   ├─ Get history (including previous tool calls/results)
-   │   ├─ Stream from model (MLCProvider)
+   │   ├─ Stream from the selected ModelProvider
    │   ├─ Parse stream for <<function_call>> markers (SlidingParser)
    │   ├─ If tool call detected:
    │   │   ├─ Emit `tool_call` event (v2 vocab; `message_start`/`text_delta`/`message_stop` per turn)
@@ -234,7 +262,8 @@ class WebSearchTool(BaseTool):
 
 **Key Files:**
 - `src/tether/core/tool_registry.py`: Loads tools from config or auto-discovers `@tool`-decorated classes
-- `src/tether/protocol/orchestration/orchestrator.py`: Main orchestration loop
+- `src/tether/protocol/orchestration/chatty.py`: Chat-mode orchestration loop
+- `src/tether/protocol/orchestration/notebook.py`: Research-mode orchestration loop
 - `src/tether/protocol/orchestration/tool_runner.py`: Tool execution with timeout
 - `src/tether/protocol/parsers/sliding.py`: Detects `<<function_call>>` in stream
 - `src/tether/context/sqlite_store.py`: Persists tool calls/results for multi-turn

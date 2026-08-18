@@ -1,12 +1,15 @@
 # Tether
 
 > Single-user, local-first FastAPI service for streaming chat completions
-> from on-device LLMs with function calling and persistent sessions.
+> from local model providers with function calling and persistent sessions.
 
-Tether runs quantised language models locally via [MLC-LLM](https://github.com/mlc-ai/mlc-llm)
-on Qualcomm Adreno/OpenCL hardware. It exposes a streaming NDJSON (or SSE) API with
-tool-use (function calling), SQLite-backed session history, and a config-driven
-Model-Context-Protocol (MCP) architecture. No data leaves your machine.
+Tether uses a provider registry for local inference. The committed default is
+**GenieX**, a separately managed OpenAI-compatible server that runs on the
+Snapdragon X Elite NPU. Tether also ships providers for
+[MLC-LLM](https://github.com/mlc-ai/mlc-llm) on Adreno/OpenCL, Ollama, and a
+dependency-free dummy backend. It exposes a streaming NDJSON (or SSE) API with
+tool use, SQLite-backed session history, and a config-driven
+Model-Context-Protocol (MCP) architecture.
 
 ## Status
 
@@ -20,32 +23,75 @@ and [`AGENTS.md`](./AGENTS.md) for AI-agent navigation.
 
 | Requirement | Notes |
 |---|---|
-| Snapdragon X Elite | Adreno 740 GPU, OpenCL backend — required for MLC/Adreno runtime |
-| Python 3.12 (x64 under Prism) | conda env `mlc-venv2` (current) or `tether` (fresh; see `scripts/setup_fresh_env.ps1`) |
-| MLC-LLM runtime | Qualcomm CodeLinaro `2025.06.r1` wheels (see `environment-mlc-venv2.yml` or `environment-tether.yml`) |
-| Compiled MLC model | Set `TETHER_MODELS_DIR` to parent directory (defaults to `./models/`) |
+| Windows on ARM64, Snapdragon X Elite | Target host class (`X1E80100`) |
+| Python 3.12 | Use a native ARM64 python.org venv for GenieX; MLC requires an x64 conda env under Prism |
+| GenieX server | Required by the committed default provider; Tether connects to it but never manages it |
+| Provider-specific model files | GenieX convention: `./models/geniex` is a junction to an out-of-repo store; MLC uses `TETHER_MODELS_DIR` (default `./models/`) |
 
 ### Install
 
 ```powershell
-conda activate mlc-venv2
-pip install -e ".[server,cli,brave]"
+# Default GenieX path: create a native ARM64 venv outside the clone
+<arm64-python-3.12>\python.exe -m venv <venv-path>
+& <venv-path>\Scripts\Activate.ps1
+
+# Install without uvicorn[standard]: httptools has no win_arm64 wheel
+<venv-path>\Scripts\python.exe -m pip install -e ".[cli,brave,dev]" `
+  "fastapi>=0.117.0,<0.118.0" "uvicorn>=0.37.0,<0.38.0" `
+  watchfiles websockets pyyaml python-dotenv colorama
 ```
 
-> **Note:** Qualcomm CodeLinaro MLC-LLM wheels must be installed separately **before**
-> the above step. See `environment-mlc-venv2.yml` for version pins and wheel download instructions.
+Choose an environment for the provider you are developing:
 
-For a clean fresh-env validation pass, see `docs/runbooks/fresh-env-setup.md` and run `scripts/setup_fresh_env.ps1`.
+- **Native ARM64 / GenieX-only**: use a stdlib venv, not conda. The installed
+  x64 Miniconda cannot create native ARM64 environments. Uvicorn uses its
+  pure-Python `h11` parser in this setup.
+- **x64 conda under Prism / MLC**: install the Qualcomm CodeLinaro
+  `cp312-cp312-win_amd64` wheels separately before the editable install.
+
+`tzdata` is declared on Windows because Windows has no system timezone
+database. Pre-existing environments created before that dependency was added
+may need `python -m pip install tzdata`.
+
+See [`docs/runbooks/geniex-provider.md`](./docs/runbooks/geniex-provider.md) and
+[`docs/runbooks/fresh-env-setup.md`](./docs/runbooks/fresh-env-setup.md).
+
+For a clean MLC-capable validation environment, see
+[`docs/runbooks/fresh-env-setup.md`](./docs/runbooks/fresh-env-setup.md) and
+run `scripts/setup_fresh_env.ps1`.
 
 For web-search tool support, copy `.env.example` to `.env` and set `BRAVE_API_KEY`.
 
 ### Run
 
+Once installed, one command brings up the whole stack — the GenieX server, the
+Tether HTTP service, and the CLI:
+
+```powershell
+.\tether.ps1
+```
+
+It reuses anything already running, waits for each service to become healthy,
+drops you into the CLI, and stops only what it started when you leave.
+
+```powershell
+.\tether.ps1 status   # health of both services
+.\tether.ps1 stop     # stop what the launcher started
+.\tether.ps1 logs     # tail background service logs
+.\tether.ps1 -NoCli   # headless: services only
+```
+
+If your venv lives outside the clone, copy `tether.local.example.ps1` to
+`tether.local.ps1` (gitignored) and set `$Python` once. Full details in
+[`docs/runbooks/one-command-launch.md`](./docs/runbooks/one-command-launch.md).
+
+To run just the HTTP service:
+
 ```powershell
 python -m tether.app
 # Starts on http://127.0.0.1:8080
 
-# Or, after pip install -e ".[server]":
+# Or, after the provider-appropriate editable install:
 tether-server
 ```
 
@@ -55,12 +101,16 @@ Interactive API docs: `http://127.0.0.1:8080/docs`
 
 ```powershell
 # 1. Create a session
-$sid = (Invoke-RestMethod -Method Post http://127.0.0.1:8080/api/v1/sessions).session_id
+$sid = (Invoke-RestMethod `
+  -Method Post `
+  -Uri http://127.0.0.1:8080/api/v1/sessions `
+  -ContentType "application/json" `
+  -Body '{}').session_id
 
 # 2. Stream a reply (NDJSON — default)
 curl -N -X POST http://127.0.0.1:8080/api/v1/chat/stream `
   -H "Content-Type: application/json" `
-  -d "{`"session_id`":`"$sid`",`"prompt`":`"What time is it?`"}"
+  -d "{`"session_id`":`"$sid`",`"model_name`":`"bartowski/Qwen_Qwen3-8B-GGUF:Q4_0`",`"prompt`":`"What time is it?`"}"
 ```
 
 The response is a stream of newline-delimited JSON objects. Each has a `type` field:
@@ -79,7 +129,9 @@ for the full event vocabulary.
 
 ### CLI
 
-The `tether-cli` console script is the interactive front-end:
+The `tether-cli` console script is the interactive front-end. It expects the
+HTTP service to already be running — use [`.\tether.ps1`](./docs/runbooks/one-command-launch.md)
+to start both together.
 
 ```powershell
 tether-cli                               # default: connects to http://127.0.0.1:8080/api/v1
@@ -93,7 +145,8 @@ Inside the chat loop, slash commands:
 
 | Command     | Effect |
 |-------------|--------|
-| `\tools`    | List registered tools (from `GET /api/v1/tools`) |
+| `\tools`    | List registered tools with on/off state (from `GET /api/v1/tools`) |
+| `\tools on\|off <name>` | Enable/disable a tool for later turns |
 | `\models`   | Switch model mid-chat (no restart needed) |
 | `\mode`     | Toggle chat/research orchestrator mode |
 | `\chat` · `\research` | Switch directly to a specific orchestrator mode |
@@ -116,22 +169,55 @@ All routes are under `/api/v1`.
 | `DELETE` | `/sessions`                       | Delete all sessions              |
 | `POST`   | `/chat/stream`                    | Stream a chat completion         |
 | `GET`    | `/models`                         | List loaded models               |
-| `GET`    | `/tools`                          | List registered tools + schemas  |
+| `GET`    | `/tools`                          | List registered tools + schemas + `enabled` |
+| `POST`   | `/tools/{name}/enabled`           | Enable/disable a tool at runtime |
 | `GET`    | `/healthz` · `/readyz`            | Liveness / readiness probes      |
 
-Request body for `/chat/stream`: `{"session_id": "...", "prompt": "..."}`.
-`model_name` is optional; defaults to the first model in `default.yml`.
+Request body for `/chat/stream`:
+`{"session_id": "...", "model_name": "...", "prompt": "..."}`.
+`model_name` is required; omitting it returns HTTP 422 with a `missing`
+validation error.
+
+All mutating requests must send `Content-Type: application/json`; otherwise
+the CSRF-hardening middleware returns HTTP 415 `unsupported_media_type`.
+Endpoints with no meaningful payload, including `POST /sessions`, should send
+an empty JSON object (`{}`).
+
+### Orchestrator modes
+
+`POST /api/v1/chat/stream` accepts an optional `mode`. **Omit it** to use the
+server's configured default (`orchestrator.default`, which ships as `auto`).
+
+| `mode` | Orchestrator | Behaviour |
+|---|---|---|
+| `auto` *(default)* | `AutoOrchestrator` | Triages each turn: answers conversationally when no external evidence is needed, and runs the full research loop when it is. |
+| `chat` | `ChattyAgentOrchestrator` | Legacy tool loop. Appends raw tool results to history. Explicit opt-out. |
+| `research` | `NotebookOrchestrator` | Always researches; never downgraded by triage. |
+
+**Why `auto` is the default.** Tether primarily runs small models, and the
+fact-based loop keeps each LLM call bounded to `(question, notebook, current tool
+result)` instead of accumulating raw tool output — roughly 1.6 k vs 6 k tokens
+after five searches ([ADR-0020](./docs/adr/0020-notebook-orchestrator-algorithm.md)).
+Triage is what makes that safe as a default: small talk, creative requests and
+back-references ("what did I just say?") are answered directly and never reach a
+search backend. See
+[`docs/design/fact-based-orchestration-default.md`](./docs/design/fact-based-orchestration-default.md).
 
 ### Research mode
 
-Tether ships a research mode ([ADR-0020](./docs/adr/0020-notebook-orchestrator-algorithm.md)). Sending `mode="research"` to `/api/v1/chat/stream` runs a Hanov-style Plan→Search→Extract→Refine→Synthesize loop with structured fact extraction and a final synthesized answer.
+Research runs a Hanov-style Plan→Search→Extract→Refine→Synthesize loop with
+structured fact extraction and a final synthesized answer. It is reached either
+by `mode="research"` (always researches) or automatically by `auto` when a turn
+needs external evidence.
 
 It is registered by default and requires the `web_search` tool. The shipped
 `src/tether/config/default.yml` already contains:
 
 ```yaml
 orchestrator:
+  default: "auto"
   registry:
+    auto: "tether.protocol.orchestration.notebook.AutoOrchestrator"
     chat: "tether.protocol.orchestration.chatty.ChattyAgentOrchestrator"
     research: "tether.protocol.orchestration.notebook.NotebookOrchestrator"
 tools:
@@ -142,12 +228,13 @@ tools:
 Comment out the `research:` line to disable the mode. The engine fails loud at
 boot if research is registered while `web_search` is not enabled.
 
-Set `BRAVE_API_KEY`; `web_search` uses the Brave Search API.
+Set `BRAVE_API_KEY`; `web_search` uses the Brave Search API. Without it, research
+turns gather no facts and `notebook_no_facts` carries a `note` explaining why.
 
 ```bash
-curl -X POST http://localhost:8000/api/v1/chat/stream \
+curl -X POST http://localhost:8080/api/v1/chat/stream \
   -H "Content-Type: application/json" \
-  -d '{"session_id":"s","prompt":"Latest research on...", "model_name":"qwen3-4b", "mode":"research"}'
+  -d '{"session_id":"s","prompt":"Latest research on...", "model_name":"bartowski/Qwen_Qwen3-8B-GGUF:Q4_0", "mode":"research"}'
 ```
 
 Research preserves the exact text entered in session history. A short,
@@ -214,16 +301,21 @@ Research mode is single-tool for v1 (`web_search` only). Multi-tool research is 
 ## Development
 
 ```powershell
-conda activate mlc-venv2
-
-# Run the full test suite
-python -m pytest -q
-
-# Type-check
-mypy src/tether/
+# Activate the selected environment, or set this to its interpreter:
+$python = "<python-executable>"
 
 # Lint
-ruff check src/tether/
+& $python -m ruff check src/tether tests
+
+# Type-check
+& $python -m mypy src/tether
+
+# Default-on tests, then docs drift tests
+& $python -m pytest -q
+& $python -m pytest -q -m docs tests/docs
+
+# Build distributions
+& $python -m build
 ```
 
 ### Built-in tools
@@ -238,6 +330,38 @@ ruff check src/tether/
 To add a custom tool: inherit `BaseTool` in `src/tether/tools/`, register it under
 `tools.registry` and `tools.enabled` in `src/tether/config/default.yml`, restart.
 See [`docs/architecture.md`](./docs/architecture.md) for the tool-calling flow.
+
+#### Enabling and disabling tools at runtime
+
+Tools can be switched on and off without a restart — orchestrators are built per
+turn, so a toggle takes effect on the next message.
+
+```powershell
+# List tools and their state
+Invoke-RestMethod http://127.0.0.1:8080/api/v1/tools | Select-Object name, enabled
+
+# Disable one
+Invoke-RestMethod -Method Post http://127.0.0.1:8080/api/v1/tools/web_search/enabled `
+  -ContentType 'application/json' -Body '{"enabled":false}'
+```
+
+In the CLI: `\tools` lists them with an on/off column, `\tools off <name>` and
+`\tools on <name>` toggle.
+
+**Disabling is a context-budget feature, not just a permission.** A disabled tool:
+
+1. disappears from the tool roster shown to the model,
+2. cannot be dispatched, and
+3. has its past calls and results dropped from the model-facing history
+   (`get_history(exclude_tools=...)`) — the rows stay in the database, only the
+   model's view is pruned.
+
+All three matter on small models. Marker-only providers (GenieX, and MLC with
+`marker_only_tools`) ignore the `tools=` parameter entirely, so the prompt is the
+*only* place the model learns which tools exist. The roster is therefore rebuilt
+from the enabled set on every turn rather than hard-coded in the system prompt —
+otherwise a disabled tool stays advertised and a small model keeps calling it
+until the tool loop is exhausted.
 
 For AI coding agent conventions see [`AGENTS.md`](./AGENTS.md) and
 `.github/copilot-instructions.md`.
@@ -293,5 +417,5 @@ MIT — see `LICENSE`.
 
 ## Acknowledgments
 
-Local inference powered by [MLC-LLM](https://github.com/mlc-ai/mlc-llm) and the
-Qualcomm CodeLinaro Adreno OpenCL backend.
+Local inference integrations include GenieX, [MLC-LLM](https://github.com/mlc-ai/mlc-llm),
+and Ollama.
