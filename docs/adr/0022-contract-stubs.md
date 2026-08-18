@@ -1,5 +1,9 @@
 # ADR-0022: Contract Stubs — Operational Reference for Phase-2 Sub-Agents
 
+- **Status**: Historical implementation reference; the live decision is
+  [ADR-0022: Ollama Provider](./0022-ollama-provider.md)
+- **Date**: 2025-07 (Phase 13 implementation companion)
+
 > **Purpose**: copy-from-me reference for the three Phase-2 implementation tracks
 > (client layer, provider layer, engine wiring + live tests). Everything below is
 > binding unless explicitly marked "recommendation" or "open decision".

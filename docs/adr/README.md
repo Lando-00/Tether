@@ -25,8 +25,24 @@ supersedes the old one.
 | [0015](./0015-single-user-outbound-send-doctrine.md) | Single-user, outbound-send + inbound-read doctrine | Accepted |
 | [0016](./0016-mlc-isolation-rule.md) | MLC isolation rule — no imports outside factory | Accepted |
 | [0017](./0017-practical-context-window-seam-c.md) | Practical context window — Seam C (deferred) | Accepted in principle |
-| [0018](./0018-whatsapp-connector-library-and-adapter.md) | WhatsApp connector — neonize backend with `WhatsAppClientAdapter` seam | Proposed |
-| [0019](./0019-confirm-intent-classifier-seam.md) | `ConfirmIntentClassifier` ABC for draft+confirm send gates | Proposed |
+| [0018](./0018-whatsapp-connector-library-and-adapter.md) | WhatsApp connector — neonize backend with `WhatsAppClientAdapter` seam | Accepted |
+| [0019](./0019-confirm-intent-classifier-seam.md) | `ConfirmIntentClassifier` ABC for draft+confirm send gates | Accepted |
+| [0020](./0020-notebook-orchestrator-algorithm.md) | `NotebookOrchestrator` — Plan→Explore→Extract→Refine→Synthesize loop | Accepted |
+| [0021-H](./0021-contract-stubs.md) | Phase 2 contract stubs (historical implementation companion) | Historical |
+| [0021](./0021-multi-provider-registry.md) | Multi-provider registry (per-request routing, degraded-mode lifecycle) | Accepted |
+| [0022-H](./0022-contract-stubs.md) | Ollama contract stubs (historical implementation companion) | Historical |
+| [0022](./0022-ollama-provider.md) | Ollama Provider — native + OpenAI-compatible HTTP surfaces | Accepted |
+
+## Duplicate numbers
+
+Two historical implementation companions share numbers with their live ADRs.
+Files are not renamed because accepted ADR history is immutable and existing
+references must remain stable:
+
+- **0021**: `0021-multi-provider-registry.md` is the accepted decision;
+  `0021-contract-stubs.md` is its historical rollout reference.
+- **0022**: `0022-ollama-provider.md` is the decision document;
+  `0022-contract-stubs.md` is its historical implementation reference.
 
 ## Format
 

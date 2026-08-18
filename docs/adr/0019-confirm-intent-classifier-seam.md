@@ -1,6 +1,6 @@
 # ADR-0019: `ConfirmIntentClassifier` ABC for draft+confirm send gates
 
-- **Status**: Proposed (will move to Accepted after wa-REV-RECONCILE)
+- **Status**: Accepted
 - **Date**: 2026-05 (Phase 2b, Wave 1)
 - **Synthesis digest**: [`../refactor/synthesis-2026-05.md`](../refactor/synthesis-2026-05.md)
 - **Wave 0 input**: synthesis digest at [`../refactor/synthesis-2026-05.md`](../refactor/synthesis-2026-05.md)

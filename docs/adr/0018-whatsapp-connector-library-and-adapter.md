@@ -1,12 +1,12 @@
 # ADR-0018: WhatsApp connector — neonize backend with `WhatsAppClientAdapter` seam
 
-- **Status**: Proposed (will move to Accepted after `wa-REV-RECONCILE`)
+- **Status**: Accepted
 - **Date**: 2026-05-11
 - **Wave 0 inputs**: `wa-D-synthesis.md` · `wa-D-neonize.md` · `wa-D-openclaw.md`
 
 ## Status
 
-Proposed (will move to Accepted after `wa-REV-RECONCILE`).
+Accepted.
 
 ## Context
 

@@ -1,5 +1,9 @@
 # ADR-0021 — Phase 2 contract stubs (historical)
 
+- **Status**: Historical operational reference; superseded where it conflicts
+  with [ADR-0021: Multi-provider registry](./0021-multi-provider-registry.md)
+- **Date**: 2026-07 (Phase 12 implementation companion)
+
 Historical operational reference for the multi-provider registry rollout.
 The reconciliation amendment below is authoritative where it differs from the
 original Phase-2 snippets. Companion to `0021-multi-provider-registry.md`.

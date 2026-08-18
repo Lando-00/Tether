@@ -1,6 +1,6 @@
 # ADR-0020: `NotebookOrchestrator` — Plan→Explore→Extract→Refine→Synthesize loop
 
-- **Status**: Proposed (will move to Accepted after `rs-REV-RECONCILE`)
+- **Status**: Accepted
 - **Date**: 2026-05 (Phase 9, Wave 1)
 - **Synthesis digest**: [`../refactor/synthesis-2026-05.md`](../refactor/synthesis-2026-05.md)
 - **Wave 0 input**: three parallel discovery agents (`rs-D-PROMPTS`,

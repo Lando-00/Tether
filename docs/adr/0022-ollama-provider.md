@@ -1,6 +1,6 @@
 # ADR-0022: Ollama Provider — native + OpenAI-compatible HTTP surfaces
 
-- **Status**: Proposed
+- **Status**: Accepted
 - **Date**: 2025-07-14 (Phase 13)
 - **Related ADRs**:
   - ADR-0021 — multi-provider registry (foundation this ADR lands on; defines `ProviderSpec`, `ModelDetails`, `_provider_start_failures`, registry key semantics)
@@ -43,7 +43,7 @@ Phase-2 sub-agents. Each is a single sentence.
 1. **API surface**: Same `OllamaProvider` class; `api_surface="native"` (default)
    uses `/api/chat` NDJSON; `api_surface="openai_compat"` uses `/v1/chat/completions`
    SSE. The switch selects the internal client at construction time.
-2. **Worktree**: `D:\Dev\Tether-ollama-provider`, branch `feature/ollama-provider`,
+2. **Worktree**: `<workspace>\Tether-ollama-provider`, branch `feature/ollama-provider`,
    based on `feature/copilot-sdk-provider`.
 3. **Live testing**: scaffolded under `@pytest.mark.ollama` + `OLLAMA_BASE_URL` env
    var; skipped in default `pytest -q`; run manually against the GPU PC.
