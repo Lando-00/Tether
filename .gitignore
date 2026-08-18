@@ -38,3 +38,7 @@ Thumbs.db
 
 # Scratch request payloads used with curl/Invoke-RestMethod against /chat/stream
 body.json
+
+# One-command launcher (.\tether.ps1): pid/log scratch + machine-local config
+.tether-run/
+tether.local.ps1
