@@ -9,9 +9,11 @@
 >
 > **Status of the research:** complete; all docs in `docs/research/`
 > are linked from `docs/research/README.md`.
-> **Status of the refactor:** still in planning — that's why this
-> exists. We can shape the architecture *now* to absorb the post-research
-> conclusions cheaply, rather than after.
+> **Status:** Historical planning snapshot. The refactor has landed; use
+> [`architecture.md`](./architecture.md) and
+> [`refactor/synthesis-2026-05.md`](./refactor/synthesis-2026-05.md) for the
+> current architecture and decision digest. Forward-looking language below is
+> retained as historical rationale.
 
 ## 1. Hard constraints the refactor must respect
 
@@ -23,9 +25,9 @@ These are facts about the environment, not negotiable.
 | Backend: **Adreno X1 GPU via OpenCL** (`*-adreno.dll`), NOT Hexagon NPU | Older docs say "NPU"; that's a misnomer. Don't perpetuate it. NPU is a *future* path (see §4 below). |
 | Runtime: **Qualcomm CodeLinaro MLC-LLM `2025.06.r1`**, NOT upstream `mlc-ai/mlc-llm` | Wheels named `mlc_llm_adreno_cpu_clml_2025.06.r1` / `tvm_adreno_cpu_clml_2025.06.r1`. `pip show mlc-llm` returns "not found"; use the full name. |
 | Python: **x64 3.12 under Prism emulation** (Qualcomm only ships `cp312-cp312-win_amd64`) | Don't try to switch to native ARM64 Python — `import mlc_llm` will break. `platform.machine()` returns `'ARM64'` even from x64 Python under emulation; don't be misled by it. |
-| Conda env name: **`mlc-venv2`** | Activate hooks call `vswhere.exe` and pollute stdout. **Always** invoke `C:\ProgramData\miniconda3\envs\mlc-venv2\python.exe` directly when capturing structured output. Never `conda run -n mlc-venv2 …`. |
+| Conda env name: **`mlc-venv2`** | Activate hooks call `vswhere.exe` and pollute stdout. Activate the environment and use `python`, or invoke `$env:CONDA_PREFIX\python.exe` directly when capturing structured output. Never assume a contributor-specific conda base path. |
 | **Practical context windows are bounded by KV-cache RAM, not by `context_window_size`** | A model with 32 KV heads (no GQA) at 40 960 ctx wants ~15 GB of KV alone — over budget. The refactor must not assume `context_window_size` is usable end-to-end. See `scripts/research/estimate_ram.py`. |
-| `prefill_chunk_size ≤ 256` is a yellow flag on Adreno | Triggered the OpenCL shutdown-hang already documented in `.github/SHUTDOWN_HANG_FIX_SUMMARY.md`. Avoid for new candidates. |
+| `prefill_chunk_size ≤ 256` is a yellow flag on Adreno | Triggered the OpenCL shutdown hang documented in [`runbooks/shutdown-hang-fix-summary.md`](./runbooks/shutdown-hang-fix-summary.md). Avoid for new candidates. |
 | **Never re-enable Python GC in the engine-shutdown thread** | The mitigation in `tether_service/providers/mlc/provider.py` (no GC, daemon thread, bounded `terminate()`, immediate ref clear) is load-bearing. Keep that pattern. |
 
 Source: [`docs/research/05_mlc_llm_versioning.md`](research/05_mlc_llm_versioning.md),

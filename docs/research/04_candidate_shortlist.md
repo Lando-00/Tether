@@ -1,5 +1,9 @@
 # Candidate Model Shortlist — Tether on Snapdragon X Elite (16 GB)
 
+> **Status:** Historical MLC model-selection snapshot from 2026. References
+> to a "default" below mean the default model within the MLC research fleet,
+> not Tether's current default provider (GenieX).
+>
 > **Audience:** future Tether-team-of-one, day 1 after the refactor lands,
 > picking models to download and experiment with.
 > **Methodology:** filtered the [`mlc-ai`

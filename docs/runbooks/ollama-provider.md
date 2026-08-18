@@ -507,10 +507,10 @@ $env:OLLAMA_BASE_URL = "http://192.168.1.50:11434"
 $env:OLLAMA_LIVE_MODEL = "llama3.2:3b"
 
 # Run all live Ollama tests
-C:\ProgramData\miniconda3\envs\mlc-venv2\python.exe -m pytest -m ollama -v
+python -m pytest -m ollama -v
 
 # Or target the file directly
-C:\ProgramData\miniconda3\envs\mlc-venv2\python.exe -m pytest tests/hardware/test_ollama_live.py -v
+python -m pytest tests/hardware/test_ollama_live.py -v
 ```
 
 ### What the tests cover

@@ -3,10 +3,10 @@ NexaProvider skeleton — HTTP-backed implementation targeting `nexa serve`.
 
 NOTES BEFORE READING:
 
-1. This file lives in `D:\\Dev\\TetherWorkspace\\nexa\\provider\\` (NOT in
-   the Tether repo). It's a design exercise only. The repo already has a
-   stub at `tether_service/providers/nexa/provider.py` with the right
-   capabilities; this fills in the methods.
+1. This file is an archived design exercise under
+   `docs/research/reference/`. The active repository already has a stub at
+   `src/tether/providers/nexa/provider.py` with the right capabilities; this
+   reference fills in the proposed methods.
 
 2. Current upstream blockers (May 2026):
    - Python SDK (`pip install nexaai`) install is broken — Qualcomm S3

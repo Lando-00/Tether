@@ -26,11 +26,21 @@
 - Single-user outbound-send doctrine (ADR-0015).
 - MLC isolation rule (ADR-0016).
 - Seam C `get_practical_context_window` deferred (ADR-0017).
+- WhatsApp connector with the neonize adapter boundary (ADR-0018).
+- `ConfirmIntentClassifier` send-confirmation seam (ADR-0019).
+- Notebook research orchestrator algorithm (ADR-0020).
+- Multi-provider registry with explicit per-request routing and degraded
+  lifecycle (ADR-0021).
+- Ollama native and OpenAI-compatible provider surfaces (ADR-0022).
 
 ## §2 Extension seams
 
-- **Seam A — ModelProvider**: live; MLC + Nexa stub.
-- **Seam B — Orchestrator strategy**: live; ChattyAgent + Notebook stub.
+- **Seam A — ModelProvider**: live multi-provider registry; GenieX is the
+  committed default, with MLC, Ollama, and dummy implementations plus the
+  Nexa forward-compatibility stub.
+- **Seam B — Orchestrator strategy**: live; both
+  `ChattyAgentOrchestrator` and `NotebookOrchestrator` are implemented and
+  registered.
 - **Seam C — Practical context window**: deferred per ADR-0017.
 - **Seam D — Per-provider parser**: partial; `system.prompt` move and
   `create_parser()` ABC are open follow-ups.
@@ -42,7 +52,8 @@
 - `stream_typed()` v2 cutover (Phase 9 carrying via P0-E guard until done).
 - Real `async_span` (M4) — paired with OTel lifetime tracking
   (P0-I follow-up).
-- WhatsApp / Gmail connectors (Phases 2a / 2b).
+- Additional production connectors beyond the shipped WhatsApp integration
+  (for example Gmail).
 
 ## §4 Phase-9 P0 round 1 fixes (this milestone)
 

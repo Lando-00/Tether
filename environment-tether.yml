@@ -19,7 +19,7 @@ dependencies:
   # Pin Python + OpenSSL to match mlc-venv2's working versions. The CodeLinaro
   # `2025.06.r1` TVM wheel hard-codes `os.add_dll_directory()` of every entry
   # in %PATH% during `import tvm`, which means if the parent shell has the
-  # BASE conda env on PATH (e.g. `C:\ProgramData\miniconda3\Library\bin`) and
+  # BASE conda env on PATH (e.g. `<conda-base>\Library\bin`) and
   # that base env has an older `libcrypto-3-x64.dll` than this env, Windows
   # will resolve `_ssl.pyd`'s dependency to the older copy and abort with
   # `ImportError: DLL load failed while importing _ssl: The specified
@@ -36,8 +36,8 @@ dependencies:
       # Install the two Qualcomm CodeLinaro 2025.06.r1 wheels BEFORE the
       # editable install below so dependency resolution sees them present:
       #
-      #   pip install C:/Users/lovan/Downloads/tvm_adreno_cpu_clml_2025_06_r1-0.20.dev0-cp312-cp312-win_amd64.whl
-      #   pip install C:/Users/lovan/Downloads/mlc_llm_adreno_cpu_clml_2025_06_r1-0.1.dev0-cp312-cp312-win_amd64.whl
+      #   pip install "$env:USERPROFILE\Downloads\tvm_adreno_cpu_clml_2025_06_r1-0.20.dev0-cp312-cp312-win_amd64.whl"
+      #   pip install "$env:USERPROFILE\Downloads\mlc_llm_adreno_cpu_clml_2025_06_r1-0.1.dev0-cp312-cp312-win_amd64.whl"
       #
       # JFrog fallback URLs (used by setup_fresh_env.ps1 when local files are missing):
       #   https://codelinaro.jfrog.io/artifactory/clo-472-adreno-opensource-ai/mlc-llm/2025.06.r1/tvm_adreno_cpu_clml_2025_06_r1-0.20.dev0-cp312-cp312-win_amd64.whl

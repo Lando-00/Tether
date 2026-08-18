@@ -195,7 +195,7 @@ Upstream issues / context worth watching:
    working end-to-end (see `scripts/dev/library_smoke.py` +
    `scripts/dev/tool_call_smoke.py` in the Tether repo).
 2. **Keep the experiment workspace** at
-   `D:\Dev\TetherWorkspace\xllamacpp-experiment\` so we can re-run the bench
+   `<workspace>\xllamacpp-experiment\` so we can re-run the bench
    against future xllamacpp versions without re-setting up.
 3. **Re-evaluate in 3-6 months.** Re-run `bench.py` against the same prompts
    on the next xllamacpp release; if outputs are clean for the full prompt
@@ -213,7 +213,7 @@ Upstream issues / context worth watching:
 ## Reproducibility
 
 Experiment workspace contents (kept under
-`D:\Dev\TetherWorkspace\xllamacpp-experiment\`):
+`<workspace>\xllamacpp-experiment\`):
 
 ```
 .venv_arm64/                       # native ARM64 Python 3.12 venv

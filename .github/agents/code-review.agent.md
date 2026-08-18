@@ -39,11 +39,11 @@ You ARE the last gate before the orchestrator commits. Be high-signal.
 
 ## Authoritative references
 
-1. **Plan**: `C:/Users/lovan/.copilot/session-state/c51629ff-b3b8-442f-957a-bc9c0b008530/files/investigations/_synthesis.md`
-   — Read §6 (free-wins regression list) + the section(s) cited in
+1. **Plan digest**: `docs/refactor/synthesis-2026-05.md`
+   — Read the locked decisions and the repository references cited in
    `{{phase_invariants}}`.
-2. `D:/Dev/Tether/.github/copilot-instructions.md` — project rules.
-3. `D:/Dev/Tether/docs/REFACTOR_BRIEFING.md` — hardware constraints.
+2. `.github/copilot-instructions.md` — project rules.
+3. `docs/REFACTOR_BRIEFING.md` — hardware constraints.
 
 ---
 

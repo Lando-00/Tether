@@ -1,9 +1,9 @@
 # Tether — Architecture
 
-> Post-Phase-8 architecture. This is the **living map** for new contributors and AI agents.
-> Locked decisions / phase digest: [`refactor/synthesis-2026-05.md`](./refactor/synthesis-2026-05.md).
-
-### Living doc; see ADR-0010 for current observability status
+> **Status:** Living architecture map for contributors and AI agents.
+> Locked decisions / phase digest:
+> [`refactor/synthesis-2026-05.md`](./refactor/synthesis-2026-05.md).
+> See ADR-0010 for observability status.
 
 > **Truth-pass note (Phase 9 P0-H)**: this document is the post-Phase-8
 > architecture diagram + invariants.  Items marked **DEFERRED** (M4
@@ -13,9 +13,10 @@
 > to honour, not as features available today.  Tribunal §3 P0-18.
 
 Tether is a single-user, local-first FastAPI service that streams chat completions from
-on-device LLMs (currently MLC-LLM on Snapdragon X Elite Adreno GPU) with first-class
-function calling, persistent session history, and a connector framework for inbound-read /
-outbound-send personal data integrations.
+local model providers with first-class function calling, persistent session history, and
+a connector framework for inbound-read / outbound-send personal data integrations. The
+committed default provider is GenieX on the Snapdragon X Elite NPU; MLC/Adreno, Ollama,
+dummy, and a Nexa compatibility stub are also available through the provider registry.
 
 The architecture is **library-first**: HTTP, CLI, and (future) GUI are thin adapters over a
 single `Engine` composition root. Anyone can `from tether import Engine` and bypass HTTP.
@@ -37,8 +38,9 @@ flowchart TB
     end
 
     subgraph protocol["Protocol layer"]
-        Orch["Orchestrator (strategy)<br/>ChattyAgentOrchestrator"]
-        GenSvc["GenerationService<br/>protocol/service/"]
+        Orch["Orchestrator strategy"]
+        Chatty["ChattyAgentOrchestrator"]
+        Notebook["NotebookOrchestrator"]
         Parser["SlidingParser<br/>parsers/"]
     end
 
@@ -53,22 +55,24 @@ flowchart TB
         Connector["Connector ABC"]
         ConnReg["ConnectorRegistry<br/>(prefix enforcement)"]
         EchoCon["EchoConnector (fixture)"]
-        WhatsApp[":WhatsApp (future)"]:::future
+        WhatsApp["WhatsAppConnector"]
         Gmail[":Gmail (future)"]:::future
     end
 
     subgraph context["Context (persistence)"]
         SessStore["SqliteSessionStore<br/>chat history"]
-    Inbox["SqliteInbox<br/>inbound_events"]
+        Inbox["SqliteInbox<br/>inbound_events"]
         AuditDB["tool_audit table"]
         AsyncBase["AsyncSqliteStore (M2)"]
     end
 
     subgraph providers["Model providers (Seam A)"]
         MP["ModelProvider ABC"]
+        GenieX["GenieXProvider<br/>Hexagon NPU · default"]
         MLC["MLCProvider<br/>Adreno OpenCL"]
+        Ollama["OllamaProvider<br/>local/LAN HTTP"]
+        Dummy["DummyProvider<br/>tests/development"]
         Nexa[":NexaProvider (stub)"]:::future
-        Ollama[":OllamaProvider (reserved)"]:::future
     end
 
     subgraph hardware["Hardware boundary"]
@@ -87,11 +91,13 @@ flowchart TB
     CLI --> Eng
     Lib --> Eng
     Eng --> Orch
+    Orch --> Chatty
+    Orch --> Notebook
     Eng --> Reg
     Eng --> ConnReg
     Eng --> SessStore
     Eng --> MP
-    Orch --> GenSvc
+    Orch --> MP
     Orch --> Parser
     Orch --> Runner
     Runner --> Base
@@ -99,14 +105,15 @@ flowchart TB
     Builtin --> Base
     ConnReg --> Connector
     EchoCon --> Connector
-    WhatsApp -.-> Connector
+    WhatsApp --> Connector
     Gmail -.-> Connector
     Connector --> Inbox
     Connector --> Reg
-    GenSvc --> MP
+    MP --> GenieX
     MP --> MLC
+    MP --> Ollama
+    MP --> Dummy
     MP -.-> Nexa
-    MP -.-> Ollama
     MLC --> Watchdog
     MLC --> Daemon
     SessStore --> AsyncBase
@@ -133,7 +140,7 @@ sequenceDiagram
     participant Engine
     participant Orch as ChattyAgentOrchestrator
     participant Store as SqliteSessionStore
-    participant Provider as MLCProvider
+    participant Provider as Selected ModelProvider
     participant Parser as SlidingParser
     participant Runner as ToolRunner
     participant Tool as Tool (e.g. web_search)
@@ -184,7 +191,7 @@ implementation; adding a second impl is a config change + one new class.
 
 | Seam | Where | What | Status |
 |---|---|---|---|
-| **A — ModelProvider** | `providers/types.py::ModelProvider` | Swap inference backend. Default: `MLCProvider`. Future: `NexaProvider` (NPU), `OllamaProvider` (reserved). | ✅ ABC live; MLC impl + Nexa stub |
+| **A — ModelProvider** | `providers/types.py::ModelProvider` | Swap inference backend. Default: `GenieXProvider`; alternatives: `MLCProvider`, `OllamaProvider`, and `DummyProvider`. `NexaProvider` remains a stub. | ✅ ABC and multi-provider registry live |
 | **B — Orchestrator strategy** | `protocol/orchestration/types.py::Orchestrator` | Swap conversation policy. Default: `ChattyAgentOrchestrator` (ReAct-style chatty loop). Opt-in: `NotebookOrchestrator` (research-mode Notebook of Atomic Facts). Selected via `mode` field on `StreamRequest` + per-session state. | ✅ ABC live; chat + research impls |
 | **C — Practical context window** | `providers/types.py::get_practical_context_window(model_name, ram_budget_gb)` | Per-provider RAM-aware effective context. Used to clamp history before send. | ❌ DEFERRED — synthesis §12.4 work; ABC method not yet on ModelProvider; tracked as a follow-up. |
 | **D — Per-provider parser** | `protocol/parsers/types.py::Parser` | Per-provider tool-call detection. MLC: `<<function_call>>` marker (`SlidingParser`). Future: provider-native function-call schemas (Ollama JSON mode, NexaSDK OpenAI-compat). System prompt lives under `providers.<id>.args.system_prompt` so parsers and prompts ship together. | ⚠️ Partial — per-turn factory wired in orchestrator; `Provider.create_parser()` ABC method NOT yet on ModelProvider. `system.prompt` still globally bound (synthesis §12.5 #2 requires moving to providers.mlc.args.system_prompt). Tracked as a follow-up. |
@@ -203,7 +210,7 @@ Related decisions: [ADR-0007](./adr/0007-orchestrator-strategy.md) introduced th
 
 ---
 
-## 4. Connector framework (Phase 4.5; foundation for WhatsApp/Gmail)
+## 4. Connector framework
 
 Connectors are first-class extensions for personal-data integrations. They appear to the
 model as **regular tools** (with mandatory `{connector_id}_` prefix) but additionally
@@ -320,12 +327,18 @@ data/
 
 models/                              # MLC model dirs + compiled libs
 ├── libs/                            # *-adreno.dll, *-cpu.dll
+├── geniex/                          # junction to an external GenieX model store
 ├── Qwen3-4B-q4f16_0-MLC/            # weights + mlc-chat-config.json
 └── …
 ```
 
 `models_root` is configurable via `TETHER_MODELS_DIR` env var; defaults to `models`.
 Formerly `dist/` (renamed in Phase 8 step 85 — the old name implied build artifacts).
+The repository ignores `/models/`. For GenieX, contributors keep the actual
+data outside the repository (for example `<model-store>\geniex`) and expose
+it consistently as `./models/geniex` through a directory junction. Pass that
+path to `scripts/dev/run_geniex_server.ps1 -DataDir`; the GenieX CLI's own
+environment variable is `GENIEX_DATADIR`.
 
 ---
 
@@ -360,7 +373,7 @@ flowchart LR
 **Critical invariant**: `gc.disable()` inside the MLC shutdown daemon thread is
 **load-bearing**. Re-enabling it deadlocks Qwen2.5-7B on Ctrl+C (smaller `prefill_chunk_size`
 exposes a destructor hang). Enforced by the comment in `daemon_thread_call` and a
-codebase rule. See `docs/runbooks/SHUTDOWN_HANG_FIX_SUMMARY.md` (post-Phase-8).
+codebase rule. See [`runbooks/shutdown-hang-fix-summary.md`](./runbooks/shutdown-hang-fix-summary.md).
 
 ---
 
@@ -420,7 +433,9 @@ Authoritative: synthesis §3 + §10–§13. Quick-reference here:
 - **Drop-and-rebuild** chat history at schema cutover (no migration tools needed).
 - **`LoopLimitPolicy`** = `EMIT_LIMIT_EVENT` (default).
 - **`ToolErrorPolicy`** = `FEED_BACK_TO_MODEL` (tool errors no longer break the loop).
-- **Hardware backend** = Adreno X1 GPU via OpenCL — never call it "NPU". (NPU is reserved for the future `NexaProvider`, Seam A.)
+- **MLC hardware backend** = Adreno X1 GPU via OpenCL — never call that path
+  "NPU". The committed default provider, GenieX, uses the Hexagon NPU through
+  its separately managed server.
 - **Runtime** = Qualcomm CodeLinaro MLC-LLM `2025.06.r1` (Prism-emulated x64 Python 3.12).
 - **GC-disable in MLC shutdown daemon thread** = load-bearing.
 - **`tether_service` import alias** = backward-compat for one release cycle; deletion deferred.

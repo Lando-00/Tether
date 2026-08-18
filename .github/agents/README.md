@@ -5,8 +5,9 @@ session) fills in and ships to sub-agents. They exist to keep prompts consistent
 across launches, to bake in invariants that never change per-launch, and to
 survive context compaction.
 
-> Authoritative plan: `~/.copilot/session-state/c51629ff-b3b8-442f-957a-bc9c0b008530/files/investigations/_synthesis.md`
-> (13 sections; §13 documents this autopilot model.)
+> Authoritative repository digest:
+> [`../../docs/refactor/synthesis-2026-05.md`](../../docs/refactor/synthesis-2026-05.md).
+> The original private session-state plan is not required.
 
 ## Roles
 
@@ -38,13 +39,14 @@ survive context compaction.
    `pytest -m hardware` themselves. The orchestrator batches those into the
    phase-boundary `[USER VERIFY ON SNAPDRAGON]` block.
 
-6. **Pre-flight env in every run**. The implementation template forces
-   `C:\ProgramData\miniconda3\envs\mlc-venv2\python.exe` as the entry point;
-   sub-agents must NEVER use `conda run -n mlc-venv2` (vswhere.exe activation
-   pollutes stdout — confirmed bug). See `.github/copilot-instructions.md`.
+6. **Pre-flight env in every run**. Use the provider-appropriate interpreter:
+   a python.org ARM64 stdlib venv for GenieX-only work, or the x64 conda env
+   under Prism for MLC. Invoke its `python.exe` directly in automation because
+   activation does not persist across one-shot shells. See
+   [`../copilot-instructions.md`](../copilot-instructions.md).
 
-7. **Adreno terminology**. The MLC backend is the Adreno X1 GPU via OpenCL.
-   It is **not** an NPU. "NPU" is reserved for a future `NexaProvider` (Seam A).
+7. **Backend terminology**. The MLC backend is the Adreno X1 GPU via OpenCL.
+   It is **not** an NPU. GenieX is the shipped Hexagon NPU provider.
    The implementation template enforces this in writing.
 
 ## Lifecycle (per todo)

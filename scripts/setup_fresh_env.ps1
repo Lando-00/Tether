@@ -11,7 +11,7 @@
 # What it does (each step is idempotent):
 #   1. Verifies the host is Windows-on-ARM64 with x64-Python wheels available.
 #   2. Verifies the two CodeLinaro 2025.06.r1 wheels (local-first under
-#      C:\Users\lovan\Downloads\, JFrog fallback URLs).
+#      %USERPROFILE%\Downloads\, with JFrog fallback URLs).
 #   3. Creates conda env `tether` with x64 Python 3.12 (CONDA_SUBDIR=win-64).
 #   4. Installs the two CodeLinaro wheels.
 #   5. Editable-installs Tether with the full extras matrix.

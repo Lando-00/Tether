@@ -23,7 +23,7 @@
 - **Context window:** 12 288 tokens (smaller than Qwen3-4B).
   **`prefill_chunk_size: 256`** — this is the smaller-than-usual chunk size
   that triggered the OpenCL/TVM shutdown-hang documented in
-  `.github/SHUTDOWN_HANG_FIX_SUMMARY.md` and
+  [`../runbooks/shutdown-hang-fix-summary.md`](../runbooks/shutdown-hang-fix-summary.md) and
   `.github/MODEL_DEPENDENT_SHUTDOWN_FIX.md`.
 - **Conv template:** `qwen2`, `use_function_calling: true`.
 - **Operational:** the model loads and serves, but its driver state is
@@ -50,7 +50,7 @@
 - **Backend:** none — no `*-adreno.*` library exists in `dist/libs/` for
   this model. `MLCProvider.resolve_model_lib` will raise
   `ValueError: No matching model library found for gemma-3-4b-it-... in
-  D:\Dev\Tether\dist\libs`.
+  .\models\libs`.
 - **Context window in config:** 8192 (smallest of the four).
 - **Conv template:** `gemma3_instruction`, `use_function_calling: false`.
 - **Status decision needed (post-refactor):** either compile a DLL via

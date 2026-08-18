@@ -44,7 +44,7 @@ So the value-add of the Qualcomm fork is:
 ## Current `mlc-venv2` snapshot
 
 Everything below was captured by invoking the env's Python directly
-(`C:\ProgramData\miniconda3\envs\mlc-venv2\python.exe`) — the env's
+(`$env:CONDA_PREFIX\python.exe` after activating `mlc-venv2`) — the env's
 activate hooks call `vswhere.exe` and pollute stdout, so `conda run`
 is not safe for structured capture.
 
@@ -61,7 +61,7 @@ is not safe for structured capture.
 
 | Package | Version | Wheel tag | Origin |
 |---------|---------|-----------|--------|
-| `mlc_llm_adreno_cpu_clml_2025.06.r1` | `0.1.dev0` | `cp312-cp312-win_amd64` | local file: `C:/Users/lovan/Downloads/mlc_llm_adreno_cpu_clml_2025_06_r1-0.1.dev0-cp312-cp312-win_amd64.whl` (SHA-256 `c1ad7c79…`) |
+| `mlc_llm_adreno_cpu_clml_2025.06.r1` | `0.1.dev0` | `cp312-cp312-win_amd64` | local file under `%USERPROFILE%\Downloads\` (SHA-256 `c1ad7c79…`) |
 | `tvm_adreno_cpu_clml_2025.06.r1`     | `0.20.dev0` | `cp312-cp312-win_amd64` | bundled with the same release |
 
 Site-packages directory mtimes show install on **2025-09-28**.
@@ -75,9 +75,9 @@ Site-packages directory mtimes show install on **2025-09-28**.
 | `GIT_COMMIT_HASH` | `0bf585f6d826ef9aad1090053260b0b34bb2fe6d` |
 | `GIT_COMMIT_TIME` | `2025-05-22 17:18:40 +0530` |
 | `LLVM_VERSION` | `20.1.5` |
-| `USE_OPENCL` | `C://CI//CLML-SDK//clml-sdk-5-win-x86` |
-| `USE_CLML` | `C://CI//CLML-SDK//clml-sdk-5-win-x86` |
-| `USE_CLML_GRAPH_EXECUTOR` | `C://CI//CLML-SDK//clml-sdk-5-win-x86` |
+| `USE_OPENCL` | `<upstream-ci-root>/CLML-SDK/clml-sdk-5-win-x86` |
+| `USE_CLML` | `<upstream-ci-root>/CLML-SDK/clml-sdk-5-win-x86` |
+| `USE_CLML_GRAPH_EXECUTOR` | `<upstream-ci-root>/CLML-SDK/clml-sdk-5-win-x86` |
 | `USE_VULKAN` / `USE_HEXAGON` / `USE_METAL` / `USE_CUDA` | `OFF` |
 | `TVM_CXX_COMPILER_PATH` | MSVC 14.40.33807 (VS 2022 Pro), x64 host |
 
@@ -212,7 +212,7 @@ hosts use `--device android:adreno-so` and produce `.so` instead.
 > [`02_adreno_mlc_landscape.md`](./02_adreno_mlc_landscape.md):
 > set `--prefill-chunk-size 2048` (not `256`). Smaller chunks have
 > historically caused the OpenCL driver fragility / shutdown-hang
-> documented in `.github/SHUTDOWN_HANG_FIX_SUMMARY.md`.
+> documented in [`../runbooks/shutdown-hang-fix-summary.md`](../runbooks/shutdown-hang-fix-summary.md).
 
 ## Performance baselines (from the Qualcomm blog, X Elite column)
 
@@ -260,7 +260,7 @@ python scripts\research\jfrog_clo_catalog.py `
 #    that's a new release. Compare the new wheel SHA-256 against
 #    pip's direct_url.json before deciding to upgrade:
 Get-Content `
-  C:\ProgramData\miniconda3\envs\mlc-venv2\Lib\site-packages\mlc_llm_adreno_cpu_clml_2025_06_r1-0.1.dev0.dist-info\direct_url.json
+  "$env:CONDA_PREFIX\Lib\site-packages\mlc_llm_adreno_cpu_clml_2025_06_r1-0.1.dev0.dist-info\direct_url.json"
 ```
 
 If a new release does drop, the upgrade is mechanical:

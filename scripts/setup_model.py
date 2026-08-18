@@ -4,12 +4,14 @@ Set up a new MLC model for Tether on Snapdragon X Elite.
 End-to-end pipeline that:
 
 1. Downloads a pre-quantized MLC model from a HuggingFace repo (e.g.
-   ``mlc-ai/Qwen3-4B-q4f16_1-MLC``) into ``<dist>/<output_name>/``.
+   ``mlc-ai/Qwen3-4B-q4f16_1-MLC``) into
+   ``<models-root>/<output_name>/``.
 2. Optionally patches the ``mlc-chat-config.json`` to swap in a
    ``conv_template`` block copied from an existing model directory --
    this is how we maintain Tether's custom ``qwen3-openai-tools-min``
    tool-calling steering across new model downloads.
-3. Compiles an Adreno-OpenCL DLL to ``<dist>/libs/<output_name>-adreno.dll``
+3. Compiles an Adreno-OpenCL DLL to
+   ``<models-root>/libs/<output_name>-adreno.dll``
    via ``mlc_llm compile --device windows:adreno_x86``.
 4. Optionally runs a smoke test: load the model in ``AsyncMLCEngine``
    and stream one short completion to confirm the GPU path works
@@ -31,14 +33,14 @@ Usage::
 
     python scripts\\setup_model.py ^
         --hf-repo mlc-ai/Qwen3-4B-q4f16_1-MLC ^
-        --models-root D:\\Dev\\Tether\\models ^
-        --conv-template-from D:\\Dev\\Tether\\models\\Qwen3-4B-q4f16_0-MLC ^
+        --models-root .\\models ^
+        --conv-template-from .\\models\\Qwen3-4B-q4f16_0-MLC ^
         --verify
 
     # subsequent runs can reuse the staged weights
     python scripts\\setup_model.py ^
         --hf-repo mlc-ai/Qwen3-4B-q4f16_1-MLC ^
-        --models-root D:\\Dev\\Tether\\models ^
+        --models-root .\\models ^
         --skip-download
 
 The script writes nothing into Tether's source tree -- only into the

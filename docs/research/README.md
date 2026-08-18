@@ -5,11 +5,12 @@ Tether was paused for a major refactor. The goal was to refresh our
 view of the MLC-LLM model ecosystem after ~18 months and produce an
 **actionable shortlist of models to try once the refactor lands**.
 
-> Hardware target: **Microsoft Surface Pro 11, Snapdragon X Elite,
+> Historical research baseline (May 2026): **Microsoft Surface Pro 11, Snapdragon X Elite,
 > 16 GB unified memory.**
-> Backend (today): **Adreno X1 GPU via OpenCL** (`*-adreno.dll` libs in
-> `models/libs/`). NPU/Hexagon is *not* used today despite older docs
-> using the word "NPU" loosely.
+> Backend studied in this snapshot: **Adreno X1 GPU via OpenCL**
+> (`*-adreno.dll` libs in `models/libs/`). The current shipped default is
+> GenieX on the Hexagon NPU; see
+> [`../runbooks/geniex-provider.md`](../runbooks/geniex-provider.md).
 
 ## TL;DR (one paragraph)
 

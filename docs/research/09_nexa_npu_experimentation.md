@@ -1,7 +1,7 @@
 # NexaSDK NPU Experimentation — Findings (May 2026)
 
-> **Working-directory artifacts:** were staged off-repo at
-> `D:\Dev\TetherWorkspace\nexa\` while the refactor was in flight; the
+> **Working-directory artifacts:** were staged under an off-repo
+> `<workspace>\nexa\` directory while the refactor was in flight; the
 > headline doc and the provider skeleton are now committed under
 > `docs/research/`. Disk-only artifacts (1.2 GB Granite NPU model,
 > 88 MB Nexa CLI install) stay off-repo; the cleanup recipe at the
@@ -45,7 +45,7 @@ Downloaded from
 * `nexa-cli_windows_arm64.exe` (94 MB, signed by "Nexa AI, Inc.")
 * Inno Setup installer; **silent flag is `/VERYSILENT`** (NOT NSIS-style
   `/S` — that hangs).
-* Default install location: `C:\Users\<user>\AppData\Local\Nexa CLI\`.
+* Default install location: `%LOCALAPPDATA%\Nexa CLI\`.
 * No PATH modification — invoke via full path or add the install dir to
   `$env:Path`.
 
@@ -58,7 +58,7 @@ emulation if needed.
 .\nexa-cli_windows_arm64.exe /VERYSILENT /SUPPRESSMSGBOXES /NORESTART /LOG=install.log
 
 # Verify
-$env:Path = "C:\Users\$env:USERNAME\AppData\Local\Nexa CLI;$env:Path"
+$env:Path = "$env:LOCALAPPDATA\Nexa CLI;$env:Path"
 nexa version
 # NexaSDK Bridge Version: v1.0.45-rc1
 # NexaSDK CLI Version:    v0.2.73
@@ -73,7 +73,7 @@ nexa config set license 'key/eyJhY2NvdW50...'   # README default
 # Pull — works
 nexa --skip-update pull NexaAI/Granite-4.0-h-350M-NPU
 # 1.2 GB downloaded in ~55 s, cached at:
-#   C:\Users\<user>\.cache\nexa.ai\nexa_sdk\models\NexaAI\
+#   %USERPROFILE%\.cache\nexa.ai\nexa_sdk\models\NexaAI\
 
 # nexa list — works
 nexa --skip-update list
@@ -87,9 +87,9 @@ nexa --skip-update list
 ### Cache layout (for cleanup later)
 
 ```
-C:\Users\<user>\.cache\nexa.ai\nexa_sdk\models\<NexaAI\Model-Name>\
-C:\Users\<user>\AppData\Local\Nexa CLI\          (88 MB, install)
-C:\Users\<user>\AppData\Local\Nexa CLI\npu\      (NPU plugin DLLs:
+%USERPROFILE%\.cache\nexa.ai\nexa_sdk\models\<NexaAI\Model-Name>\
+%LOCALAPPDATA%\Nexa CLI\                         (88 MB, install)
+%LOCALAPPDATA%\Nexa CLI\npu\                     (NPU plugin DLLs:
                                                   granite-nano-sdk.dll,
                                                   granite4-sdk.dll, etc.)
 ```
@@ -285,8 +285,8 @@ Currently retained on disk for instant recheck:
 
 - `<workspace>\nexa-cli_windows_arm64.exe` (94 MB) — installer
 - `<workspace>\nexaai-1.0.44.tar.gz` (73 KB) — Python sdist (broken)
-- `C:\Users\<user>\AppData\Local\Nexa CLI\` (~88 MB, installed CLI)
-- `C:\Users\<user>\.cache\nexa.ai\nexa_sdk\models\NexaAI\Granite-4.0-h-350M-NPU\`
+- `%LOCALAPPDATA%\Nexa CLI\` (~88 MB, installed CLI)
+- `%USERPROFILE%\.cache\nexa.ai\nexa_sdk\models\NexaAI\Granite-4.0-h-350M-NPU\`
   (~1.2 GB, NPU model)
 
 Total: ~1.4 GB. Drop with:

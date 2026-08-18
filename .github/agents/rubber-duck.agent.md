@@ -55,14 +55,14 @@ This is the lens for your critique. Standard focus questions per checkpoint:
 
 ## Authoritative references (READ before critiquing)
 
-1. **Plan**: `C:/Users/lovan/.copilot/session-state/c51629ff-b3b8-442f-957a-bc9c0b008530/files/investigations/_synthesis.md`
-   — Read §3 (architecture decisions), §6 (free-wins), and the section(s)
-   that govern `{{phase}}`.
-2. `D:/Dev/Tether/.github/copilot-instructions.md` — project rules.
-3. `D:/Dev/Tether/docs/REFACTOR_BRIEFING.md` — hardware constraints + 4
+1. **Plan digest**: `docs/refactor/synthesis-2026-05.md`
+   — Read §1 (locked decisions), §2 (extension seams), and the repository
+   references that govern `{{phase}}`.
+2. `.github/copilot-instructions.md` — project rules.
+3. `docs/REFACTOR_BRIEFING.md` — hardware constraints + 4
    pluggability seams.
 4. **Connector spec** (Phase 4.5/6.5 only):
-   `C:/Users/lovan/.copilot/session-state/5c8a15fc-11c0-4eef-98e1-cf5cd5f6a520/plan.md`
+   the ADRs and repository documentation cited for the phase
 5. **Diff under review**: `git log --oneline main..HEAD` and the per-todo
    branches that landed this phase (orchestrator will list them).
 

@@ -19,12 +19,12 @@ locked in `_synthesis.md`. You are NOT reviewing other todos.
 
 ## Authoritative references (READ before changing code)
 
-1. **Plan**: `C:/Users/lovan/.copilot/session-state/c51629ff-b3b8-442f-957a-bc9c0b008530/files/investigations/_synthesis.md`
+1. **Plan digest**: `docs/refactor/synthesis-2026-05.md`
    — Read the sections cited in `{{scope_files}}` and `{{acceptance}}`.
-2. **Project rules + canonical commands**: `D:/Dev/Tether/.github/copilot-instructions.md`
-3. **Hardware/runtime constraints**: `D:/Dev/Tether/docs/REFACTOR_BRIEFING.md`
+2. **Project rules + canonical commands**: `.github/copilot-instructions.md`
+3. **Hardware/runtime constraints**: `docs/REFACTOR_BRIEFING.md`
 4. **Connector spec** (read-only reference for Phase 4.5 / 6.5 work):
-   `C:/Users/lovan/.copilot/session-state/5c8a15fc-11c0-4eef-98e1-cf5cd5f6a520/plan.md`
+   the ADRs and repository documentation cited by the assigned todo
 
 ## Scope (touch only these)
 
@@ -47,7 +47,7 @@ Plus these globals (always anti-scope unless this todo explicitly authorizes):
 - `legacy/**` — frozen; never modify
 - `tether_service/` deletion — alias retained indefinitely (per ratified plan)
 - Any `mode="auto"` orchestrator routing — explicit non-goal
-- Any new `OllamaProvider` / `NexaProvider` runtime impl — design support only
+- Provider runtime changes unless the todo explicitly authorizes them
 
 ## Shared modules to use (do not re-implement)
 
@@ -74,19 +74,20 @@ output in your final reply.
 
 ### R1. Pre-flight environment
 
-- **DO** invoke `C:\ProgramData\miniconda3\envs\mlc-venv2\python.exe` directly
-  for any pytest / pip / module run.
+- **DO** invoke the provider-appropriate environment's `python.exe` directly
+  for pytest / pip / module runs: a python.org ARM64 stdlib venv for
+  GenieX-only work, or the x64 conda env under Prism for MLC.
 - **DO NOT** use `conda run -n mlc-venv2 ...` — `vswhere.exe` activation hooks
   pollute stdout and break automation. Confirmed bug.
 - Example:
   ```powershell
-  & C:\ProgramData\miniconda3\envs\mlc-venv2\python.exe -m pytest tests/unit/... -q
+  & "<python-executable>" -m pytest tests/unit/... -q
   ```
 
 ### R2. Adreno-not-NPU terminology
 
 - Tether's MLC backend is the **Adreno X1 GPU via OpenCL**.
-- **Never** call it "NPU". "NPU" is reserved for the future `NexaProvider` (Seam A).
+- **Never** call it "NPU". GenieX is the shipped Hexagon NPU provider.
 - Library names that contain `adreno` confirm this: `mlc_llm_adreno_cpu_clml_*`,
   `tvm_adreno_cpu_clml_*`, `*-adreno.dll`.
 
@@ -115,8 +116,8 @@ output in your final reply.
 - Add an interface / ABC / Protocol **only if** ≥2 plausible implementations
   exist within ~12 months **OR** it is required for testability (a test fake).
 - One impl + "future-proofing" is NOT a justification.
-- Examples that ARE justified: `ModelProvider` (mlc + dummy + future ollama/nexa),
-  `SessionStore` (sqlite + memory test fake), `Connector` (echo + future whatsapp/gmail).
+- Examples that ARE justified: `ModelProvider` (GenieX + MLC + Ollama + dummy),
+  `SessionStore` (sqlite + memory test fake), `Connector` (Echo + WhatsApp).
 - Examples that are NOT: a `RetryStrategy` ABC with one impl, a `CacheBackend`
   ABC with one impl.
 

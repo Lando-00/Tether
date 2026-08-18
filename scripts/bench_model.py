@@ -23,8 +23,8 @@ deltas in the SSE stream.
 Usage::
 
     python scripts\\bench_model.py ^
-        --model-dir D:\\Dev\\Tether\\models\\Qwen3-4B-q4f16_1-MLC ^
-        --model-lib D:\\Dev\\Tether\\models\\libs\\Qwen3-4B-q4f16_1-adreno.dll ^
+        --model-dir .\\models\\Qwen3-4B-q4f16_1-MLC ^
+        --model-lib .\\models\\libs\\Qwen3-4B-q4f16_1-adreno.dll ^
         --label Qwen3-4B-q4f16_1 ^
         --out-json bench_q4f16_1.json
 """
