@@ -65,6 +65,8 @@ class FakeResearchProvider(ModelProvider):
         self._planner_responses: Deque[CannedResponse] = deque()
         self._extractor_responses: Deque[CannedResponse] = deque()
         self._synthesizer_responses: Deque[CannedResponse] = deque()
+        self._direct_responses: Deque[CannedResponse] = deque()
+        self._unknown_responses: Deque[CannedResponse] = deque()
         self._chunk_size = chunk_size
         self.chunk_size = chunk_size
 
@@ -76,6 +78,7 @@ class FakeResearchProvider(ModelProvider):
         self._planner_exc: Optional[BaseException] = None
         self._extractor_exc: Optional[BaseException] = None
         self._synthesizer_exc: Optional[BaseException] = None
+        self._direct_exc: Optional[BaseException] = None
 
         # Call log: every (phase, messages) pair, in order. Tests
         # assert on call ordering / argument values without mocking.
@@ -104,6 +107,29 @@ class FakeResearchProvider(ModelProvider):
         """
         self._synthesizer_responses.clear()
         self._synthesizer_responses.append(response)
+
+    def set_direct_response(self, response: Union[str, List[str]]) -> None:
+        """Queue ONE direct-answer response.
+
+        The direct phase is used by
+        :class:`~tether.protocol.orchestration.notebook.NotebookOrchestrator`
+        when turn triage decides a turn needs no external evidence and the
+        orchestrator answers inline. It never plans or searches.
+        """
+        self._direct_responses.clear()
+        self._direct_responses.append(response)
+
+    def set_chat_response(self, response: Union[str, List[str]]) -> None:
+        """Queue ONE response for the *chat* path (phase ``unknown``).
+
+        :class:`~tether.protocol.orchestration.notebook.AutoOrchestrator`
+        delegates DIRECT turns to
+        :class:`~tether.protocol.orchestration.chatty.ChattyAgentOrchestrator`,
+        whose prompts carry the application system prompt rather than any
+        notebook phase marker — so they land on ``unknown``.
+        """
+        self._unknown_responses.clear()
+        self._unknown_responses.append(response)
 
     def raise_on_planner(self, exc: BaseException) -> None:
         """Inject an exception to be raised on the next planner call."""
@@ -205,7 +231,7 @@ class FakeResearchProvider(ModelProvider):
 
     def _detect_phase(
         self, messages: List[Dict[str, Any]]
-    ) -> Literal["planner", "extractor", "synthesizer", "unknown"]:
+    ) -> Literal["planner", "extractor", "synthesizer", "direct", "unknown"]:
         """Return ``'planner' | 'extractor' | 'synthesizer' | 'unknown'``.
 
         Wave 2 IMP-D walks ``messages`` in reverse, stops at the first
@@ -227,6 +253,10 @@ class FakeResearchProvider(ModelProvider):
         last_system = (system_msgs[-1].get("content") or "").lower()
         if "synthesize" in last_system or "synthesizer" in last_system:
             return "synthesizer"
+        # The direct-answer phase (AutoOrchestrator triage → DIRECT) has no
+        # tools and no notebook; it is recognised by its explicit no-tools rule.
+        if "you have no tools here" in last_system:
+            return "direct"
         if "extract" in last_system and "fact" in last_system:
             return "extractor"
         if (

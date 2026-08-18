@@ -82,14 +82,21 @@
       "StreamRequest": {
         "properties": {
           "mode": {
-            "default": "chat",
-            "description": "Orchestrator mode. 'chat' uses ChattyAgentOrchestrator; 'research' uses NotebookOrchestrator (Hanov 5-phase Plan→Search→Extract→Refine→Synthesize loop; see ADR-0020). Research mode is opt-in: it must be registered in orchestrator.registry and requires 'web_search' in tools.enabled. Honored on both Accept: text/event-stream (SSE) and application/x-ndjson (NDJSON back-compat) responses.",
-            "enum": [
-              "chat",
-              "research"
+            "anyOf": [
+              {
+                "enum": [
+                  "auto",
+                  "chat",
+                  "research"
+                ],
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
             ],
-            "title": "Mode",
-            "type": "string"
+            "description": "Orchestrator mode. Omit to use the server's configured default (`orchestrator.default`, which ships as 'auto'). 'auto' uses AutoOrchestrator: fact-based orchestration that triages each turn and answers directly when no external evidence is needed. 'chat' uses ChattyAgentOrchestrator (legacy tool loop). 'research' forces the full NotebookOrchestrator Plan→Search→Extract→Refine→Synthesize loop (ADR-0020) and is never downgraded by triage; it requires 'web_search' in tools.enabled. Any mode must be registered in orchestrator.registry. Honored on both Accept: text/event-stream (SSE) and application/x-ndjson (NDJSON back-compat) responses.",
+            "title": "Mode"
           },
           "model_name": {
             "description": "The name of the model to use for this generation.",

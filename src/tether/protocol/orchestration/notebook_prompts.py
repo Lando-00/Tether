@@ -205,6 +205,18 @@ Notebook (numbered atomic facts — your only source of truth):
 Write the answer now.
 """
 
+DIRECT_ANSWER_SYSTEM_PROMPT = """You are a helpful, concise assistant. Today is {today_iso}.
+
+Answer the user directly using the conversation so far and your own knowledge.
+
+Rules:
+- Do NOT call tools and do NOT emit any tool-call markers. You have no tools here.
+- If the user refers to something earlier in the conversation, use that context.
+- If a question needs current, real-time, or external information that you do not
+  reliably know, say so plainly and briefly instead of guessing.
+- Keep the answer as short as the question deserves.
+"""
+
 
 # --- Helper types -----------------------------------------------------------
 
@@ -222,5 +234,6 @@ __all__ = [
     "EXTRACTOR_USER_TEMPLATE",
     "SYNTHESIZER_SYSTEM_PROMPT",
     "SYNTHESIZER_USER_TEMPLATE",
+    "DIRECT_ANSWER_SYSTEM_PROMPT",
     "ClockFn",
 ]

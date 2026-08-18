@@ -235,14 +235,28 @@ inbox:
 # this file can see the wired-in tunables without cross-referencing
 # settings.py. NotebookOrchestrator itself is implemented in Wave 2 IMP-E.
 orchestrator:
-  default: "chat"
+  # Fact-based orchestration with per-turn triage is the default (design note:
+  # docs/design/fact-based-orchestration-default.md). Tether primarily runs
+  # small models, and the fact-based loop keeps each LLM call bounded to
+  # (question, notebook, current tool result) instead of accumulating raw tool
+  # output in history — roughly 1.6k vs 6k tokens after five searches
+  # (ADR-0020). Triage is what makes that safe as a default: small talk,
+  # creative work and back-references are answered directly, and only
+  # evidence-seeking questions run the full loop.
+  default: "auto"
   registry:
+    # Triaged fact-based mode — decides per turn whether to answer directly or
+    # to research. This is the default.
+    auto: "tether.protocol.orchestration.notebook.AutoOrchestrator"
+    # Legacy tool-loop orchestrator, kept as an explicit opt-out. It appends
+    # raw tool results to history — the thing small models struggle with — but
+    # remains the most predictable path for heavy multi-tool use.
     chat: "tether.protocol.orchestration.chatty.ChattyAgentOrchestrator"
-    # Research mode (Hanov-style Plan→Search→Extract→Refine→Synthesize loop).
-    # Registered by default since Phase 9.8; it requires web_search in
-    # tools.enabled. See ADR-0020 §D6 boot validation; the engine fails-loud
-    # at boot if research is registered but web_search is not enabled.
-    # Comment the line below out to disable research mode entirely.
+    # Unconditional research (Hanov-style Plan→Search→Extract→Refine→Synthesize
+    # loop). Requires web_search in tools.enabled. See ADR-0020 §D6 boot
+    # validation; the engine fails-loud at boot if research is registered but
+    # web_search is not enabled. An explicit research request is never
+    # downgraded to a direct answer by triage.
     research: "tether.protocol.orchestration.notebook.NotebookOrchestrator"
   research:
     # Per-phase model overrides. CAUTION: each override may trigger a 30s

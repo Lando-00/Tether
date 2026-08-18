@@ -152,8 +152,12 @@ async def test_all_queries_rate_limited_emits_no_facts():
     assert len(no_facts) == 1
     assert no_facts[0].queries_attempted == 2
     assert no_facts[0].iterations == 2
-    # When at least one query was attempted, no "empty plan" hint.
-    assert no_facts[0].note is None
+    # When at least one query was attempted, no "empty plan" hint — but the
+    # note must still explain that the searches themselves failed, so an empty
+    # notebook is not mistaken for "the web had no answer".
+    assert no_facts[0].note is not None
+    assert "empty plan" not in no_facts[0].note
+    assert "rate_limited" in no_facts[0].note
 
     # No facts and no limit reached.
     assert not [e for e in events if isinstance(e, NotebookFactAdded)]
@@ -225,7 +229,8 @@ async def test_empty_plan_emits_no_facts_with_zero_counters():
     assert len(no_facts) == 1
     assert no_facts[0].queries_attempted == 1
     assert no_facts[0].iterations == 1
-    assert no_facts[0].note is None
+    assert no_facts[0].note is not None
+    assert "planner_empty_fallback_failed" in no_facts[0].note
 
     # Synthesize still runs and turn completes.
     synth_phases = [

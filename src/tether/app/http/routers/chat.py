@@ -81,16 +81,20 @@ class StreamRequest(BaseModel):
         ),
         max_length=256,
     )
-    mode: Literal["chat", "research"] = Field(
-        default="chat",
+    mode: Optional[Literal["auto", "chat", "research"]] = Field(
+        default=None,
         description=(
-            "Orchestrator mode. 'chat' uses ChattyAgentOrchestrator; "
-            "'research' uses NotebookOrchestrator (Hanov 5-phase Plan→"
-            "Search→Extract→Refine→Synthesize loop; see ADR-0020). "
-            "Research mode is opt-in: it must be registered in "
-            "orchestrator.registry and requires 'web_search' in tools.enabled. "
-            "Honored on both Accept: text/event-stream (SSE) and "
-            "application/x-ndjson (NDJSON back-compat) responses."
+            "Orchestrator mode. Omit to use the server's configured default "
+            "(`orchestrator.default`, which ships as 'auto'). 'auto' uses "
+            "AutoOrchestrator: fact-based orchestration that triages each turn "
+            "and answers directly when no external evidence is needed. 'chat' "
+            "uses ChattyAgentOrchestrator (legacy tool loop). 'research' forces "
+            "the full NotebookOrchestrator Plan→Search→Extract→Refine→"
+            "Synthesize loop (ADR-0020) and is never downgraded by triage; it "
+            "requires 'web_search' in tools.enabled. Any mode must be "
+            "registered in orchestrator.registry. Honored on both "
+            "Accept: text/event-stream (SSE) and application/x-ndjson "
+            "(NDJSON back-compat) responses."
         ),
     )
     reasoning_effort: Optional[str] = Field(
@@ -308,22 +312,31 @@ async def stream(request: Request, body: StreamRequest):
     use_sse = "text/event-stream" in accept_lower
     use_ndjson_v0_legacy = not use_sse and "application/x-ndjson" in accept_lower and _has_version_0(accept_lower)
 
+    engine = request.app.state.gen_svc
+    headers = {"X-Tether-Protocol-Version": "1.0"}
+
+    # ``mode`` is optional on the wire: omitting it means "use the server's
+    # configured orchestrator.default". Resolve it once here so every downstream
+    # helper (provider resolution, reasoning-effort validation, orchestrator
+    # lookup, and the engine call itself) agrees on the same effective mode.
+    effective_mode: str = body.mode or str(
+        getattr(engine, "_orchestrator_default_mode", "chat") or "chat"
+    )
+
     logger.info(
         f"/chat/stream called: session_id={body.session_id}, "
-        f"model_name={body.model_name}, mode={body.mode}, "
+        f"model_name={body.model_name}, mode={effective_mode}"
+        f"{'' if body.mode else ' (default)'}, "
         f"sse={use_sse}, ndjson_v0_legacy={use_ndjson_v0_legacy}, "
         f"reasoning_effort={body.reasoning_effort}, "
         f"provider_id={body.provider_id}"
     )
 
-    engine = request.app.state.gen_svc
-    headers = {"X-Tether-Protocol-Version": "1.0"}
-
     pid = _resolve_provider_id(
         engine,
         model_name=body.model_name,
         requested_provider_id=body.provider_id,
-        mode=body.mode,
+        mode=effective_mode,
     )
     _provider_kwarg: dict = {"provider_id": pid} if pid is not None else {}
     if (
@@ -343,7 +356,7 @@ async def stream(request: Request, body: StreamRequest):
             ) from exc
         for reasoning_model in _reasoning_models_for_request(
             engine,
-            mode=body.mode,
+            mode=effective_mode,
             model_name=body.model_name,
         ):
             _validate_reasoning_effort(
@@ -365,7 +378,7 @@ async def stream(request: Request, body: StreamRequest):
 
     try:
         orchestrator_cls = resolve_orchestrator_class(
-            body.mode,
+            effective_mode,
             getattr(
                 engine,
                 "_orchestrator_registry",
@@ -403,7 +416,7 @@ async def stream(request: Request, body: StreamRequest):
                         session_id=body.session_id,
                         prompt=body.prompt,
                         model_name=body.model_name,
-                        mode=body.mode,
+                        mode=effective_mode,
                         cancel_token=cancel_token,
                         reasoning_effort=body.reasoning_effort,
                         **_provider_kwarg,
@@ -461,7 +474,7 @@ async def stream(request: Request, body: StreamRequest):
                     session_id=body.session_id,
                     prompt=body.prompt,
                     model_name=body.model_name,
-                    mode=body.mode,
+                    mode=effective_mode,
                     cancel_event=cancel_event,
                     reasoning_effort=body.reasoning_effort,
                     **_provider_kwarg,
@@ -518,7 +531,7 @@ async def stream(request: Request, body: StreamRequest):
                     session_id=body.session_id,
                     prompt=body.prompt,
                     model_name=body.model_name,
-                    mode=body.mode,
+                    mode=effective_mode,
                     cancel_token=cancel_token,
                     reasoning_effort=body.reasoning_effort,
                     **_provider_kwarg,

@@ -10,7 +10,7 @@ import hashlib
 import uuid
 from collections.abc import Callable
 from datetime import date, datetime, timezone
-from typing import TYPE_CHECKING, Any, AsyncGenerator, AsyncIterator, Literal, Optional
+from typing import TYPE_CHECKING, Any, AsyncGenerator, AsyncIterator, Iterable, Literal, Optional
 
 import structlog
 
@@ -22,6 +22,7 @@ from tether.core.interfaces import (
     StreamParser,
 )
 from tether.core.types import OrchestratorConfig as ChatSettings
+from tether.protocol.intent.turn_triage import TurnKind
 from tether.protocol.orchestration.chatty import _AWAITER_PERSIST_BUDGET_SEC, _TOOL_CANCEL_GRACE_SEC
 from tether.protocol.orchestration.notebook_input import has_entity_drift, prepare_research_input
 from tether.protocol.orchestration.notebook_parser import (
@@ -31,6 +32,7 @@ from tether.protocol.orchestration.notebook_parser import (
     sanitize_search_queries,
 )
 from tether.protocol.orchestration.notebook_prompts import (
+    DIRECT_ANSWER_SYSTEM_PROMPT,
     EXTRACTOR_SYSTEM_PROMPT,
     EXTRACTOR_USER_TEMPLATE,
     PLANNER_SYSTEM_PROMPT,
@@ -61,6 +63,7 @@ from tether.runtime.abandoned_tasks import get_notebook_abandoned_task_tracker
 
 if TYPE_CHECKING:
     from tether.core.tool_registry import ToolRegistry
+    from tether.protocol.intent.turn_triage import TurnTriage
     from tether.protocol.orchestration.cancel import CancelToken
     from tether.protocol.orchestration.tool_runner import ToolRunner
     from tether.protocol.wire.events import WireEvent
@@ -195,6 +198,39 @@ def _query_log_fields(query: str) -> dict[str, Any]:
         ).hexdigest()[:8],
         "query_length": len(query),
     }
+
+
+def _search_error_text(search_result: Any) -> str:
+    """Short, redaction-safe reason a single explore call produced nothing."""
+    if not isinstance(search_result, dict):
+        return "malformed tool response"
+    error = search_result.get("error")
+    return str(error) if error else "no results"
+
+
+def _no_facts_note(iterations: int, search_failures: list[str]) -> Optional[str]:
+    """Explain an empty notebook so the client can say *why* it found nothing.
+
+    Without this, a research turn whose search backend is unconfigured looks
+    identical to one where the web genuinely had no answer: the explore phases
+    flash past, ``notebook_no_facts`` carries ``note=None``, and synthesis
+    reports "not enough evidence". Surfacing the backend's own error message is
+    the difference between "the internet failed you" and "you have not set
+    BRAVE_API_KEY".
+
+    The message is capped to the 256-char wire limit of
+    :attr:`NotebookNoFacts.note`, and the underlying text comes from the tool's
+    structured ``error`` field (never raw snippets), so it is safe to surface.
+    """
+    if not iterations:
+        return "empty plan"
+    if not search_failures:
+        return None
+    if len(set(search_failures)) == 1:
+        reason = search_failures[0]
+    else:
+        reason = f"{len(search_failures)} search failures, first: {search_failures[0]}"
+    return f"every search failed — {reason}"[:256]
 
 
 class _ThinkStripper:
@@ -400,6 +436,8 @@ class NotebookOrchestrator(Orchestrator):
         # Notebook-specific (engine.py adds these when mode="research"):
         research_settings: Optional["ResearchSettings"] = None,
         clock: Callable[[], date] = lambda: date.today(),
+        triage: Optional["TurnTriage"] = None,
+        excluded_tools: Optional[Iterable[str]] = None,
     ) -> None:
         # The parser is accepted for ABC compatibility but intentionally
         # ignored by research mode (ADR-0020 §D1 prompt-injection defense).
@@ -418,6 +456,32 @@ class NotebookOrchestrator(Orchestrator):
             research_settings = _RS()
         self.research_settings = research_settings
         self.clock = clock
+        # Disabled tools are pruned from the model-facing history (see
+        # Engine.set_tool_enabled). Research mode only calls web_search, but the
+        # direct-answer path replays history and must honour the same rule.
+        self.excluded_tools: set[str] = set(excluded_tools or ())
+        # Default: research every turn, i.e. the pre-triage behaviour. An
+        # explicit `mode="research"` request means the caller *wants* the
+        # research loop, so it must not be second-guessed. The triaged variant
+        # used for the default mode is :class:`AutoOrchestrator` below.
+        if triage is None:
+            from tether.protocol.intent.turn_triage import AlwaysResearchTriage
+            triage = AlwaysResearchTriage()
+        self.triage = triage
+
+    async def _history(self, session_id: str) -> list[dict[str, Any]]:
+        """Prior history, minus any disabled tools' calls/results.
+
+        ``exclude_tools`` is only passed when something is actually excluded so
+        session stores predating the parameter keep working on the common path.
+        """
+        if self.excluded_tools:
+            return await self.store.get_history(
+                session_id,
+                include_thinking=False,
+                exclude_tools=self.excluded_tools,
+            )
+        return await self.store.get_history(session_id, include_thinking=False)
 
     async def run(
         self, *, session_id: str, prompt: str, model_name: str,
@@ -474,7 +538,7 @@ class NotebookOrchestrator(Orchestrator):
             await self.store.start_turn(session_id, turn_id, model_name=model_name)
             turn_started = True
             # Snapshot precedes add_user so a correction cannot match itself.
-            prior_history = await self.store.get_history(session_id, include_thinking=False)
+            prior_history = await self._history(session_id)
             await self.store.add_user(session_id, prompt, turn_id=turn_id)
             prepared = prepare_research_input(prompt, prior_history)
             if prepared.clarification is not None:
@@ -492,6 +556,19 @@ class NotebookOrchestrator(Orchestrator):
             question = prepared.effective_question
             full_question = prepared.resolved_question or question
             today_iso = self.clock().isoformat()
+            # Triage decides whether this turn needs external evidence at all.
+            # Arithmetic already resolved locally is still a research-shaped
+            # turn (it has facts to synthesize), so only consult triage when
+            # there is a residual question left to research.
+            direct_answer = bool(question) and not prepared.local_facts and (
+                self.triage.classify(prompt, has_history=bool(prior_history))
+                is TurnKind.DIRECT
+            )
+            logger.info(
+                "notebook.triage",
+                turn_kind="direct" if direct_answer else "research",
+                has_history=bool(prior_history),
+            )
             planner_model = self.research_settings.planner_model or model_name
             extractor_model = self.research_settings.extractor_model or model_name
             synthesizer_model = self.research_settings.synthesizer_model or model_name
@@ -500,6 +577,10 @@ class NotebookOrchestrator(Orchestrator):
                 max_iterations=self.research_settings.max_iterations,
                 max_facts_per_extract=self.research_settings.max_facts_per_extract,
             )
+            # Reasons the search backend rejected an explore call. Collected so
+            # a turn that gathered nothing can say *why* instead of reporting a
+            # bare "no facts" that reads like "the web had no answer".
+            search_failures: list[str] = []
 
             # Local facts are first-class cited notebook entries, never Brave input.
             for fact in prepared.local_facts:
@@ -514,7 +595,7 @@ class NotebookOrchestrator(Orchestrator):
 
             if _is_cancelled():
                 cancelled = True
-            elif question:
+            elif question and not direct_answer:
                 yield NotebookPhaseStart(**_envelope(), phase="plan", iteration=0)
                 plan_queries: list[str] = []
                 async for kind, payload in self._plan(
@@ -580,6 +661,7 @@ class NotebookOrchestrator(Orchestrator):
                         break
                     search_result = await task
                 except Exception as exc:
+                    search_failures.append(type(exc).__name__)
                     logger.warning(
                         "notebook.explore_tool_error",
                         iteration=iteration,
@@ -597,6 +679,9 @@ class NotebookOrchestrator(Orchestrator):
                         except (asyncio.TimeoutError, asyncio.CancelledError):
                             pass
                 if not isinstance(search_result, dict) or search_result.get("error"):
+                    search_failures.append(
+                        _search_error_text(search_result)
+                    )
                     logger.warning(
                         "notebook.explore_tool_error",
                         iteration=iteration,
@@ -696,25 +781,36 @@ class NotebookOrchestrator(Orchestrator):
                 yield NotebookLimitReached(
                     **_envelope(), limit_kind=limit_kind, count=count
                 )
-            if not state.facts:
+            if not state.facts and not direct_answer:
                 yield NotebookNoFacts(
                     **_envelope(),
                     queries_attempted=state.iteration,
                     iterations=state.iteration,
-                    note="empty plan" if not state.iteration else None,
+                    note=_no_facts_note(state.iteration, search_failures),
                 )
-            yield NotebookPhaseStart(**_envelope(), phase="synthesize", iteration=0)
+            if not direct_answer:
+                yield NotebookPhaseStart(**_envelope(), phase="synthesize", iteration=0)
             yield await _start()
             stripper = _ThinkStripper(
                 assume_open=synthesizer_model
                 in self.research_settings.synth_assume_open_think_models
             )
-            astream = self._synthesize_stream(
-                model_name=synthesizer_model,
-                question=full_question,
-                facts=state.facts,
-                today_iso=today_iso,
-                reasoning_effort=reasoning_effort,
+            astream = (
+                self._direct_answer_stream(
+                    model_name=synthesizer_model,
+                    prompt=prompt,
+                    history=prior_history,
+                    today_iso=today_iso,
+                    reasoning_effort=reasoning_effort,
+                )
+                if direct_answer
+                else self._synthesize_stream(
+                    model_name=synthesizer_model,
+                    question=full_question,
+                    facts=state.facts,
+                    today_iso=today_iso,
+                    reasoning_effort=reasoning_effort,
+                )
             )
             synth_loop = asyncio.get_running_loop()
             synth_started = synth_loop.time()
@@ -1020,6 +1116,47 @@ class NotebookOrchestrator(Orchestrator):
                 else:
                     logger.warning("notebook.non_text_provider_chunk", phase="synthesize")
 
+    async def _direct_answer_stream(
+        self,
+        *,
+        model_name: str,
+        prompt: str,
+        history: list[dict[str, Any]],
+        today_iso: str,
+        reasoning_effort: Optional[str] = None,
+    ) -> AsyncGenerator[str, None]:
+        """Stream a plain conversational answer — no plan, no search, no tools.
+
+        Used when :class:`~tether.protocol.intent.turn_triage.TurnTriage` routes
+        a turn to ``DIRECT``. Unlike synthesis, this *does* see prior history, so
+        back-references ("what did I just say?") resolve. Like synthesis, it
+        never routes through :class:`SlidingParser`, so a model that emits a
+        stray ``<<function_call>>`` marker yields harmless text rather than
+        executing anything (ADR-0020 §D1).
+        """
+        with structlog.contextvars.bound_contextvars(phase="direct"):
+            logger.info("notebook.phase_start", phase="direct")
+            messages: list[dict[str, Any]] = [
+                {
+                    "role": "system",
+                    "content": DIRECT_ANSWER_SYSTEM_PROMPT.format(today_iso=today_iso),
+                },
+                *history,
+                {"role": "user", "content": prompt},
+            ]
+            stream_kwargs: dict[str, Any] = {
+                "model_name": model_name,
+                "messages": messages,
+                "tools": None,
+            }
+            if reasoning_effort is not None:
+                stream_kwargs["reasoning_effort"] = reasoning_effort
+            async for chunk in self.provider.stream(**stream_kwargs):
+                if isinstance(chunk, str):
+                    yield chunk
+                else:
+                    logger.warning("notebook.non_text_provider_chunk", phase="direct")
+
     async def _collect_stream_text(
         self,
         *,
@@ -1144,4 +1281,119 @@ def _format_results_block(snippets: Any) -> str:
     return "\n\n".join(blocks) if blocks else "(none)"
 
 
-__all__ = ["NotebookOrchestrator"]
+class AutoOrchestrator(NotebookOrchestrator):
+    """Fact-based orchestration with per-turn triage — the default mode.
+
+    Identical to :class:`NotebookOrchestrator` except that it asks a
+    :class:`~tether.protocol.intent.turn_triage.TurnTriage` whether each turn
+    actually needs external evidence:
+
+    * ``DIRECT``   → hand the turn to :class:`ChattyAgentOrchestrator`, which
+      answers conversationally *and* can call the registered tools.
+    * ``RESEARCH`` → the full Plan → Explore → Extract → Refine → Synthesize loop.
+
+    This is what makes the fact-based loop safe as the *default* orchestrator.
+    Without triage, "hello" would be decomposed into search queries and sent to
+    a web search backend. With it, small talk, creative work and back-references
+    stay cheap, and only evidence-seeking questions pay for research.
+
+    **Why DIRECT delegates instead of answering inline.** The research loop only
+    knows one tool, ``web_search``. A bare "answer from the model" path therefore
+    has *no* tools at all, which breaks every question a local tool exists to
+    serve: "what time is it in Europe/Dublin?" would be sent to a web search
+    (and fail without a search backend) instead of calling the ``time`` tool.
+    Delegating DIRECT turns to the chat orchestrator gives them the full tool
+    loop, so the split is "needs the open web" vs "everything else" rather than
+    "research" vs "no tools".
+
+    ``mode="research"`` keeps using :class:`NotebookOrchestrator` directly, so an
+    explicit research request is never downgraded.
+    """
+
+    def __init__(
+        self,
+        *,
+        provider: "ModelProvider",
+        store: "SessionStore",
+        tool_registry: "ToolRegistry",
+        tool_runner: "ToolRunner",
+        parser: "StreamParser",
+        config: "ChatSettings",
+        research_settings: Optional["ResearchSettings"] = None,
+        clock: Callable[[], date] = lambda: date.today(),
+        triage: Optional["TurnTriage"] = None,
+        excluded_tools: Optional[Iterable[str]] = None,
+        # Threaded by Engine for the delegated chat path.
+        tools: Optional[dict[str, Any]] = None,
+        system_prompt: str = "",
+        hw_watchdog: Optional[Any] = None,
+        provider_id: Optional[str] = None,
+        audit_store_args: bool = False,
+        confirm_intent_classifier: Optional[Any] = None,
+    ) -> None:
+        # The signature is spelled out rather than forwarded via **kwargs
+        # because Engine threads constructor arguments by inspecting the
+        # signature (ADR-0020 §D5); a **kwargs-only constructor advertises no
+        # parameters and would be called with nothing.
+        if triage is None:
+            from tether.protocol.intent.rules_turn_triage import RulesTurnTriage
+            triage = RulesTurnTriage()
+        super().__init__(
+            provider=provider,
+            store=store,
+            tool_registry=tool_registry,
+            tool_runner=tool_runner,
+            parser=parser,
+            config=config,
+            research_settings=research_settings,
+            clock=clock,
+            triage=triage,
+            excluded_tools=excluded_tools,
+        )
+        from tether.protocol.orchestration.chatty import ChattyAgentOrchestrator
+
+        self._chat = ChattyAgentOrchestrator(
+            provider=provider,
+            parser=parser,
+            store=store,
+            tools=tools if tools is not None else {},
+            system_prompt=system_prompt,
+            config=config,
+            tool_runner=tool_runner,
+            hw_watchdog=hw_watchdog,
+            provider_id=provider_id,
+            confirm_intent_classifier=confirm_intent_classifier,
+            audit_store_args=audit_store_args,
+            excluded_tools=excluded_tools,
+        )
+
+    async def run(
+        self, *, session_id: str, prompt: str, model_name: str,
+        cancel_token: Optional["CancelToken"] = None,
+        reasoning_effort: Optional[str] = None,
+    ) -> AsyncIterator["WireEvent"]:
+        """Triage the turn, then run it through the right orchestrator."""
+        prior_history = await self._history(session_id)
+        kind = self.triage.classify(prompt, has_history=bool(prior_history))
+        logger.info("auto.triage", turn_kind=kind.value)
+        if kind is TurnKind.DIRECT:
+            async for event in self._chat.run(
+                session_id=session_id,
+                prompt=prompt,
+                model_name=model_name,
+                cancel_token=cancel_token,
+                reasoning_effort=reasoning_effort,
+            ):
+                yield event
+            return
+        async for event in super().run(
+            session_id=session_id,
+            prompt=prompt,
+            model_name=model_name,
+            cancel_token=cancel_token,
+            reasoning_effort=reasoning_effort,
+        ):
+            yield event
+
+
+__all__ = ["NotebookOrchestrator", "AutoOrchestrator"]

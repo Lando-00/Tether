@@ -150,10 +150,15 @@ def test_unknown_mode_returns_422(client):
     assert resp.status_code == 422
 
 
-def test_default_mode_field_is_chat():
-    """StreamRequest.mode defaults to 'chat' without sending the field."""
+def test_default_mode_field_is_none_and_defers_to_server():
+    """StreamRequest.mode is unset by default so the server picks the mode.
+
+    The field used to hard-code ``"chat"``, which silently overrode
+    ``orchestrator.default`` for every HTTP caller. ``None`` means "use the
+    server's configured default" and is resolved in the route handler.
+    """
     r = StreamRequest(session_id="s", prompt="p", model_name="m")
-    assert r.mode == "chat"
+    assert r.mode is None
 
 
 # ---------------------------------------------------------------------------
