@@ -33,6 +33,12 @@ _log = structlog.get_logger(__name__)
 # to the external server.
 _MODEL_REFRESH_MIN_INTERVAL_S = 30.0
 
+# The validated GenieX release accepts `max_tokens` but does not enforce it, so
+# the token budget has to be converted into a client-side character bound. Four
+# characters per token is a deliberate over-estimate: the bound exists to stop a
+# runaway generation, not to trim a legitimate reply, so it must not bite first.
+_CHARS_PER_TOKEN_BOUND = 4
+
 _CAPABILITIES = ProviderCapabilities(
     streaming=True,
     tools_native=False,
@@ -299,6 +305,7 @@ class GenieXProvider(ModelProvider):
             messages=messages,
             temperature=self._temperature,
             max_tokens=self._max_tokens,
+            max_output_chars=self._max_tokens * _CHARS_PER_TOKEN_BOUND,
         ):
             yield content
 
@@ -335,6 +342,7 @@ class GenieXProvider(ModelProvider):
             messages=messages,
             temperature=self._temperature,
             max_tokens=effective_max,
+            max_output_chars=effective_max * _CHARS_PER_TOKEN_BOUND,
         ):
             yield ProviderText(text=content)
 

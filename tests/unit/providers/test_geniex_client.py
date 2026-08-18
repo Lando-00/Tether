@@ -281,6 +281,106 @@ class TestSSEStreaming:
 
 
 # ---------------------------------------------------------------------------
+# Runaway-output protection
+# ---------------------------------------------------------------------------
+
+
+class TestRunawayOutputProtection:
+    """Client-side bounds on a stream the server does not bound itself.
+
+    The validated GenieX release accepts `max_tokens` but does not enforce it,
+    and the NPU stack intermittently emits a collapsed generation (~8% of turns
+    when measured on Qwen3-8B:Q4_0). Without these bounds the operator watches
+    garbage stream until they interrupt the client by hand.
+    """
+
+    @pytest.mark.anyio
+    async def test_collapsed_generation_aborts_the_stream(self):
+        """A repetition lock raises rather than streaming on forever."""
+        chunks = [_sse_frame(_chunk_json("Sure! Here is how:"))]
+        # 30 deltas of "loop" -> a 120-char word-like repetition run.
+        chunks += [_sse_frame(_chunk_json("loop")) for _ in range(30)]
+        chunks += [_sse_frame(_chunk_json(" and more text")), _sse_done()]
+
+        transport = _stream_transport(chunks)
+        client = httpx.AsyncClient(transport=transport, base_url="http://test")
+        provider = GenieXProvider(
+            base_url="http://test",
+            model_id="test-model",
+            http_client=client,
+        )
+
+        collected: List[str] = []
+        with pytest.raises(TransientProviderError, match="collapsed"):
+            async for ev in provider.stream_typed(
+                model_name="test-model",
+                messages=[{"role": "user", "content": "hi"}],
+            ):
+                collected.append(ev.text)
+
+        # It aborted partway rather than draining the whole response.
+        assert len(collected) < len(chunks)
+
+    @pytest.mark.anyio
+    async def test_normal_stream_is_unaffected(self):
+        """Ordinary prose streams to completion with no bound tripped."""
+        sentences = [
+            "Using an alias like cddev is more concise. ",
+            "Define it in your PowerShell profile. ",
+            "Then it loads in every new session. ",
+        ]
+        chunks = [_sse_frame(_chunk_json(s)) for s in sentences] + [_sse_done()]
+
+        transport = _stream_transport(chunks)
+        client = httpx.AsyncClient(transport=transport, base_url="http://test")
+        provider = GenieXProvider(
+            base_url="http://test",
+            model_id="test-model",
+            http_client=client,
+        )
+
+        collected = [
+            ev.text
+            async for ev in provider.stream_typed(
+                model_name="test-model",
+                messages=[{"role": "user", "content": "hi"}],
+            )
+        ]
+        assert "".join(collected) == "".join(sentences)
+
+    @pytest.mark.anyio
+    async def test_output_cap_bounds_a_runaway_stream(self):
+        """max_output_tokens is enforced client-side, since the server ignores it."""
+        # Varied text so the collapse guard cannot be what stops it.
+        chunks = [
+            _sse_frame(_chunk_json(f"sentence number {i} carries on. "))
+            for i in range(200)
+        ]
+        chunks.append(_sse_done())
+
+        transport = _stream_transport(chunks)
+        client = httpx.AsyncClient(transport=transport, base_url="http://test")
+        provider = GenieXProvider(
+            base_url="http://test",
+            model_id="test-model",
+            http_client=client,
+        )
+
+        collected = [
+            ev.text
+            async for ev in provider.stream_typed(
+                model_name="test-model",
+                messages=[{"role": "user", "content": "hi"}],
+                max_output_tokens=16,
+            )
+        ]
+        # 16 tokens * 4 chars/token bound = 64 chars, so it stops early rather
+        # than draining all 200 chunks.
+        assert len(collected) < 200
+        assert len("".join(collected)) < 200
+
+
+# ---------------------------------------------------------------------------
 # SSE framing edge cases (split buffers)
 # ---------------------------------------------------------------------------
 

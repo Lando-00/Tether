@@ -9,12 +9,13 @@ Synthesis: geniex-contract-probe-2026-07-25.md §§3,6,7.
 from __future__ import annotations
 
 import json
-from typing import Any, AsyncIterator, Callable, Dict, List
+from typing import Any, AsyncIterator, Callable, Dict, List, Optional
 
 import httpx
 import structlog
 
 from tether.core.errors import FatalProviderError, TransientProviderError
+from tether.providers.geniex.degeneracy import DegenerateOutputGuard
 
 _log = structlog.get_logger(__name__)
 
@@ -132,16 +133,28 @@ class GenieXClient:
         messages: List[Dict[str, Any]],
         temperature: float,
         max_tokens: int,
+        max_output_chars: Optional[int] = None,
     ) -> AsyncIterator[str]:
         """POST /v1/chat/completions with stream=true.
 
         Yields content-delta strings. Handles SSE framing (``data:{json}``
         with no space), ``[DONE]`` terminal, and raw JSON error responses.
 
+        Two client-side bounds are applied, because the validated GenieX
+        release does not enforce ``max_tokens`` server-side:
+
+        * ``max_output_chars`` stops the stream once that much content has been
+          emitted, so a runaway generation cannot stream indefinitely.
+        * A :class:`DegenerateOutputGuard` aborts the stream if the output
+          collapses into pathological repetition (see
+          :mod:`tether.providers.geniex.degeneracy`).
+
         Raises
         ------
         TransientProviderError
-            Server unreachable or timed out.
+            Server unreachable, timed out, or the generation collapsed.
+            Collapse is transient by nature — the same request usually
+            succeeds on retry.
         FatalProviderError
             Server returned a model/configuration error (400/500).
         """
@@ -183,6 +196,8 @@ class GenieXClient:
                 )
 
             # Stream SSE lines
+            guard = DegenerateOutputGuard()
+            emitted_chars = 0
             async for raw_line in resp.aiter_lines():
                 line = raw_line.strip()
                 if not line:
@@ -212,8 +227,35 @@ class GenieXClient:
                     continue
                 delta = choices[0].get("delta", {})
                 content = delta.get("content")
-                if content:
-                    yield content
+                if not content:
+                    continue
+
+                reason = guard.observe(content)
+                if reason is not None:
+                    _log.warning(
+                        "geniex.stream.degenerate",
+                        model=model,
+                        chars_emitted=emitted_chars,
+                        reason=reason,
+                    )
+                    raise TransientProviderError(
+                        f"GenieX generation collapsed: {reason}. "
+                        "This is a known intermittent fault in the NPU "
+                        "inference stack; retrying usually succeeds."
+                    )
+
+                if max_output_chars is not None and emitted_chars >= max_output_chars:
+                    # The validated GenieX release ignores max_tokens, so the
+                    # only enforcement point is here.
+                    _log.warning(
+                        "geniex.stream.output_cap",
+                        model=model,
+                        max_output_chars=max_output_chars,
+                    )
+                    break
+
+                emitted_chars += len(content)
+                yield content
         except httpx.TimeoutException as exc:
             raise TransientProviderError(
                 f"GenieX server timeout at {self._base_url}: {exc}"
