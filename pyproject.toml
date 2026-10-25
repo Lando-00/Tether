@@ -59,7 +59,7 @@ sqlcipher = [] # Reserved for optional encrypted SQLite support.
 # phonenumbers is used by TargetResolver for E.164 normalisation.
 whatsapp = [
     "neonize==0.3.17.post0",
-    "phonenumbers>=8.13,<9",
+    "phonenumbers>=8.13,<10",
 ]
 otel = [
     "opentelemetry-api>=1.20.0",
